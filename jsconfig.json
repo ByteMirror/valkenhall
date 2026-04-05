@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "@/*": ["./src/*"],
+      "react": ["./node_modules/preact/compat/dist/compat.mjs"],
+      "react-dom": ["./node_modules/preact/compat/dist/compat.mjs"],
+      "react-dom/*": ["./node_modules/preact/compat/*"],
+      "react/jsx-runtime": ["./node_modules/preact/compat/jsx-runtime.mjs"],
+      "react/jsx-dev-runtime": ["./node_modules/preact/compat/jsx-dev-runtime.mjs"]
+    }
+  }
+}

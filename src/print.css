@@ -1,0 +1,30 @@
+/* Global print styles for accurate A4 printing */
+@page {
+  size: A4;
+  margin: 10mm;
+}
+
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    background-color: white !important;
+    background-image: none !important;
+  }
+
+  body {
+    min-width: unset !important;
+  }
+
+  #app {
+    width: 100% !important;
+    max-width: unset !important;
+    background: white !important;
+    background-color: white !important;
+  }
+
+  * {
+    background-image: none !important;
+  }
+}

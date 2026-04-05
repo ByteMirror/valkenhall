@@ -1,0 +1,23 @@
+# Logs
+logs
+*.log
+bun-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+build/dev-macos-arm64/
+server/.cache/
+public/sorcery-images/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
