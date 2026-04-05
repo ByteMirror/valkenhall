@@ -26,14 +26,39 @@ export const SET_UNLOCK_LEVELS = {
   beta: 30,
 };
 
+export const MAX_LEVEL = 100;
+const XP_CAP_LEVEL = 60;
+
+function xpToNextLevel(level) {
+  if (level < 1) return 200;
+  if (level >= XP_CAP_LEVEL) return 3500;
+  // Starts at 200 XP (level 1→2, ~3 matches), scales up to 3500 at level 60
+  return Math.floor(200 + 3300 * Math.pow((level - 1) / (XP_CAP_LEVEL - 1), 1.4));
+}
+
+const XP_TABLE = [];
+(function buildXpTable() {
+  let cumulative = 0;
+  XP_TABLE[0] = 0;
+  XP_TABLE[1] = 0;
+  for (let lvl = 2; lvl <= MAX_LEVEL + 1; lvl++) {
+    cumulative += xpToNextLevel(lvl - 1);
+    XP_TABLE[lvl] = cumulative;
+  }
+})();
+
 export function xpForLevel(level) {
-  return Math.floor(50 * level * (level + 1) / 2);
+  if (level <= 1) return 0;
+  if (level > MAX_LEVEL + 1) return XP_TABLE[MAX_LEVEL + 1];
+  return XP_TABLE[level];
 }
 
 export function levelFromXp(xp) {
-  let level = 1;
-  while (xpForLevel(level + 1) <= xp) level++;
-  return level;
+  const safeXp = Math.max(0, xp || 0);
+  for (let lvl = MAX_LEVEL; lvl >= 1; lvl--) {
+    if (safeXp >= XP_TABLE[lvl]) return Math.min(lvl, MAX_LEVEL);
+  }
+  return 1;
 }
 
 export function xpProgressInLevel(xp) {
