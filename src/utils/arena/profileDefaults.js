@@ -37,14 +37,17 @@ export function levelFromXp(xp) {
 }
 
 export function xpProgressInLevel(xp) {
-  const level = levelFromXp(xp);
+  const safeXp = Math.max(0, xp || 0);
+  const level = levelFromXp(safeXp);
   const currentLevelXp = xpForLevel(level);
   const nextLevelXp = xpForLevel(level + 1);
+  const range = nextLevelXp - currentLevelXp;
+  const current = Math.max(0, safeXp - currentLevelXp);
   return {
     level,
-    current: xp - currentLevelXp,
-    needed: nextLevelXp - currentLevelXp,
-    fraction: (xp - currentLevelXp) / (nextLevelXp - currentLevelXp),
+    current,
+    needed: range,
+    fraction: range > 0 ? current / range : 0,
   };
 }
 
