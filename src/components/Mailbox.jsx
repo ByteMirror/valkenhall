@@ -54,6 +54,7 @@ export default class Mailbox extends Component {
       composeCards: [],
       composeCoins: 0,
       showCardPicker: false,
+      cardPickerSearch: '',
       error: null,
       viewScale: getViewportScale(),
     };
@@ -638,13 +639,13 @@ export default class Mailbox extends Component {
                 type="button"
                 className="text-[10px] cursor-pointer transition-all"
                 style={{ color: ACCENT_GOLD }}
-                onClick={() => this.setState(s => ({ showCardPicker: !s.showCardPicker }))}
+                onClick={() => this.setState(s => ({ showCardPicker: !s.showCardPicker, cardPickerSearch: '' }))}
               >
-                {showCardPicker ? 'Hide' : 'Choose Cards'}
+                {showCardPicker ? 'Close Picker' : 'Choose Cards'}
               </button>
             </div>
             {composeCards.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
+              <div className="flex flex-wrap gap-1.5">
                 {composeCards.map((cardId, i) => {
                   const imgUrl = resolveCardImage(cardId, sorceryCards);
                   const name = resolveCardName(cardId, sorceryCards);
@@ -652,7 +653,8 @@ export default class Mailbox extends Component {
                     <div
                       key={`${cardId}-${i}`}
                       className="relative rounded overflow-hidden cursor-pointer"
-                      style={{ border: `1px solid ${ACCENT_GOLD}`, width: 40 }}
+                      style={{ border: `1px solid ${ACCENT_GOLD}`, width: 36 }}
+                      title={`${name} — click to remove`}
                       onClick={() => this.toggleCardInCompose(cardId)}
                     >
                       {imgUrl ? (
@@ -665,68 +667,6 @@ export default class Mailbox extends Component {
                     </div>
                   );
                 })}
-              </div>
-            )}
-            {showCardPicker && (
-              <div
-                className="grid grid-cols-5 gap-1 max-h-[120px] overflow-y-auto p-1.5 rounded-lg"
-                style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${GOLD} 0.08)` }}
-              >
-                {collection.map(entry => {
-                  const imgUrl = resolveCardImage(entry.cardId, sorceryCards);
-                  const name = resolveCardName(entry.cardId, sorceryCards);
-                  const selectedCount = composeCards.filter(c => c === entry.cardId).length;
-                  const isSelected = selectedCount > 0;
-                  const canAddMore = selectedCount < entry.quantity && composeCards.length < 10;
-                  return (
-                    <button
-                      key={entry.cardId}
-                      type="button"
-                      className="relative rounded overflow-hidden transition-all cursor-pointer"
-                      style={isSelected
-                        ? { border: `1px solid ${ACCENT_GOLD}`, boxShadow: `0 0 8px ${GOLD} 0.2)` }
-                        : { border: `1px solid ${GOLD} 0.08)` }
-                      }
-                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.25)`; }}
-                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.08)`; }}
-                      onClick={() => {
-                        if (isSelected) {
-                          this.toggleCardInCompose(entry.cardId);
-                        } else if (canAddMore) {
-                          this.toggleCardInCompose(entry.cardId);
-                        }
-                      }}
-                    >
-                      {imgUrl ? (
-                        <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
-                      ) : (
-                        <div className="w-full aspect-[5/7] flex items-center justify-center text-[6px]" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
-                          {name}
-                        </div>
-                      )}
-                      {entry.quantity > 1 && (
-                        <span
-                          className="absolute top-0 right-0 text-[7px] font-bold px-1 rounded-bl"
-                          style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_BODY }}
-                        >
-                          x{entry.quantity}
-                        </span>
-                      )}
-                      {isSelected && (
-                        <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(212,168,67,0.25)' }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ color: '#fff' }}>
-                            <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-                {collection.length === 0 && (
-                  <div className="col-span-5 text-[10px] py-4 text-center" style={{ color: TEXT_MUTED }}>
-                    No cards in collection
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -847,6 +787,130 @@ export default class Mailbox extends Component {
                 </button>
               </>
             ) : null}
+          </div>
+        </div>
+
+        {/* Floating card picker — to the left of the mailbox */}
+        {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
+      </div>
+    );
+  }
+
+  renderCardPicker() {
+    const { profile, sorceryCards } = this.props;
+    const { composeCards, cardPickerSearch, viewScale } = this.state;
+    const collection = profile?.collection || [];
+
+    const searchLower = cardPickerSearch.toLowerCase();
+    const filtered = searchLower
+      ? collection.filter(entry => {
+          const name = resolveCardName(entry.cardId, sorceryCards);
+          return name.toLowerCase().includes(searchLower);
+        })
+      : collection;
+
+    return (
+      <div
+        className="absolute flex flex-col"
+        style={{
+          top: `${48 * viewScale}px`,
+          right: `${(24 + 400 + 8) * viewScale}px`,
+          width: 320,
+          height: 580,
+          zoom: viewScale,
+          ...DIALOG_STYLE,
+          overflow: 'hidden',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <FourCorners radius={12} />
+
+        {/* Header */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold arena-heading" style={{ color: TEXT_PRIMARY }}>
+              Attach Cards
+            </span>
+            <span className="text-[10px] tabular-nums" style={{ color: TEXT_MUTED }}>
+              {composeCards.length}/10 selected
+            </span>
+          </div>
+          <input
+            type="text"
+            placeholder="Search cards..."
+            value={cardPickerSearch}
+            className="w-full px-2.5 py-1.5 text-xs outline-none"
+            style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+            onInput={e => this.setState({ cardPickerSearch: e.target.value })}
+          />
+        </div>
+
+        <OrnamentalDivider className="px-4 my-1" />
+
+        {/* Card grid */}
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div className="grid grid-cols-4 gap-2">
+            {filtered.map(entry => {
+              const imgUrl = resolveCardImage(entry.cardId, sorceryCards);
+              const name = resolveCardName(entry.cardId, sorceryCards);
+              const selectedCount = composeCards.filter(c => c === entry.cardId).length;
+              const isSelected = selectedCount > 0;
+              const canAddMore = selectedCount < entry.quantity && composeCards.length < 10;
+              return (
+                <button
+                  key={entry.cardId}
+                  type="button"
+                  className="relative rounded-lg overflow-hidden transition-all cursor-pointer"
+                  style={isSelected
+                    ? { border: `2px solid ${ACCENT_GOLD}`, boxShadow: `0 0 10px ${GOLD} 0.25)` }
+                    : { border: `2px solid ${GOLD} 0.1)` }
+                  }
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.1)`; }}
+                  onClick={() => {
+                    if (isSelected) {
+                      this.toggleCardInCompose(entry.cardId);
+                    } else if (canAddMore) {
+                      this.toggleCardInCompose(entry.cardId);
+                    }
+                  }}
+                >
+                  {imgUrl ? (
+                    <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
+                  ) : (
+                    <div className="w-full aspect-[5/7] flex items-center justify-center text-[8px] p-1 text-center" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
+                      {name}
+                    </div>
+                  )}
+                  {entry.quantity > 1 && (
+                    <span
+                      className="absolute top-1 right-1 text-[8px] font-bold px-1 py-0.5 rounded"
+                      style={{ background: 'rgba(0,0,0,0.8)', color: TEXT_BODY }}
+                    >
+                      x{entry.quantity}
+                    </span>
+                  )}
+                  {isSelected && (
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(212,168,67,0.3)' }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}>
+                        <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  )}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 text-[7px] text-center py-0.5 truncate px-0.5"
+                    style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_BODY }}
+                  >
+                    {name}
+                  </div>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div className="col-span-4 text-[10px] py-8 text-center" style={{ color: TEXT_MUTED }}>
+                {cardPickerSearch ? 'No cards match your search' : 'No cards in collection'}
+              </div>
+            )}
           </div>
         </div>
       </div>
