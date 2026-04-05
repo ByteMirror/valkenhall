@@ -799,6 +799,7 @@ export default class GameBoard extends Component {
   }
 
   handleMouseDown = (event) => {
+    if (this.props.isSpectating) return;
     if (event.button !== 0) return;
     this.setState({ contextMenu: null });
 
@@ -951,6 +952,7 @@ export default class GameBoard extends Component {
   };
 
   handleMouseMove = (event) => {
+    if (this.props.isSpectating) return;
     this.lastMouseEvent = event;
 
     if (this.dragging) {
@@ -1004,6 +1006,7 @@ export default class GameBoard extends Component {
   };
 
   handleMouseUp = (event) => {
+    if (this.props.isSpectating) return;
     if (!this.dragging) return;
 
     const droppedMesh = this.dragging.mesh;

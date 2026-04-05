@@ -61,6 +61,7 @@ import { getStoredToken, validateToken } from './utils/authApi';
 import ToastManager from './components/ToastManager';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
+import SpectatorBanner from './components/SpectatorBanner';
 import { startPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
 
@@ -405,6 +406,10 @@ export default class App extends Component {
       friendListData: null,
       friendsSidebarOpen: false,
       viewingFriendProfile: null,
+      pendingInviteRoomCode: null,
+      isInviteMatch: false,
+      isSpectating: false,
+      spectateRoomCode: null,
     };
 
     this.arenaQueuePollTimer = null;
@@ -622,8 +627,29 @@ export default class App extends Component {
     }
   };
 
-  // Stub — Task 15 will wire up the match invite flow
-  handleInviteAccepted = (_result) => {};
+  handleInviteAccepted = (result) => {
+    this.setState({
+      arenaView: 'deck-select',
+      pendingInviteRoomCode: result.roomCode,
+      isInviteMatch: true,
+    });
+  };
+
+  handleSpectateAllowed = (roomCode) => {
+    this.setState({
+      isSpectating: true,
+      isGameBoardOpen: true,
+      spectateRoomCode: roomCode,
+    });
+  };
+
+  handleLeaveSpectate = () => {
+    this.setState({
+      isSpectating: false,
+      isGameBoardOpen: false,
+      spectateRoomCode: null,
+    });
+  };
 
   handleFriendInvite = async (friendId) => {
     try {
@@ -3170,6 +3196,7 @@ export default class App extends Component {
               avatarUrl: this.getArenaAvatarUrl(this.state.arenaProfile.profileAvatar),
             } : null}
             arenaOpponentInfo={this.state.arenaMatchmakingOpponent || null}
+            isSpectating={this.state.isSpectating}
             onMatchReward={this.handleMatchReward}
             onExit={() => {
               this.gameBoardRef = null;
@@ -3182,6 +3209,7 @@ export default class App extends Component {
             }}
           />
         ) : null}
+        {this.state.isSpectating ? <SpectatorBanner onLeave={this.handleLeaveSpectate} /> : null}
         {showArena && this.state.arenaLoading ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
             <div className="text-white/60 text-sm">Loading arena profile...</div>
