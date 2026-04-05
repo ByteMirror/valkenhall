@@ -1,4 +1,6 @@
 import { Component } from 'preact';
+import { Mail } from 'lucide-react';
+import RuneSpinner from './RuneSpinner';
 import { xpProgressInLevel } from '../utils/arena/profileDefaults';
 import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievements';
 import { cn } from '../lib/utils';
@@ -75,7 +77,7 @@ export default class ArenaHub extends Component {
   }
 
   render() {
-    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
+    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends, onToggleMailbox, mailboxUnreadCount } = this.props;
     const { showAvatarPicker, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
@@ -131,6 +133,23 @@ export default class ArenaHub extends Component {
               <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
               <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
             </div>
+
+            {/* Mailbox button */}
+            <button
+              type="button"
+              className="relative px-3 py-1.5 text-xs font-semibold transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
+              onClick={onToggleMailbox}
+            >
+              <Mail size={16} style={{ color: ACCENT_GOLD }} />
+              {(mailboxUnreadCount || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
+                  {mailboxUnreadCount}
+                </span>
+              )}
+            </button>
 
             {/* Friends button */}
             <button
@@ -399,7 +418,7 @@ export default class ArenaHub extends Component {
                   {/* Player list */}
                   <div className="flex-1 overflow-y-auto px-4 py-3">
                     {leaderboardLoading ? (
-                      <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>Loading...</div>
+                      <div className="flex justify-center py-8"><RuneSpinner size={28} /></div>
                     ) : filteredLeaderboard.length === 0 ? (
                       <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players found</div>
                     ) : (
