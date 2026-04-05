@@ -9,6 +9,13 @@ import {
   syncCoins,
 } from '../utils/arena/auctionApi';
 import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from '../utils/arena/collectionUtils';
+import {
+  BG_ATMOSPHERE, VIGNETTE, GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
+  PANEL_BG, PANEL_BORDER, BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
+  TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR, ACCENT_GOLD,
+  DIALOG_STYLE, FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
+  getViewportScale,
+} from '../lib/medievalTheme';
 
 function cardImageUrl(card) {
   return card?.printings?.[0]?.image_url || '';
@@ -34,6 +41,14 @@ function sortIndicator(activeKey, currentKey, order) {
   return order === 'asc' ? ' \u2191' : ' \u2193';
 }
 
+const CARD_STYLE = {
+  background: PANEL_BG,
+  border: `1px solid ${GOLD} 0.15)`,
+  borderRadius: '8px',
+};
+
+const CARD_STYLE_HOVER = `${GOLD} 0.35)`;
+
 export default class AuctionHouse extends Component {
   constructor(props) {
     super(props);
@@ -56,13 +71,23 @@ export default class AuctionHouse extends Component {
       syncing: false,
       buyingId: null,
       cancellingId: null,
+      viewScale: getViewportScale(),
     };
   }
 
   componentDidMount() {
+    window.addEventListener('resize', this.handleResize);
     this.doSync();
     this.loadListings();
   }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.handleResize);
+  }
+
+  handleResize = () => {
+    this.setState({ viewScale: getViewportScale() });
+  };
 
   doSync = async () => {
     const { profile } = this.props;
@@ -74,7 +99,6 @@ export default class AuctionHouse extends Component {
         this.props.onUpdateProfile({ ...profile, coins: result.coins });
       }
     } catch {
-      // Sync failure is non-blocking
     } finally {
       this.setState({ syncing: false });
     }
@@ -213,24 +237,21 @@ export default class AuctionHouse extends Component {
             placeholder="Search cards..."
             value={searchQuery}
             onInput={this.handleSearch}
-            className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/30"
+            className="flex-1 px-3 py-2 text-sm outline-none"
+            style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
           />
           <button
             type="button"
-            className={cn(
-              'rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
-              sortBy === 'price' ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-white/10 text-white/50 hover:text-white/80',
-            )}
+            className="px-3 py-2 text-xs font-medium transition-colors cursor-pointer"
+            style={sortBy === 'price' ? TAB_ACTIVE : TAB_INACTIVE}
             onClick={() => this.handleSort('price')}
           >
             Price{sortIndicator(sortBy, 'price', sortOrder)}
           </button>
           <button
             type="button"
-            className={cn(
-              'rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
-              sortBy === 'date' ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-white/10 text-white/50 hover:text-white/80',
-            )}
+            className="px-3 py-2 text-xs font-medium transition-colors cursor-pointer"
+            style={sortBy === 'date' ? TAB_ACTIVE : TAB_INACTIVE}
             onClick={() => this.handleSort('date')}
           >
             Date{sortIndicator(sortBy, 'date', sortOrder)}
@@ -238,32 +259,40 @@ export default class AuctionHouse extends Component {
         </div>
 
         {listingsLoading ? (
-          <div className="text-center text-white/40 py-12 text-sm">Loading listings...</div>
+          <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>Loading listings...</div>
         ) : listings.length === 0 ? (
-          <div className="text-center text-white/40 py-12 text-sm">No listings found</div>
+          <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>No listings found</div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {listings.map((listing) => {
               const card = findCard(sorceryCards, listing.cardId);
               const isOwn = profile.name === listing.sellerName;
               return (
-                <div key={listing.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3 flex flex-col gap-2">
+                <div
+                  key={listing.id}
+                  className="relative p-3 flex flex-col gap-2"
+                  style={CARD_STYLE}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = CARD_STYLE_HOVER; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.15)`; }}
+                >
+                  <FourCorners />
                   {card ? (
                     <img src={cardImageUrl(card)} alt={card.name} className="w-full rounded-lg aspect-[5/7] object-cover bg-black/40" loading="lazy" />
                   ) : (
-                    <div className="w-full rounded-lg aspect-[5/7] bg-white/5 flex items-center justify-center text-white/20 text-xs">{listing.cardId}</div>
+                    <div className="w-full rounded-lg aspect-[5/7] flex items-center justify-center text-xs" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>{listing.cardId}</div>
                   )}
-                  <div className="text-xs font-semibold text-white truncate">{card?.name || listing.cardId}</div>
-                  <div className="text-[10px] text-white/40 truncate">by {listing.sellerName}</div>
+                  <div className="text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{card?.name || listing.cardId}</div>
+                  <div className="text-[10px] truncate" style={{ color: TEXT_MUTED }}>by {listing.sellerName}</div>
                   <div className="flex items-center justify-between mt-auto">
-                    <span className="text-sm font-bold text-yellow-300">{listing.price} <span className="text-[10px] text-yellow-300/60">coins</span></span>
+                    <span className="text-sm font-bold" style={{ color: COIN_COLOR }}>{listing.price} <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>coins</span></span>
                     {isOwn ? (
-                      <span className="text-[10px] text-white/30">Your listing</span>
+                      <span className="text-[10px]" style={{ color: TEXT_MUTED }}>Your listing</span>
                     ) : (
                       <button
                         type="button"
                         disabled={buyingId === listing.id || listing.price > profile.coins}
-                        className="rounded-lg bg-green-600/80 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className="px-2.5 py-1 text-[10px] font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={GOLD_BTN}
                         onClick={() => this.handleBuy(listing)}
                       >
                         {buyingId === listing.id ? 'Buying...' : 'Buy'}
@@ -281,18 +310,20 @@ export default class AuctionHouse extends Component {
             <button
               type="button"
               disabled={page === 0}
-              className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white/60 hover:text-white disabled:opacity-30"
+              className="px-3 py-1 text-xs cursor-pointer disabled:opacity-30 transition-all"
+              style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
               onClick={() => this.setState({ page: page - 1 }, this.loadListings)}
             >
               Previous
             </button>
-            <span className="text-xs text-white/40">
+            <span className="text-xs" style={{ color: TEXT_MUTED }}>
               {page * 50 + 1}-{Math.min((page + 1) * 50, listingsTotal)} of {listingsTotal}
             </span>
             <button
               type="button"
               disabled={(page + 1) * 50 >= listingsTotal}
-              className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white/60 hover:text-white disabled:opacity-30"
+              className="px-3 py-1 text-xs cursor-pointer disabled:opacity-30 transition-all"
+              style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
               onClick={() => this.setState({ page: page + 1 }, this.loadListings)}
             >
               Next
@@ -319,11 +350,12 @@ export default class AuctionHouse extends Component {
     return (
       <div className="flex flex-col gap-4">
         {selectedCard ? (
-          <div className="flex items-start gap-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+          <div className="relative flex items-start gap-4 p-4" style={{ background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <FourCorners />
             <img src={cardImageUrl(selectedCard)} alt={selectedCard.name} className="w-20 rounded-lg aspect-[5/7] object-cover bg-black/40" />
             <div className="flex-1 flex flex-col gap-2">
-              <div className="text-sm font-bold text-white">{selectedCard.name}</div>
-              <div className="text-xs text-white/40">Available: {selectedQty}</div>
+              <div className="text-sm font-bold" style={{ color: TEXT_PRIMARY }}>{selectedCard.name}</div>
+              <div className="text-xs" style={{ color: TEXT_MUTED }}>Available: {selectedQty}</div>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -331,33 +363,36 @@ export default class AuctionHouse extends Component {
                   placeholder="Price in coins"
                   value={sellPrice}
                   onInput={(e) => this.setState({ sellPrice: e.target.value })}
-                  className="w-32 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none focus:border-white/30"
+                  className="w-32 px-3 py-1.5 text-sm outline-none"
+                  style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
                 />
                 <button
                   type="button"
                   disabled={sellLoading || !sellPrice || parseInt(sellPrice, 10) <= 0}
-                  className="rounded-lg bg-amber-600/80 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={GOLD_BTN}
                   onClick={this.handleCreateListing}
                 >
                   {sellLoading ? 'Listing...' : 'List for Sale'}
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/50 hover:text-white/80"
+                  className="px-3 py-1.5 text-xs cursor-pointer transition-all"
+                  style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                   onClick={() => this.setState({ selectedCardId: null, sellPrice: '', sellError: null })}
                 >
                   Cancel
                 </button>
               </div>
-              {sellError && <div className="text-xs text-red-400">{sellError}</div>}
+              {sellError && <div className="text-xs" style={{ color: '#c45050' }}>{sellError}</div>}
             </div>
           </div>
         ) : (
-          <div className="text-xs text-white/40">Select a card from your collection to list for sale.</div>
+          <div className="text-xs" style={{ color: TEXT_MUTED }}>Select a card from your collection to list for sale.</div>
         )}
 
         {availableCards.length === 0 ? (
-          <div className="text-center text-white/40 py-12 text-sm">No available cards to sell</div>
+          <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>No available cards to sell</div>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
             {availableCards.map((card) => {
@@ -367,19 +402,20 @@ export default class AuctionHouse extends Component {
                 <button
                   key={card.unique_id}
                   type="button"
-                  className={cn(
-                    'relative rounded-lg border p-1 transition-all text-left',
-                    isSelected
-                      ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/50'
-                      : 'border-white/10 hover:border-white/30',
-                  )}
+                  className="relative p-1 transition-all text-left cursor-pointer"
+                  style={isSelected
+                    ? { border: `1px solid ${ACCENT_GOLD}`, background: `${GOLD} 0.1)`, borderRadius: '6px', boxShadow: `0 0 12px ${GOLD} 0.15)` }
+                    : { border: `1px solid ${GOLD} 0.1)`, borderRadius: '6px' }
+                  }
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
+                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.1)`; }}
                   onClick={() => this.setState({ selectedCardId: card.unique_id, sellPrice: '', sellError: null })}
                 >
                   <img src={cardImageUrl(card)} alt={card.name} className="w-full rounded aspect-[5/7] object-cover bg-black/40" loading="lazy" />
                   {qty > 1 && (
-                    <span className="absolute top-0.5 right-0.5 rounded-full bg-black/70 px-1.5 text-[10px] font-bold text-white">x{qty}</span>
+                    <span className="absolute top-0.5 right-0.5 rounded-full px-1.5 text-[10px] font-bold" style={{ background: PANEL_BG, color: ACCENT_GOLD, border: `1px solid ${GOLD} 0.3)` }}>x{qty}</span>
                   )}
-                  <div className="text-[10px] text-white/60 truncate mt-1 px-0.5">{card.name}</div>
+                  <div className="text-[10px] truncate mt-1 px-0.5" style={{ color: TEXT_MUTED }}>{card.name}</div>
                 </button>
               );
             })}
@@ -394,7 +430,7 @@ export default class AuctionHouse extends Component {
     const { myListings, myListingsLoading, cancellingId } = this.state;
 
     if (myListingsLoading) {
-      return <div className="text-center text-white/40 py-12 text-sm">Loading your listings...</div>;
+      return <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>Loading your listings...</div>;
     }
 
     const active = myListings.filter((l) => l.status === 'active');
@@ -403,24 +439,26 @@ export default class AuctionHouse extends Component {
     return (
       <div className="flex flex-col gap-6">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3">Active Listings ({active.length})</div>
+          <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_HEADER_STYLE}>Active Listings ({active.length})</div>
           {active.length === 0 ? (
-            <div className="text-xs text-white/30 py-4">No active listings</div>
+            <div className="text-xs py-4" style={{ color: TEXT_MUTED }}>No active listings</div>
           ) : (
             <div className="flex flex-col gap-2">
               {active.map((listing) => {
                 const card = findCard(sorceryCards, listing.cardId);
                 return (
-                  <div key={listing.id} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <div key={listing.id} className="relative flex items-center gap-3 px-3 py-2" style={CARD_STYLE}>
+                    <FourCorners />
                     {card && <img src={cardImageUrl(card)} alt={card.name} className="w-10 rounded aspect-[5/7] object-cover bg-black/40" />}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-white truncate">{card?.name || listing.cardId}</div>
+                      <div className="text-sm font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{card?.name || listing.cardId}</div>
                     </div>
-                    <span className="text-sm font-bold text-yellow-300 shrink-0">{listing.price} coins</span>
+                    <span className="text-sm font-bold shrink-0" style={{ color: COIN_COLOR }}>{listing.price} coins</span>
                     <button
                       type="button"
                       disabled={cancellingId === listing.id}
-                      className="rounded-lg border border-red-500/30 px-2.5 py-1 text-[10px] font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors shrink-0"
+                      className="px-2.5 py-1 text-[10px] font-medium cursor-pointer disabled:opacity-40 transition-colors shrink-0"
+                      style={DANGER_BTN}
                       onClick={() => this.handleCancel(listing)}
                     >
                       {cancellingId === listing.id ? 'Cancelling...' : 'Cancel'}
@@ -434,15 +472,15 @@ export default class AuctionHouse extends Component {
 
         {sold.length > 0 && (
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3">Sold ({sold.length})</div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_HEADER_STYLE}>Sold ({sold.length})</div>
             <div className="flex flex-col gap-1">
               {sold.map((listing) => {
                 const card = findCard(sorceryCards, listing.cardId);
                 return (
-                  <div key={listing.id} className="flex items-center gap-3 rounded-lg bg-white/[0.02] px-3 py-2">
+                  <div key={listing.id} className="flex items-center gap-3 px-3 py-2" style={{ background: `${GOLD} 0.03)`, borderRadius: '6px' }}>
                     {card && <img src={cardImageUrl(card)} alt={card.name} className="w-8 rounded aspect-[5/7] object-cover bg-black/40" />}
-                    <span className="text-xs text-white/50 flex-1 truncate">{card?.name || listing.cardId}</span>
-                    <span className="text-xs font-semibold text-green-400">+{listing.price} coins</span>
+                    <span className="text-xs flex-1 truncate" style={{ color: TEXT_MUTED }}>{card?.name || listing.cardId}</span>
+                    <span className="text-xs font-semibold" style={{ color: ACCENT_GOLD }}>+{listing.price} coins</span>
                   </div>
                 );
               })}
@@ -458,23 +496,30 @@ export default class AuctionHouse extends Component {
     const { tab, error } = this.state;
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0908] text-white overflow-hidden arena-bg">
-        <div className="flex items-center gap-4 px-6 py-3 border-b border-white/10 bg-black/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: BG_ATMOSPHERE, color: TEXT_BODY }}>
+        <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
+
+        {/* Header */}
+        <div className="relative flex items-center gap-4 px-6 py-3" style={{ background: PANEL_BG, borderBottom: `1px solid ${GOLD} 0.15)`, zoom: this.state.viewScale }}>
           <button
             type="button"
-            className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+            className="px-3 py-1.5 text-xs font-medium cursor-pointer transition-all"
+            style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
             onClick={onBack}
           >
             Back to Hub
           </button>
-          <div className="text-sm font-bold arena-heading">Auction House</div>
+          <div className="text-sm font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Auction House</div>
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-sm font-bold text-yellow-300">{profile.coins}</span>
-            <span className="text-[10px] text-yellow-300/60">coins</span>
+            <span className="text-sm font-bold" style={{ color: COIN_COLOR, textShadow: `0 0 8px ${GOLD} 0.3)` }}>{profile.coins}</span>
+            <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>coins</span>
           </div>
         </div>
 
-        <div className="flex gap-1 px-6 py-2 border-b border-white/5">
+        {/* Tabs */}
+        <div className="relative flex gap-2 px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.08)`, zoom: this.state.viewScale }}>
           {[
             { key: 'browse', label: 'Browse' },
             { key: 'sell', label: 'Sell' },
@@ -483,10 +528,8 @@ export default class AuctionHouse extends Component {
             <button
               key={t.key}
               type="button"
-              className={cn(
-                'rounded-lg px-4 py-1.5 text-xs font-medium transition-colors',
-                tab === t.key ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70',
-              )}
+              className="px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer"
+              style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
               onClick={() => this.switchTab(t.key)}
             >
               {t.label}
@@ -494,14 +537,16 @@ export default class AuctionHouse extends Component {
           ))}
         </div>
 
+        {/* Error */}
         {error && (
-          <div className="mx-6 mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-400">
+          <div className="relative mx-6 mt-3 px-4 py-2 text-xs" style={{ background: 'rgba(180,60,60,0.08)', border: '1px solid rgba(180,60,60,0.25)', borderRadius: '6px', color: '#c45050' }}>
             {error}
-            <button type="button" className="ml-2 underline hover:no-underline" onClick={() => this.setState({ error: null })}>dismiss</button>
+            <button type="button" className="ml-2 underline hover:no-underline cursor-pointer" onClick={() => this.setState({ error: null })}>dismiss</button>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        {/* Content */}
+        <div className="relative flex-1 overflow-y-auto px-6 py-4" style={{ zoom: this.state.viewScale }}>
           {tab === 'browse' && this.renderBrowse()}
           {tab === 'sell' && this.renderSell()}
           {tab === 'my-listings' && this.renderMyListings()}
