@@ -1,5 +1,7 @@
 import { Component } from 'preact';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollText } from 'lucide-react';
+import RuneSpinner from './RuneSpinner';
 import { fetchInbox, sendMail, claimMail, deleteMail } from '../utils/arena/mailApi';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
@@ -273,10 +275,7 @@ export default class Mailbox extends Component {
     if (loading) {
       return (
         <div className="flex items-center justify-center py-12">
-          <div
-            className="w-5 h-5 rounded-full animate-spin"
-            style={{ border: `2px solid ${GOLD} 0.2)`, borderTopColor: ACCENT_GOLD }}
-          />
+          <RuneSpinner size={48} />
         </div>
       );
     }
@@ -695,18 +694,23 @@ export default class Mailbox extends Component {
     const { open, onClose } = this.props;
     const { view, error } = this.state;
 
-    if (!open) return null;
-
     return (
+      <AnimatePresence>
+        {!open ? null : (
       <div className="fixed inset-0 z-[60]" onClick={onClose}>
-        <div
+        <motion.div
           className="absolute flex flex-col"
+          initial={{ opacity: 0, y: -12, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -12, scale: 0.96 }}
+          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
           style={{
             top: `${48 * this.state.viewScale}px`,
             right: `${24 * this.state.viewScale}px`,
             width: 400,
             height: 580,
             zoom: this.state.viewScale,
+            transformOrigin: 'top right',
             ...DIALOG_STYLE,
           }}
           onClick={e => e.stopPropagation()}
@@ -779,10 +783,14 @@ export default class Mailbox extends Component {
           </div>
 
           {/* Card picker — anchored to left of this panel */}
-          {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
-        </div>
+          <AnimatePresence>
+            {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
+          </AnimatePresence>
+        </motion.div>
 
       </div>
+        )}
+      </AnimatePresence>
     );
   }
 
@@ -800,14 +808,20 @@ export default class Mailbox extends Component {
       : collection;
 
     return (
-      <div
+      <motion.div
+        key="card-picker"
         className="absolute flex flex-col"
+        initial={{ opacity: 0, x: 12, scale: 0.96 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        exit={{ opacity: 0, x: 12, scale: 0.96 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
         style={{
           top: 0,
           right: '100%',
           marginRight: 8,
           width: 320,
           height: '100%',
+          transformOrigin: 'top right',
           ...DIALOG_STYLE,
         }}
         onClick={e => e.stopPropagation()}
@@ -903,7 +917,7 @@ export default class Mailbox extends Component {
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
     );
   }
 }
