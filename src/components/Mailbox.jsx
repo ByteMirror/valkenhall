@@ -255,16 +255,6 @@ export default class Mailbox extends Component {
             </button>
           ))}
         </div>
-        {tab === 'friend' && view === 'list' && (
-          <button
-            type="button"
-            className="px-2.5 py-1 text-[10px] font-semibold cursor-pointer transition-all"
-            style={{ ...BEVELED_BTN, color: ACCENT_GOLD, borderRadius: '6px' }}
-            onClick={() => this.openCompose()}
-          >
-            Compose
-          </button>
-        )}
       </div>
     );
   }
@@ -767,23 +757,6 @@ export default class Mailbox extends Component {
           </div>
         </div>
 
-        {/* Send footer */}
-        <div className="px-3 py-2.5 flex items-center justify-end gap-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
-          {this.state.error && (
-            <div className="flex-1 text-[10px] truncate" style={{ color: '#c45050' }}>
-              {this.state.error}
-            </div>
-          )}
-          <button
-            type="button"
-            disabled={!canSend || sending}
-            className="px-5 py-1.5 text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            style={GOLD_BTN}
-            onClick={this.handleSend}
-          >
-            {sending ? 'Sending...' : 'Send'}
-          </button>
-        </div>
       </div>
     );
   }
@@ -838,10 +811,42 @@ export default class Mailbox extends Component {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto" style={{ maxHeight: view === 'list' ? 380 : 420 }}>
+          <div className="flex-1 overflow-y-auto">
             {view === 'list' && this.renderListView()}
             {view === 'detail' && this.renderDetailView()}
             {view === 'compose' && this.renderComposeView()}
+          </div>
+
+          {/* Pinned footer — always at bottom */}
+          <div className="shrink-0 px-3 py-2.5 flex items-center justify-end gap-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
+            {view === 'list' && this.state.tab === 'friend' ? (
+              <button
+                type="button"
+                className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"
+                style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                onClick={() => this.openCompose()}
+              >
+                Compose
+              </button>
+            ) : null}
+            {view === 'compose' ? (
+              <>
+                {this.state.error ? (
+                  <div className="flex-1 text-[10px] truncate" style={{ color: '#c45050' }}>
+                    {this.state.error}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!(this.state.composeRecipient && (this.state.composeSubject.trim() || this.state.composeBody.trim())) || this.state.sending}
+                  className="px-5 py-1.5 text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                  onClick={this.handleSend}
+                >
+                  {this.state.sending ? 'Sending...' : 'Send'}
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
