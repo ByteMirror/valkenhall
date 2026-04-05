@@ -8,6 +8,7 @@ import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, VIGNETTE, COIN_COLOR,
   FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
+  getViewportScale,
 } from '../lib/medievalTheme';
 
 function resolveAvatarUrl(cardId, sorceryCards) {
@@ -48,12 +49,22 @@ export default class FriendProfileOverlay extends Component {
       loading: true,
       error: null,
       showUnfriendConfirm: false,
+      viewScale: getViewportScale(),
     };
   }
 
   componentDidMount() {
+    window.addEventListener('resize', this.handleResize);
     this.loadProfile();
   }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.handleResize);
+  }
+
+  handleResize = () => {
+    this.setState({ viewScale: getViewportScale() });
+  };
 
   async loadProfile() {
     try {
@@ -72,8 +83,8 @@ export default class FriendProfileOverlay extends Component {
       <div className="fixed inset-0 z-[80] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
         <div
-          className="relative w-full max-w-2xl max-h-[75vh] flex flex-col overflow-hidden"
-          style={{ ...DIALOG_STYLE, borderRadius: '12px' }}
+          className="relative w-full max-w-2xl flex flex-col overflow-hidden"
+          style={{ ...DIALOG_STYLE, borderRadius: '12px', zoom: this.state.viewScale, maxHeight: `${75 / this.state.viewScale}vh` }}
           onClick={(e) => e.stopPropagation()}
         >
           <FourCorners />
@@ -132,7 +143,7 @@ export default class FriendProfileOverlay extends Component {
     }
 
     return (
-      <div className="flex flex-col max-h-[75vh]">
+      <div className="flex flex-col" style={{ maxHeight: `${75 / (this.state?.viewScale || 1)}vh` }}>
         {/* Hero banner */}
         <div className="relative px-6 pt-6 pb-5" style={{ background: `linear-gradient(180deg, ${GOLD} 0.04) 0%, transparent 100%)` }}>
           <button
