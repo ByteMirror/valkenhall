@@ -175,13 +175,14 @@ export function CornerPlating({ position, color = GOLD_CORNER, radius = 8 }) {
   const s = CORNER_SIZE;
   const t = CORNER_THICKNESS;
   const r = radius;
+  const base = { zIndex: 2, width: s, height: s, transition: 'border-color 0.2s ease' };
   const styles = {
-    'top-left': { top: -1, left: -1, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: r, width: s, height: s },
-    'top-right': { top: -1, right: -1, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: r, width: s, height: s },
-    'bottom-left': { bottom: -1, left: -1, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: r, width: s, height: s },
-    'bottom-right': { bottom: -1, right: -1, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: r, width: s, height: s },
+    'top-left': { ...base, top: -2, left: -2, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: r },
+    'top-right': { ...base, top: -2, right: -2, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: r },
+    'bottom-left': { ...base, bottom: -2, left: -2, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: r },
+    'bottom-right': { ...base, bottom: -2, right: -2, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: r },
   };
-  return <div className="absolute pointer-events-none" style={{ ...styles[position], transition: 'border-color 0.2s ease' }} data-corner="" />;
+  return <div className="absolute pointer-events-none" style={styles[position]} data-corner="" />;
 }
 
 /* ── Four corners shorthand ────────────────────────────── */
