@@ -59,6 +59,8 @@ import { registerPlayer, clearQueueState, joinQueue, leaveQueue, pollQueueStatus
 import { formatRank, TIER_COLORS } from './utils/arena/rankUtils';
 import { getStoredToken, validateToken } from './utils/authApi';
 import ToastManager from './components/ToastManager';
+import FriendsSidebar from './components/FriendsSidebar';
+import FriendProfileOverlay from './components/FriendProfileOverlay';
 import { startPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
 
@@ -402,6 +404,7 @@ export default class App extends Component {
       toasts: [],
       friendListData: null,
       friendsSidebarOpen: false,
+      viewingFriendProfile: null,
     };
 
     this.arenaQueuePollTimer = null;
@@ -621,6 +624,37 @@ export default class App extends Component {
 
   // Stub — Task 15 will wire up the match invite flow
   handleInviteAccepted = (_result) => {};
+
+  handleFriendInvite = async (friendId) => {
+    try {
+      await friendsApi.sendMatchInvite(friendId);
+      this.addToast({ title: 'Invite Sent', message: 'Waiting for response...' });
+    } catch (err) {
+      this.addToast({ title: 'Invite Failed', message: err.message });
+    }
+  };
+
+  handleFriendSpectate = async (friendId) => {
+    try {
+      await friendsApi.requestSpectate(friendId);
+      this.addToast({ title: 'Spectate Requested', message: 'Waiting for permission...' });
+    } catch (err) {
+      this.addToast({ title: 'Request Failed', message: err.message });
+    }
+  };
+
+  handleViewFriendProfile = (profileId) => {
+    this.setState({ viewingFriendProfile: profileId });
+  };
+
+  handleFriendTrade = async (friendId) => {
+    try {
+      await friendsApi.requestTrade(friendId);
+      this.addToast({ title: 'Trade Request Sent', message: 'Waiting for response...' });
+    } catch (err) {
+      this.addToast({ title: 'Trade Failed', message: err.message });
+    }
+  };
 
   handleNewNotifications = (notifications) => {
     for (const n of notifications) {
@@ -3178,6 +3212,8 @@ export default class App extends Component {
             onUpdateName={this.updateArenaName}
             onUpdateAvatar={this.updateArenaAvatar}
             onResetProfile={this.resetArenaProfile}
+            friendListData={this.state.friendListData}
+            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
           />
         ) : null}
         {showArena && this.state.arenaView === 'deck-select' ? (
@@ -3224,6 +3260,21 @@ export default class App extends Component {
             remainingPacks={this.state.arenaPendingPacks?.length || 0}
           />
         ) : null}
+        {this.state.viewingFriendProfile ? (
+          <FriendProfileOverlay
+            profileId={this.state.viewingFriendProfile}
+            onClose={() => this.setState({ viewingFriendProfile: null })}
+          />
+        ) : null}
+        <FriendsSidebar
+          open={this.state.friendsSidebarOpen}
+          onClose={() => this.setState({ friendsSidebarOpen: false })}
+          friendListData={this.state.friendListData}
+          onInvite={this.handleFriendInvite}
+          onSpectate={this.handleFriendSpectate}
+          onViewProfile={this.handleViewFriendProfile}
+          onTrade={this.handleFriendTrade}
+        />
         <Toaster />
         <ToastManager
           toasts={this.state.toasts}
