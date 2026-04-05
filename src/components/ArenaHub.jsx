@@ -5,126 +5,14 @@ import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSetting
 import { updateMusicVolume } from '../utils/arena/musicManager';
 import { cn } from '../lib/utils';
 import { formatRank, TIER_COLORS, TIER_LABELS, TIERS } from '../utils/arena/rankUtils';
-
-const GOLD = 'rgba(180, 140, 60,';
-const GOLD_TEXT = 'rgba(201, 168, 76,';
-const PARCHMENT = 'rgba(228, 213, 160,';
-
-/* ── Atmospheric background layers ─────────────────────── */
-const BG_ATMOSPHERE = [
-  'radial-gradient(ellipse 80% 50% at 50% 30%, rgba(180,140,60,0.05) 0%, transparent 70%)',
-  'radial-gradient(ellipse 60% 40% at 50% 80%, rgba(120,80,30,0.06) 0%, transparent 60%)',
-  'radial-gradient(ellipse 100% 100% at 50% 50%, rgba(30,20,8,0.4) 0%, transparent 80%)',
-  'radial-gradient(circle at 20% 20%, rgba(100,60,20,0.03) 0%, transparent 40%)',
-  'radial-gradient(circle at 80% 70%, rgba(100,60,20,0.03) 0%, transparent 40%)',
-  '#08080a',
-].join(', ');
-
-/* ── Shared style fragments ─────────────────────────────── */
-const BEVELED_BTN = {
-  background: `linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)`,
-  border: `1px solid ${GOLD} 0.3)`,
-  boxShadow: `inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)`,
-  borderRadius: '8px',
-  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-};
-
-const CONTENT_BG_DEFAULT = 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)';
-const CONTENT_BG_HOVER = 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.04) 100%)';
-const CONTENT_BG_ACTIVE = 'linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(255,255,255,0.02) 100%)';
-
-function adjustAlpha(rgba, alpha) {
-  return rgba.replace(/[\d.]+\)$/, `${alpha})`);
-}
-
-/* ── Ornate medieval menu button ──────────────────────── */
-const CORNER_SIZE = 10;
-const CORNER_THICKNESS = 2;
-const BTN_BORDER = 'rgba(166,160,155,0.3)';
-const BTN_BORDER_HOVER = 'rgba(166,160,155,0.55)';
-const BTN_CORNER = 'rgba(166,160,155,0.5)';
-const BTN_CORNER_HOVER = 'rgba(166,160,155,0.85)';
-
-function CornerPlating({ position, color }) {
-  const s = CORNER_SIZE;
-  const t = CORNER_THICKNESS;
-  const styles = {
-    'top-left': { top: -1, left: -1, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: 6, width: s, height: s },
-    'top-right': { top: -1, right: -1, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: 6, width: s, height: s },
-    'bottom-left': { bottom: -1, left: -1, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: 6, width: s, height: s },
-    'bottom-right': { bottom: -1, right: -1, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: 6, width: s, height: s },
-  };
-  return <div className="absolute pointer-events-none" style={{ ...styles[position], transition: 'border-color 0.2s ease' }} data-corner="" />;
-}
-
-function MenuButton({ title, onClick }) {
-  return (
-    <button
-      type="button"
-      className="relative group w-full text-left cursor-pointer transition-all duration-200 mb-2"
-      style={{ transform: 'scale(1)' }}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget;
-        el.style.transform = 'scale(1.02)';
-        el.style.boxShadow = '0 0 20px rgba(166,160,155,0.08)';
-        el.querySelector('[data-frame]').style.borderColor = BTN_BORDER_HOVER;
-        el.querySelectorAll('[data-corner]').forEach((c) => {
-          c.style.borderColor = BTN_CORNER_HOVER;
-        });
-        el.querySelector('[data-content]').style.background = CONTENT_BG_HOVER;
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget;
-        el.style.transform = 'scale(1)';
-        el.style.boxShadow = 'none';
-        el.querySelector('[data-frame]').style.borderColor = BTN_BORDER;
-        el.querySelectorAll('[data-corner]').forEach((c) => {
-          c.style.borderColor = BTN_CORNER;
-        });
-        el.querySelector('[data-content]').style.background = CONTENT_BG_DEFAULT;
-      }}
-      onMouseDown={(e) => {
-        e.currentTarget.style.transform = 'scale(0.98)';
-        e.currentTarget.querySelector('[data-content]').style.background = CONTENT_BG_ACTIVE;
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.transform = 'scale(1.02)';
-        e.currentTarget.querySelector('[data-content]').style.background = CONTENT_BG_HOVER;
-      }}
-      onClick={onClick}
-    >
-      {/* Main border frame */}
-      <div
-        data-frame=""
-        className="absolute inset-0 pointer-events-none"
-        style={{ border: `1px solid ${BTN_BORDER}`, borderRadius: '6px', transition: 'border-color 0.2s ease' }}
-      />
-      {/* Corner platings — thicker corner brackets */}
-      <CornerPlating position="top-left" color={BTN_CORNER} />
-      <CornerPlating position="top-right" color={BTN_CORNER} />
-      <CornerPlating position="bottom-left" color={BTN_CORNER} />
-      <CornerPlating position="bottom-right" color={BTN_CORNER} />
-      {/* Content */}
-      <div
-        data-content=""
-        className="relative px-5 py-3.5 flex items-center"
-        style={{ background: CONTENT_BG_DEFAULT, textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}
-      >
-        <span className="text-lg font-bold arena-heading" style={{ color: '#A6A09B' }}>{title}</span>
-      </div>
-    </button>
-  );
-}
-
-function OrnamentalDivider({ className }) {
-  return (
-    <div className={cn('flex items-center gap-4 select-none', className)}>
-      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, transparent 0%, ${GOLD} 0.25) 50%, transparent 100%)` }} />
-      <span style={{ color: `${GOLD} 0.35)`, fontSize: '8px', lineHeight: 1 }}>◆</span>
-      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, transparent 0%, ${GOLD} 0.25) 50%, transparent 100%)` }} />
-    </div>
-  );
-}
+import {
+  GOLD, GOLD_TEXT, PARCHMENT, BG_ATMOSPHERE,
+  BEVELED_BTN, CONTENT_BG_DEFAULT, CONTENT_BG_HOVER, CONTENT_BG_ACTIVE,
+  BTN_BORDER, BTN_BORDER_HOVER, BTN_CORNER, BTN_CORNER_HOVER,
+  DIALOG_STYLE, DIALOG_BORDER, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
+  adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners,
+} from '../lib/medievalTheme';
+import AmbientParticles from './AmbientParticles';
 
 export default class ArenaHub extends Component {
   constructor(props) {
@@ -185,7 +73,7 @@ export default class ArenaHub extends Component {
   }
 
   render() {
-    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
+    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
     const { showAvatarPicker, showSettings, showResetConfirm, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
@@ -218,13 +106,20 @@ export default class ArenaHub extends Component {
     const unlockedCount = (profile.achievements || []).length;
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden select-none" style={{ background: BG_ATMOSPHERE }}>
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden select-none" style={{ background: '#08080a' }}>
 
-        {/* Vignette overlay */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.5) 100%)' }} />
+        {/* Background image with depth-of-field blur */}
+        <div className="absolute inset-0" style={{ background: `url('/flesh-and-blood-proxies/hub-bg.png') center/cover no-repeat`, filter: 'blur(3px)', transform: 'scale(1.02)' }} />
+
+        {/* Darken overlay + vignette */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0.4) 70%, rgba(0,0,0,0.7) 100%)' }} />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.6) 100%)' }} />
+
+        {/* Ambient particle effects */}
+        <AmbientParticles />
 
         {/* ─── TOP BAR ─────────────────────────────────────── */}
-        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'linear-gradient(180deg, rgba(20,16,8,0.6) 0%, transparent 100%)' }}>
+        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)' }}>
           <img src="/flesh-and-blood-proxies/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
 
           <div className="ml-auto flex items-center gap-5">
@@ -271,7 +166,7 @@ export default class ArenaHub extends Component {
           <div className="max-w-[1400px] mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
 
             {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2" style={{ border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2" style={{ background: 'rgba(12, 10, 8, 0.92)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
               <CornerPlating position="top-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
@@ -400,10 +295,22 @@ export default class ArenaHub extends Component {
                 <MenuButton title="Store" onClick={onOpenStore} />
                 <MenuButton title="Deck Builder" onClick={onOpenDeckBuilder} />
                 <MenuButton title="Auction House" onClick={onOpenAuctionHouse} />
+                <div className="relative">
+                  <MenuButton title="Settings" onClick={onOpenSettings} />
+                  {updateStatus && (updateStatus.state === 'READY_TO_INSTALL' || updateStatus.state === 'DOWNLOADING' || updateStatus.state === 'DOWNLOAD_FAILED') ? (
+                    <div
+                      className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full"
+                      style={{
+                        background: updateStatus.state === 'DOWNLOAD_FAILED' ? '#b04040' : ACCENT_GOLD,
+                        boxShadow: `0 0 6px ${updateStatus.state === 'DOWNLOAD_FAILED' ? 'rgba(176,64,64,0.6)' : 'rgba(212,168,67,0.6)'}`,
+                      }}
+                    />
+                  ) : null}
+                </div>
 
                 {/* Recent Matches */}
                 {totalMatches > 0 && (
-                  <div className="mt-4">
+                  <div className="mt-4 p-3" style={{ background: 'rgba(12, 10, 8, 0.92)', border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
                     <div className="flex items-center gap-3 mb-2">
                       <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>Recent Matches</span>
                       <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
@@ -436,7 +343,7 @@ export default class ArenaHub extends Component {
                 <div
                   className="relative overflow-hidden flex-1 flex flex-col"
                   style={{
-                    background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
+                    background: 'rgba(12, 10, 8, 0.94)',
                     border: `1px solid ${GOLD} 0.18)`,
                     borderRadius: '8px',
                     boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
@@ -528,7 +435,7 @@ export default class ArenaHub extends Component {
                 <div
                   className="relative flex-1 flex flex-col overflow-hidden"
                   style={{
-                    background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
+                    background: 'rgba(12, 10, 8, 0.94)',
                     border: `1px solid ${GOLD} 0.18)`,
                     borderRadius: '8px',
                     boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
