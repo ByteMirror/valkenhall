@@ -21,6 +21,7 @@ if (!result.success) {
 
 await fs.copyFile('./public/cards.json', './dist/cards.json');
 await fs.copyFile('./public/valkenhall-logo.png', './dist/valkenhall-logo.png');
+await fs.copyFile('./public/store-bg.png', './dist/store-bg.png').catch(() => {});
 await fs.cp('./public/cursors', './dist/cursors', { recursive: true }).catch(() => {});
 
 console.log(`Built ${result.outputs.length} output files into dist/`);

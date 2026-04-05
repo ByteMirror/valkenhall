@@ -46,13 +46,13 @@ const DIAMOND_POSITIONS = [
 ];
 
 /* ── Ornate medieval menu button ──────────────────────── */
-function MenuButton({ title, description, onClick, color, borderColor, accentColor, hero, glowColor }) {
-  const outerBorder = borderColor || 'rgba(180,140,60,0.35)';
-  const innerBorder = adjustAlpha(outerBorder, 0.15);
-  const accent = accentColor || 'rgba(180,140,60,';
-  const glow = glowColor || 'rgba(180,140,60,0.1)';
-  const titleColor = color || 'rgba(228,213,160,0.8)';
-  const descColor = adjustAlpha(outerBorder, 0.4);
+function MenuButton({ title, description, onClick }) {
+  const outerBorder = 'rgba(250,249,246,0.25)';
+  const innerBorder = 'rgba(250,249,246,0.1)';
+  const accent = 'rgba(250,249,246,';
+  const glow = 'rgba(250,249,246,0.08)';
+  const titleColor = '#FAF9F6';
+  const descColor = 'rgba(250,249,246,0.35)';
 
   const outerHover = adjustAlpha(outerBorder, Math.min(1, parseFloat(outerBorder.match(/[\d.]+\)$/)[0]) + 0.2));
   const innerHover = adjustAlpha(innerBorder, Math.min(1, parseFloat(innerBorder.match(/[\d.]+\)$/)[0]) + 0.1));
@@ -64,10 +64,7 @@ function MenuButton({ title, description, onClick, color, borderColor, accentCol
   return (
     <button
       type="button"
-      className={cn(
-        'relative group w-full text-left cursor-pointer transition-all duration-200',
-        hero ? 'mb-2' : 'mb-1.5',
-      )}
+      className="relative group w-full text-left cursor-pointer transition-all duration-200 mb-1.5"
       style={{ transform: 'scale(1)' }}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
@@ -85,7 +82,7 @@ function MenuButton({ title, description, onClick, color, borderColor, accentCol
       onMouseLeave={(e) => {
         const el = e.currentTarget;
         el.style.transform = 'scale(1)';
-        el.style.boxShadow = hero ? `0 0 30px ${glow}` : 'none';
+        el.style.boxShadow = 'none';
         el.querySelector('[data-outer]').style.borderColor = outerBorder;
         el.querySelector('[data-inner]').style.borderColor = innerBorder;
         el.querySelectorAll('[data-diamond]').forEach((d) => {
@@ -134,16 +131,13 @@ function MenuButton({ title, description, onClick, color, borderColor, accentCol
       ))}
       <div
         data-content=""
-        className={`relative px-5 ${hero ? 'py-5' : 'py-4'}`}
+        className="relative px-5 py-4"
         style={{ background: CONTENT_BG_DEFAULT, textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}
       >
-        <div
-          className={cn('font-bold arena-heading', hero ? 'text-xl mb-0.5' : 'text-lg mb-0.5')}
-          style={{ color: titleColor, textShadow: hero ? `0 0 20px ${titleColor}, 0 2px 4px rgba(0,0,0,0.5)` : '0 1px 3px rgba(0,0,0,0.6)' }}
-        >
+        <div className="text-lg font-bold arena-heading mb-0.5" style={{ color: titleColor, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
           {title}
         </div>
-        <div className={hero ? 'text-[11px] font-medium' : 'text-xs'} style={{ color: descColor }}>{description}</div>
+        <div className="text-xs" style={{ color: descColor }}>{description}</div>
       </div>
     </button>
   );
@@ -258,7 +252,7 @@ export default class ArenaHub extends Component {
 
         {/* ─── TOP BAR ─────────────────────────────────────── */}
         <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'linear-gradient(180deg, rgba(20,16,8,0.6) 0%, transparent 100%)' }}>
-          <span className="text-lg font-bold arena-heading tracking-wide" style={{ color: '#c9a84c', textShadow: '0 0 20px rgba(200,160,60,0.2)' }}>Valkenhall</span>
+          <img src="/flesh-and-blood-proxies/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
 
           <div className="ml-auto flex items-center gap-5">
             {/* Gold display */}
@@ -424,51 +418,11 @@ export default class ArenaHub extends Component {
               <div className="w-[280px] shrink-0 flex flex-col overflow-y-auto pr-1">
 
                 {/* FIND MATCH — hero button */}
-                <MenuButton
-                  title="Find Match"
-                  description="Ranked matchmaking — earn LP"
-                  onClick={onFindMatch}
-                  hero
-                  color="rgba(34,197,94,0.9)"
-                  borderColor="rgba(34,197,94,0.4)"
-                  accentColor="rgba(34,197,94,"
-                  glowColor="rgba(34,197,94,0.1)"
-                />
-
-                {/* Menu buttons */}
-                <MenuButton
-                  title="Casual Play"
-                  description="Play with a friend"
-                  onClick={onPlayMatch}
-                  color="rgba(228,213,160,0.8)"
-                />
-                <MenuButton
-                  title="Store"
-                  description="Buy packs & bundles"
-                  onClick={onOpenStore}
-                  color="rgba(245,158,11,0.9)"
-                  borderColor="rgba(245,158,11,0.35)"
-                  accentColor="rgba(245,158,11,"
-                  glowColor="rgba(245,158,11,0.1)"
-                />
-                <MenuButton
-                  title="Deck Builder"
-                  description="Build & manage decks"
-                  onClick={onOpenDeckBuilder}
-                  color="rgba(168,85,247,0.9)"
-                  borderColor="rgba(168,85,247,0.3)"
-                  accentColor="rgba(168,85,247,"
-                  glowColor="rgba(168,85,247,0.1)"
-                />
-                <MenuButton
-                  title="Auction House"
-                  description="Buy & sell cards"
-                  onClick={onOpenAuctionHouse}
-                  color="rgba(245,158,11,0.9)"
-                  borderColor="rgba(245,158,11,0.35)"
-                  accentColor="rgba(245,158,11,"
-                  glowColor="rgba(245,158,11,0.1)"
-                />
+                <MenuButton title="Find Match" description="Ranked matchmaking — earn LP" onClick={onFindMatch} />
+                <MenuButton title="Casual Play" description="Play with a friend" onClick={onPlayMatch} />
+                <MenuButton title="Store" description="Buy packs & bundles" onClick={onOpenStore} />
+                <MenuButton title="Deck Builder" description="Build & manage decks" onClick={onOpenDeckBuilder} />
+                <MenuButton title="Auction House" description="Buy & sell cards" onClick={onOpenAuctionHouse} />
 
                 {/* Recent Matches */}
                 {totalMatches > 0 && (

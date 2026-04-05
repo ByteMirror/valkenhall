@@ -77,7 +77,9 @@ export default class ArenaStore extends Component {
     const canAffordCart = debug || profile.coins >= cartCost;
 
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      <div className="fixed inset-0 z-50 flex flex-col" style={{
+        background: `linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.7) 100%), url('/flesh-and-blood-proxies/store-bg.png') center/cover no-repeat`,
+      }}>
         {/* Purchase flash overlay */}
         {purchaseFlash ? (
           <div className="fixed inset-0 z-[60] pointer-events-none bg-amber-500/10 animate-[fadeOut_1.5s_ease-out_forwards]" />
