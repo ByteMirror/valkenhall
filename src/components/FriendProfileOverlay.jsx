@@ -49,6 +49,7 @@ export default class FriendProfileOverlay extends Component {
       loading: true,
       error: null,
       showUnfriendConfirm: false,
+      showAchievements: false,
       viewScale: getViewportScale(),
     };
   }
@@ -277,31 +278,27 @@ export default class FriendProfileOverlay extends Component {
             </div>
           ) : null}
 
-          {/* Achievements */}
-          <div className="p-3 mb-4" style={SECTION_CARD}>
-            <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={SECTION_HEADER_STYLE}>
-              Achievements ({achievements.length}/{ACHIEVEMENTS.length})
+          {/* Achievements — compact strip */}
+          <div
+            className="p-3 mb-4 cursor-pointer transition-all"
+            style={SECTION_CARD}
+            onClick={() => this.setState({ showAchievements: true })}
+            onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.06)`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = `${GOLD} 0.03)`; }}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Achievements</div>
+              <div className="text-[10px] tabular-nums" style={{ color: TEXT_MUTED }}>{achievements.length}/{ACHIEVEMENTS.length}</div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 max-h-[7.5rem] overflow-y-auto">
-              {ACHIEVEMENTS.map((a) => {
-                const unlocked = achievements.includes(a.id);
-                return (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors"
-                    style={unlocked
-                      ? { border: `1px solid ${GOLD} 0.2)`, background: `${GOLD} 0.06)` }
-                      : { border: `1px solid ${GOLD} 0.04)`, background: `${GOLD} 0.01)`, opacity: 0.35 }
-                    }
-                  >
-                    <span className="text-sm shrink-0">{unlocked ? a.icon : '\u{1F512}'}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-medium truncate" style={{ color: unlocked ? TEXT_PRIMARY : TEXT_MUTED }}>{a.name}</div>
-                      <div className="text-[9px] truncate" style={{ color: unlocked ? TEXT_MUTED : `${GOLD} 0.15)` }}>{a.description}</div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.06)` }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${ACHIEVEMENTS.length > 0 ? Math.round((achievements.length / ACHIEVEMENTS.length) * 100) : 0}%`, background: `linear-gradient(90deg, #8b6914, ${ACCENT_GOLD}, #c49a38)` }}
+                />
+              </div>
+              <span className="text-[10px] tabular-nums shrink-0" style={{ color: ACCENT_GOLD }}>{ACHIEVEMENTS.length > 0 ? Math.round((achievements.length / ACHIEVEMENTS.length) * 100) : 0}%</span>
+              <span className="text-[10px]" style={{ color: TEXT_MUTED }}>View All &rsaquo;</span>
             </div>
           </div>
         </div>
@@ -378,6 +375,63 @@ export default class FriendProfileOverlay extends Component {
             </div>
           )}
         </div>
+
+        {/* Achievements detail modal */}
+        {this.state.showAchievements ? (
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.85)', borderRadius: '12px' }}
+            onClick={() => this.setState({ showAchievements: false })}
+          >
+            <div
+              className="w-full max-w-md mx-4 flex flex-col overflow-hidden"
+              style={{ ...DIALOG_STYLE, borderRadius: '10px', maxHeight: '80%' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <FourCorners />
+              <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Achievements</div>
+                  <div className="text-xs mt-1" style={{ color: TEXT_MUTED }}>{achievements.length} of {ACHIEVEMENTS.length} unlocked</div>
+                </div>
+                <button
+                  type="button"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+                  style={{ color: TEXT_MUTED }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
+                  onClick={() => this.setState({ showAchievements: false })}
+                >
+                  <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+              <OrnamentalDivider />
+              <div className="flex-1 overflow-y-auto px-5 py-3">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {ACHIEVEMENTS.map((a) => {
+                    const unlocked = achievements.includes(a.id);
+                    return (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-2 rounded-lg px-2.5 py-1.5"
+                        style={unlocked
+                          ? { border: `1px solid ${GOLD} 0.2)`, background: `${GOLD} 0.06)` }
+                          : { border: `1px solid ${GOLD} 0.04)`, background: `${GOLD} 0.01)`, opacity: 0.35 }
+                        }
+                      >
+                        <span className="text-sm shrink-0">{unlocked ? a.icon : '\u{1F512}'}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] font-medium truncate" style={{ color: unlocked ? TEXT_PRIMARY : TEXT_MUTED }}>{a.name}</div>
+                          <div className="text-[9px] truncate" style={{ color: unlocked ? TEXT_MUTED : `${GOLD} 0.15)` }}>{a.description}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
