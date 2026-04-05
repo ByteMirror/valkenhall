@@ -55,7 +55,6 @@ export default class ArenaHub extends Component {
       showAvatarPicker: false,
       showSettings: false,
       showResetConfirm: false,
-      showAchievements: false,
       soundSettings: getSoundSettings(),
       leaderboard: null,
       leaderboardLoading: false,
@@ -109,7 +108,7 @@ export default class ArenaHub extends Component {
 
   render() {
     const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
-    const { showAvatarPicker, showSettings, showResetConfirm, showAchievements, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
+    const { showAvatarPicker, showSettings, showResetConfirm, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
     const collectionSize = profile.collection.reduce((sum, c) => sum + c.quantity, 0);
@@ -191,299 +190,295 @@ export default class ArenaHub extends Component {
 
         {/* ─── MAIN CONTENT ────────────────────────────────── */}
         <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-[1400px] mx-auto px-8">
+          <div className="max-w-[1400px] mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
 
-              {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-              <div className="flex items-center gap-8 py-6">
-                {/* Avatar with ornate frame */}
-                <button
-                  type="button"
-                  className="relative group shrink-0"
-                  onClick={() => this.setState({ showAvatarPicker: true })}
-                  title="Click to change avatar"
+            {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
+            <div className="flex items-center gap-8 py-5 shrink-0">
+              {/* Avatar with ornate frame */}
+              <button
+                type="button"
+                className="relative group shrink-0"
+                onClick={() => this.setState({ showAvatarPicker: true })}
+                title="Click to change avatar"
+              >
+                <div className="absolute -inset-2 rounded-2xl" style={{ border: `2px solid ${GOLD} 0.35)`, boxShadow: `0 0 25px ${GOLD} 0.12), 0 0 50px ${GOLD} 0.06)` }} />
+                <div className="absolute -inset-0.5 rounded-xl" style={{ border: `1px solid ${GOLD} 0.6)` }} />
+
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-xl object-cover object-top relative z-10" style={{ boxShadow: `0 4px 20px rgba(0,0,0,0.6)` }} />
+                ) : (
+                  <div className="w-20 h-20 rounded-xl flex items-center justify-center text-2xl relative z-10" style={{ background: `${GOLD} 0.1)`, color: `${GOLD} 0.4)` }}>?</div>
+                )}
+
+                <div
+                  className="absolute -bottom-2 -right-2 z-20 flex items-center justify-center"
+                  style={{
+                    width: '32px', height: '32px',
+                    background: `linear-gradient(135deg, rgba(200,160,50,0.3) 0%, rgba(120,90,30,0.2) 100%)`,
+                    border: `2px solid ${GOLD} 0.6)`,
+                    borderRadius: '8px',
+                    boxShadow: `0 2px 10px rgba(0,0,0,0.5), 0 0 12px ${GOLD} 0.15)`,
+                  }}
                 >
-                  {/* Outer ornate glow ring */}
-                  <div className="absolute -inset-2 rounded-2xl" style={{ border: `2px solid ${GOLD} 0.35)`, boxShadow: `0 0 25px ${GOLD} 0.12), 0 0 50px ${GOLD} 0.06)` }} />
-                  {/* Inner frame */}
-                  <div className="absolute -inset-0.5 rounded-xl" style={{ border: `1px solid ${GOLD} 0.6)` }} />
-
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-xl object-cover object-top relative z-10" style={{ boxShadow: `0 4px 20px rgba(0,0,0,0.6)` }} />
-                  ) : (
-                    <div className="w-20 h-20 rounded-xl flex items-center justify-center text-2xl relative z-10" style={{ background: `${GOLD} 0.1)`, color: `${GOLD} 0.4)` }}>?</div>
-                  )}
-
-                  {/* Level badge — overlapping bottom-right */}
-                  <div
-                    className="absolute -bottom-2 -right-2 z-20 flex items-center justify-center"
-                    style={{
-                      width: '32px', height: '32px',
-                      background: `linear-gradient(135deg, rgba(200,160,50,0.3) 0%, rgba(120,90,30,0.2) 100%)`,
-                      border: `2px solid ${GOLD} 0.6)`,
-                      borderRadius: '8px',
-                      boxShadow: `0 2px 10px rgba(0,0,0,0.5), 0 0 12px ${GOLD} 0.15)`,
-                    }}
-                  >
-                    <span className="text-sm font-bold" style={{ color: '#d4a843', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{level}</span>
-                  </div>
-
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all z-20">
-                    <span className="text-white/0 group-hover:text-white/80 text-xs font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
-                  </div>
-                </button>
-
-                {/* Name, Rank, XP */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-4 mb-2">
-                    <h1 className="text-2xl font-bold arena-heading" style={{ color: '#e8d5a0', textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,160,60,0.1)' }}>{profile.name}</h1>
-                    {rank && (
-                      <span
-                        className={cn('text-sm font-bold px-3 py-0.5', rankColor)}
-                        style={{
-                          background: `linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.1) 100%)`,
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '6px',
-                          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                        }}
-                      >
-                        {formatRank(rank.tier, rank.division)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* XP Progress bar — full width */}
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest arena-heading shrink-0" style={{ color: `${GOLD} 0.45)` }}>Lvl {level}</span>
-                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.08)`, border: `1px solid ${GOLD} 0.12)`, boxShadow: `inset 0 1px 3px rgba(0,0,0,0.3)` }}>
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${Math.round(progress.fraction * 100)}%`,
-                          background: 'linear-gradient(90deg, #8b6914, #d4a843, #c49a38)',
-                          boxShadow: '0 0 8px rgba(212,168,67,0.3)',
-                        }}
-                      />
-                    </div>
-                    <span className="text-[10px] tabular-nums shrink-0" style={{ color: `${GOLD} 0.4)` }}>{Math.round(progress.fraction * 100)}%</span>
-                  </div>
-
-                  {/* Rank LP bar */}
-                  {rank && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest arena-heading shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>LP</span>
-                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div className="h-full rounded-full transition-all" style={{ width: `${rank.lp}%`, background: 'rgba(255,255,255,0.2)' }} />
-                      </div>
-                      <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>{rank.lp} LP</span>
-                    </div>
-                  )}
+                  <span className="text-sm font-bold" style={{ color: '#d4a843', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{level}</span>
                 </div>
 
-                {/* Quick Stats */}
-                <div className="shrink-0 flex gap-6">
-                  <div className="text-center">
-                    <div className="text-xl font-bold tabular-nums" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{totalMatches}</div>
-                    <div className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: `${GOLD} 0.35)` }}>Matches</div>
+                <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all z-20">
+                  <span className="text-white/0 group-hover:text-white/80 text-xs font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
+                </div>
+              </button>
+
+              {/* Name, Rank, XP */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-4 mb-2">
+                  <h1 className="text-2xl font-bold arena-heading" style={{ color: '#e8d5a0', textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,160,60,0.1)' }}>{profile.name}</h1>
+                  {rank && (
+                    <span
+                      className={cn('text-sm font-bold px-3 py-0.5', rankColor)}
+                      style={{
+                        background: `linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.1) 100%)`,
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '6px',
+                        textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {formatRank(rank.tier, rank.division)}
+                    </span>
+                  )}
+                  {/* Compact stats */}
+                  <div className="ml-auto flex items-center gap-5 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-bold tabular-nums" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{totalMatches}</span>
+                      <span className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.35)` }}>matches</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-bold tabular-nums" style={{ color: winRate >= 50 ? '#6ee7a0' : '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{winRate}%</span>
+                      <span className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.35)` }}>win rate</span>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold tabular-nums" style={{ color: winRate >= 50 ? '#6ee7a0' : '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{winRate}%</div>
-                    <div className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: `${GOLD} 0.35)` }}>Win Rate</div>
+                </div>
+
+                {/* XP Progress bar */}
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest arena-heading shrink-0" style={{ color: `${GOLD} 0.45)` }}>Lvl {level}</span>
+                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.08)`, border: `1px solid ${GOLD} 0.12)`, boxShadow: `inset 0 1px 3px rgba(0,0,0,0.3)` }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.round(progress.fraction * 100)}%`,
+                        background: 'linear-gradient(90deg, #8b6914, #d4a843, #c49a38)',
+                        boxShadow: '0 0 8px rgba(212,168,67,0.3)',
+                      }}
+                    />
                   </div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold tabular-nums" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{uniqueCards}</div>
-                    <div className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: `${GOLD} 0.35)` }}>Cards</div>
+                  <span className="text-[10px] tabular-nums shrink-0" style={{ color: `${GOLD} 0.4)` }}>{Math.round(progress.fraction * 100)}%</span>
+                </div>
+
+                {/* Rank LP bar */}
+                {rank && (
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest arena-heading shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>LP</span>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${rank.lp}%`, background: 'rgba(255,255,255,0.2)' }} />
+                    </div>
+                    <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>{rank.lp} LP</span>
                   </div>
+                )}
+
+                {/* Collection per-set bars */}
+                <div className="flex items-center gap-4">
+                  {[
+                    { label: 'Gothic', key: 'gothic', color: '#a87832' },
+                    { label: 'Arthurian', key: 'arthurian', color: '#6b8cae' },
+                    { label: 'Beta', key: 'beta', color: '#7c6ea0' },
+                  ].map(({ label, key, color }) => (
+                    <div key={key} className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider shrink-0" style={{ color: `${color}99` }}>{label}</span>
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: setStats[key].total > 0 ? `${Math.round((setStats[key].owned / setStats[key].total) * 100)}%` : '0%', background: color }} />
+                      </div>
+                      <span className="text-[9px] tabular-nums shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }}>{setStats[key].owned}/{setStats[key].total}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
+            </div>
 
-              <OrnamentalDivider />
+            <OrnamentalDivider className="shrink-0" />
 
-              {/* ─── MAIN FOCAL AREA ─────────────────────────── */}
-              <div className="flex gap-6 py-6 flex-1">
+            {/* ─── 3-COLUMN LAYOUT ───────────────────────────── */}
+            <div className="flex gap-5 py-4 flex-1 min-h-0">
 
-                {/* Left column: Actions */}
-                <div className="flex-1 min-w-0 flex flex-col">
+              {/* ── LEFT COLUMN: VERTICAL MENU ──────────────── */}
+              <div className="w-[280px] shrink-0 flex flex-col overflow-y-auto pr-1">
 
-                  {/* ── PRIMARY PLAY BUTTONS ─────────────────── */}
-                  <div className="flex gap-4 mb-6">
-                    {/* FIND MATCH — THE hero button */}
+                {/* FIND MATCH — hero button */}
+                <button
+                  type="button"
+                  className="w-full relative group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer mb-2"
+                  style={HERO_BTN_GREEN}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 0 40px rgba(34,197,94,0.2), 0 0 80px rgba(34,197,94,0.1), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(34,197,94,0.6)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = HERO_BTN_GREEN.boxShadow;
+                    e.currentTarget.style.borderColor = 'rgba(34,197,94,0.4)';
+                  }}
+                  onClick={onFindMatch}
+                >
+                  <div className="py-5 px-5 text-left">
+                    <div className="text-xl font-bold arena-heading mb-0.5" style={{ color: '#6ee7a0', textShadow: '0 0 20px rgba(110,231,160,0.3), 0 2px 4px rgba(0,0,0,0.5)' }}>
+                      Find Match
+                    </div>
+                    <div className="text-[11px] font-medium" style={{ color: 'rgba(110,231,160,0.5)' }}>Ranked matchmaking — earn LP</div>
+                  </div>
+                  <div className="absolute top-3 right-4 text-3xl opacity-[0.07]" style={{ color: '#6ee7a0' }}>⚔</div>
+                </button>
+
+                {/* Menu buttons */}
+                {[
+                  { label: 'Casual Play', sub: 'Play with a friend', onClick: onPlayMatch, accent: null },
+                  { label: 'Store', sub: 'Buy packs & bundles', onClick: onOpenStore, accent: [212, 168, 67] },
+                  { label: 'Deck Builder', sub: 'Build & manage decks', onClick: onOpenDeckBuilder, accent: [168, 85, 247] },
+                  { label: 'Auction House', sub: 'Buy & sell cards', onClick: onOpenAuctionHouse, accent: [212, 168, 67] },
+                ].map(({ label, sub, onClick, accent }) => {
+                  const accentColor = accent ? `rgba(${accent[0]},${accent[1]},${accent[2]},` : GOLD;
+                  return (
                     <button
+                      key={label}
                       type="button"
-                      className="flex-1 relative group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                      style={HERO_BTN_GREEN}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.boxShadow = '0 0 40px rgba(34,197,94,0.2), 0 0 80px rgba(34,197,94,0.1), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2)';
-                        e.currentTarget.style.borderColor = 'rgba(34,197,94,0.6)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.boxShadow = HERO_BTN_GREEN.boxShadow;
-                        e.currentTarget.style.borderColor = 'rgba(34,197,94,0.4)';
-                      }}
-                      onClick={onFindMatch}
-                    >
-                      <div className="py-6 px-6 text-center">
-                        <div className="text-2xl font-bold arena-heading mb-1" style={{ color: '#6ee7a0', textShadow: '0 0 20px rgba(110,231,160,0.3), 0 2px 4px rgba(0,0,0,0.5)' }}>
-                          Find Match
-                        </div>
-                        <div className="text-xs font-medium" style={{ color: 'rgba(110,231,160,0.5)' }}>Ranked matchmaking — earn LP</div>
-                      </div>
-                      {/* Decorative sword icon */}
-                      <div className="absolute top-3 right-4 text-3xl opacity-[0.07]" style={{ color: '#6ee7a0' }}>⚔</div>
-                    </button>
-
-                    {/* Casual Play */}
-                    <button
-                      type="button"
-                      className="flex-[0.6] relative group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                      className="w-full relative group text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer mb-1.5"
                       style={{
                         ...BEVELED_BTN,
-                        borderRadius: '14px',
-                        border: `1px solid ${GOLD} 0.25)`,
+                        borderRadius: '10px',
+                        border: `1px solid ${accentColor} 0.2)`,
+                        padding: '12px 16px',
+                        background: accent
+                          ? `linear-gradient(180deg, rgba(${accent[0]},${accent[1]},${accent[2]},0.06) 0%, rgba(0,0,0,0.1) 100%)`
+                          : BEVELED_BTN.background,
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px ${GOLD} 0.08)`;
-                        e.currentTarget.style.borderColor = `${GOLD} 0.45)`;
+                        e.currentTarget.style.borderColor = `${accentColor} 0.45)`;
+                        e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px ${accentColor} 0.08)`;
                       }}
                       onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = `${accentColor} 0.2)`;
                         e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow;
-                        e.currentTarget.style.borderColor = `${GOLD} 0.25)`;
                       }}
-                      onClick={onPlayMatch}
+                      onClick={onClick}
                     >
-                      <div className="py-6 px-5 text-center">
-                        <div className="text-lg font-bold arena-heading mb-1" style={{ color: '#e8d5a0', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-                          Casual Play
-                        </div>
-                        <div className="text-xs" style={{ color: `${PARCHMENT} 0.35)` }}>Play with a friend</div>
-                      </div>
+                      <div className="text-sm font-bold arena-heading mb-0.5" style={{ color: accent ? `rgba(${accent[0]},${accent[1]},${accent[2]},0.85)` : '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{label}</div>
+                      <div className="text-[10px]" style={{ color: `${accentColor} 0.4)` }}>{sub}</div>
                     </button>
-                  </div>
+                  );
+                })}
 
-                  {/* ── COLLECTION TILES ──────────────────────── */}
-                  <div className="grid grid-cols-3 gap-3 mb-6">
-                    {[
-                      { label: 'Store', sub: 'Buy packs', onClick: onOpenStore, accent: [212, 168, 67] },
-                      { label: 'Deck Builder', sub: 'Build decks', onClick: onOpenDeckBuilder, accent: [168, 85, 247] },
-                      { label: 'Auction House', sub: 'Buy & sell cards', onClick: onOpenAuctionHouse, accent: [212, 168, 67] },
-                    ].map(({ label, sub, onClick, accent }) => {
-                      const [r, g, b] = accent;
-                      const accentColor = `rgba(${r},${g},${b},`;
-                      return (
-                        <button
-                          key={label}
-                          type="button"
-                          className="relative group text-center transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                          style={{
-                            background: `linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.1) 100%)`,
-                            border: `1px solid ${accentColor} 0.2)`,
-                            borderRadius: '12px',
-                            padding: '18px 12px',
-                            boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)`,
-                            textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = `${accentColor} 0.45)`;
-                            e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.08), 0 0 20px ${accentColor} 0.1)`;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = `${accentColor} 0.2)`;
-                            e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)`;
-                          }}
-                          onClick={onClick}
-                        >
-                          <div className="text-base font-bold arena-heading mb-0.5" style={{ color: `${accentColor} 0.85)` }}>{label}</div>
-                          <div className="text-[11px]" style={{ color: `${accentColor} 0.4)` }}>{sub}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* ── RECENT MATCHES ────────────────────────── */}
-                  {totalMatches > 0 && (
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>Recent Matches</span>
-                        <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {profile.matchHistory.slice(0, 5).map((m, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-3 px-3 py-2 text-sm"
-                            style={{
-                              background: `linear-gradient(90deg, ${m.won ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.03)'} 0%, transparent 100%)`,
-                              borderRadius: '8px',
-                              border: `1px solid ${m.won ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)'}`,
-                            }}
-                          >
-                            <span className={cn('font-bold w-5 text-center', m.won ? 'text-green-400' : 'text-red-400')} style={{ textShadow: m.won ? '0 0 8px rgba(34,197,94,0.3)' : '0 0 8px rgba(239,68,68,0.3)' }}>
-                              {m.won ? 'W' : 'L'}
-                            </span>
-                            <span className="flex-1 truncate" style={{ color: `${PARCHMENT} 0.55)` }}>{m.opponentName || 'Opponent'}</span>
-                            <span className="text-xs font-medium" style={{ color: 'rgba(240,208,96,0.6)' }}>+{m.coinsEarned}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── ACHIEVEMENTS (collapsed) ─────────────── */}
-                  <div className="mt-auto pt-4">
-                    <button
-                      type="button"
-                      className="w-full flex items-center gap-3 py-2 transition-all group cursor-pointer"
-                      onClick={() => this.setState({ showAchievements: !showAchievements })}
-                    >
-                      <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>
-                        Achievements ({unlockedCount}/{ACHIEVEMENTS.length})
-                      </span>
+                {/* Recent Matches */}
+                {totalMatches > 0 && (
+                  <div className="mt-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>Recent Matches</span>
                       <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
-                      <span className="text-[10px] transition-transform" style={{ color: `${GOLD} 0.3)`, transform: showAchievements ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-                    </button>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {profile.matchHistory.slice(0, 5).map((m, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-3 px-3 py-1.5 text-xs"
+                          style={{
+                            background: `linear-gradient(90deg, ${m.won ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.03)'} 0%, transparent 100%)`,
+                            borderRadius: '6px',
+                            border: `1px solid ${m.won ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)'}`,
+                          }}
+                        >
+                          <span className={cn('font-bold w-4 text-center', m.won ? 'text-green-400' : 'text-red-400')} style={{ textShadow: m.won ? '0 0 8px rgba(34,197,94,0.3)' : '0 0 8px rgba(239,68,68,0.3)' }}>
+                            {m.won ? 'W' : 'L'}
+                          </span>
+                          <span className="flex-1 truncate" style={{ color: `${PARCHMENT} 0.55)` }}>{m.opponentName || 'Opponent'}</span>
+                          <span className="text-[10px] font-medium" style={{ color: 'rgba(240,208,96,0.6)' }}>+{m.coinsEarned}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
-                    {showAchievements && (
-                      <div className="grid grid-cols-2 gap-1.5 mt-2 max-h-[300px] overflow-y-auto pr-1">
-                        {ACHIEVEMENTS.map((a) => {
-                          const unlocked = (profile.achievements || []).includes(a.id);
-                          const prog = !unlocked ? getAchievementProgress(a.id, profile, sorceryCards) : null;
-                          const hasProgress = prog && prog.target > 1 && prog.current > 0;
-                          const pct = prog && prog.target > 0 ? Math.min(100, Math.round((prog.current / prog.target) * 100)) : 0;
+              {/* ── CENTER COLUMN: LEADERBOARD ──────────────── */}
+              <div className="flex-1 min-w-0 flex flex-col">
+                <div
+                  className="overflow-hidden flex-1 flex flex-col"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
+                    border: `1px solid ${GOLD} 0.18)`,
+                    borderRadius: '14px',
+                    boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
+                  }}
+                >
+                  <div className="px-4 pt-4 pb-2 shrink-0">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>Leaderboard</span>
+                      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.25), transparent)` }} />
+                    </div>
+
+                    <Tabs value={leaderboardFilter} onValueChange={(v) => this.setState({ leaderboardFilter: v })} className="mb-2">
+                      <TabsList className="w-full gap-0.5 rounded-xl p-0.5 flex-wrap h-auto">
+                        <TabsTrigger value="all" className="px-2.5 py-1 text-[10px] h-6">All</TabsTrigger>
+                        {TIERS.map((tier) => (
+                          <TabsTrigger key={tier} value={tier} className="px-2.5 py-1 text-[10px] h-6">
+                            {TIER_LABELS[tier]}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </Tabs>
+
+                    <input
+                      type="text"
+                      value={leaderboardSearch}
+                      placeholder="Search players..."
+                      className="w-full px-3 py-1.5 text-xs outline-none placeholder:text-amber-800/30"
+                      style={{
+                        background: `${GOLD} 0.04)`,
+                        border: `1px solid ${GOLD} 0.12)`,
+                        borderRadius: '8px',
+                        color: '#e8d5a0',
+                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)',
+                      }}
+                      onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-3 pb-3">
+                    {leaderboardLoading ? (
+                      <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>Loading...</div>
+                    ) : filteredLeaderboard.length === 0 ? (
+                      <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players in this tier yet</div>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        {filteredLeaderboard.map((player, i) => {
+                          const isMe = player.name === profile.name;
+                          const color = TIER_COLORS[player.tier] || 'text-white/60';
                           return (
                             <div
-                              key={a.id}
-                              className="flex items-center gap-2.5 px-3 py-2 text-xs transition-all"
-                              style={unlocked
+                              key={i}
+                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs transition-all"
+                              style={isMe
                                 ? {
-                                    background: 'linear-gradient(135deg, rgba(40,30,10,0.5) 0%, rgba(25,20,8,0.3) 100%)',
+                                    background: `linear-gradient(90deg, ${GOLD} 0.1), ${GOLD} 0.05))`,
                                     border: `1px solid ${GOLD} 0.25)`,
                                     borderRadius: '8px',
-                                    boxShadow: `0 0 10px ${GOLD} 0.04)`,
-                                    color: '#e8d5a0',
+                                    boxShadow: `0 0 12px ${GOLD} 0.06)`,
                                   }
-                                : {
-                                    background: 'rgba(255,255,255,0.01)',
-                                    border: '1px solid rgba(255,255,255,0.04)',
-                                    borderRadius: '8px',
-                                    color: 'rgba(255,255,255,0.2)',
-                                  }
+                                : { borderRadius: '8px' }
                               }
                             >
-                              <span className="text-base shrink-0">{unlocked ? a.icon : '🔒'}</span>
-                              <div className="min-w-0 flex-1">
-                                <div className="font-medium truncate">{a.name}</div>
-                                <div className="text-[10px] truncate" style={{ color: unlocked ? `${PARCHMENT} 0.4)` : 'rgba(255,255,255,0.12)' }}>{a.description}</div>
-                                {hasProgress && (
-                                  <div className="mt-1 flex items-center gap-1.5">
-                                    <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.1)` }}>
-                                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `${GOLD} 0.5)` }} />
-                                    </div>
-                                    <span className="text-[9px] shrink-0 tabular-nums" style={{ color: `${GOLD} 0.3)` }}>{prog.current}/{prog.target}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {unlocked && <span className="text-[9px] shrink-0 font-medium" style={{ color: '#d4a843' }}>+{a.coins}</span>}
+                              <span className="w-5 text-right font-mono text-[10px]" style={{ color: i < 3 ? '#d4a843' : `${GOLD} 0.3)` }}>{i + 1}</span>
+                              <span className="flex-1 font-medium truncate" style={{ color: isMe ? '#d4a843' : `${PARCHMENT} 0.55)` }}>
+                                {player.name}
+                              </span>
+                              <span className={cn('text-[10px] font-semibold shrink-0', color)}>
+                                {formatRank(player.tier, player.division)}
+                              </span>
                             </div>
                           );
                         })}
@@ -491,93 +486,77 @@ export default class ArenaHub extends Component {
                     )}
                   </div>
                 </div>
+              </div>
 
-                {/* ─── RIGHT COLUMN: LEADERBOARD ─────────────── */}
-                <div className="w-[380px] shrink-0">
-                  <div
-                    className="overflow-hidden h-full flex flex-col"
-                    style={{
-                      background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
-                      border: `1px solid ${GOLD} 0.18)`,
-                      borderRadius: '14px',
-                      boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
-                    }}
-                  >
-                    {/* Leaderboard header */}
-                    <div className="px-4 pt-4 pb-2">
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>Leaderboard</span>
-                        <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.25), transparent)` }} />
-                      </div>
-
-                      <Tabs value={leaderboardFilter} onValueChange={(v) => this.setState({ leaderboardFilter: v })} className="mb-2">
-                        <TabsList className="w-full gap-0.5 rounded-xl p-0.5 flex-wrap h-auto">
-                          <TabsTrigger value="all" className="px-2.5 py-1 text-[10px] h-6">All</TabsTrigger>
-                          {TIERS.map((tier) => (
-                            <TabsTrigger key={tier} value={tier} className="px-2.5 py-1 text-[10px] h-6">
-                              {TIER_LABELS[tier]}
-                            </TabsTrigger>
-                          ))}
-                        </TabsList>
-                      </Tabs>
-
-                      <input
-                        type="text"
-                        value={leaderboardSearch}
-                        placeholder="Search players..."
-                        className="w-full px-3 py-1.5 text-xs outline-none placeholder:text-amber-800/30"
-                        style={{
-                          background: `${GOLD} 0.04)`,
-                          border: `1px solid ${GOLD} 0.12)`,
-                          borderRadius: '8px',
-                          color: '#e8d5a0',
-                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)',
-                        }}
-                        onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
-                      />
+              {/* ── RIGHT COLUMN: ACHIEVEMENTS ─────────────── */}
+              <div className="w-[320px] shrink-0 flex flex-col overflow-hidden">
+                <div
+                  className="flex-1 flex flex-col overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
+                    border: `1px solid ${GOLD} 0.18)`,
+                    borderRadius: '14px',
+                    boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
+                  }}
+                >
+                  <div className="px-4 pt-4 pb-2 shrink-0">
+                    <div className="flex items-center gap-3">
+                      <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>
+                        Achievements ({unlockedCount}/{ACHIEVEMENTS.length})
+                      </span>
+                      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.25), transparent)` }} />
                     </div>
+                  </div>
 
-                    {/* Leaderboard list */}
-                    <div className="flex-1 overflow-y-auto px-3 pb-3">
-                      {leaderboardLoading ? (
-                        <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>Loading...</div>
-                      ) : filteredLeaderboard.length === 0 ? (
-                        <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players in this tier yet</div>
-                      ) : (
-                        <div className="flex flex-col gap-0.5">
-                          {filteredLeaderboard.map((player, i) => {
-                            const isMe = player.name === profile.name;
-                            const color = TIER_COLORS[player.tier] || 'text-white/60';
-                            return (
-                              <div
-                                key={i}
-                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs transition-all"
-                                style={isMe
-                                  ? {
-                                      background: `linear-gradient(90deg, ${GOLD} 0.1), ${GOLD} 0.05))`,
-                                      border: `1px solid ${GOLD} 0.25)`,
-                                      borderRadius: '8px',
-                                      boxShadow: `0 0 12px ${GOLD} 0.06)`,
-                                    }
-                                  : { borderRadius: '8px' }
+                  <div className="flex-1 overflow-y-auto px-3 pb-3">
+                    <div className="flex flex-col gap-1.5">
+                      {ACHIEVEMENTS.map((a) => {
+                        const unlocked = (profile.achievements || []).includes(a.id);
+                        const prog = !unlocked ? getAchievementProgress(a.id, profile, sorceryCards) : null;
+                        const hasProgress = prog && prog.target > 1 && prog.current > 0;
+                        const pct = prog && prog.target > 0 ? Math.min(100, Math.round((prog.current / prog.target) * 100)) : 0;
+                        return (
+                          <div
+                            key={a.id}
+                            className="flex items-center gap-2.5 px-3 py-2 text-xs transition-all"
+                            style={unlocked
+                              ? {
+                                  background: 'linear-gradient(135deg, rgba(40,30,10,0.5) 0%, rgba(25,20,8,0.3) 100%)',
+                                  border: `1px solid ${GOLD} 0.25)`,
+                                  borderRadius: '8px',
+                                  boxShadow: `0 0 10px ${GOLD} 0.04)`,
+                                  color: '#e8d5a0',
                                 }
-                              >
-                                <span className="w-5 text-right font-mono text-[10px]" style={{ color: i < 3 ? '#d4a843' : `${GOLD} 0.3)` }}>{i + 1}</span>
-                                <span className="flex-1 font-medium truncate" style={{ color: isMe ? '#d4a843' : `${PARCHMENT} 0.55)` }}>
-                                  {player.name}
-                                </span>
-                                <span className={cn('text-[10px] font-semibold shrink-0', color)}>
-                                  {formatRank(player.tier, player.division)}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              : {
+                                  background: 'rgba(255,255,255,0.01)',
+                                  border: '1px solid rgba(255,255,255,0.04)',
+                                  borderRadius: '8px',
+                                  color: 'rgba(255,255,255,0.2)',
+                                }
+                            }
+                          >
+                            <span className="text-base shrink-0">{unlocked ? a.icon : '🔒'}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{a.name}</div>
+                              <div className="text-[10px] truncate" style={{ color: unlocked ? `${PARCHMENT} 0.4)` : 'rgba(255,255,255,0.12)' }}>{a.description}</div>
+                              {hasProgress && (
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.1)` }}>
+                                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `${GOLD} 0.5)` }} />
+                                  </div>
+                                  <span className="text-[9px] shrink-0 tabular-nums" style={{ color: `${GOLD} 0.3)` }}>{prog.current}/{prog.target}</span>
+                                </div>
+                              )}
+                            </div>
+                            {unlocked && <span className="text-[9px] shrink-0 font-medium" style={{ color: '#d4a843' }}>+{a.coins}</span>}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
