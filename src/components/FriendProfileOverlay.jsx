@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { Mail } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getPublicProfile } from '../utils/friendsApi';
 import { xpProgressInLevel, levelFromXp } from '../utils/arena/profileDefaults';
@@ -101,7 +102,7 @@ export default class FriendProfileOverlay extends Component {
   }
 
   renderProfile(profile) {
-    const { onClose, onInvite, onSpectate, onTrade, onRemoveFriend, profileId, isFriend, sorceryCards } = this.props;
+    const { onClose, onInvite, onSpectate, onTrade, onRemoveFriend, onSendMail, profileId, isFriend, sorceryCards } = this.props;
     const { showUnfriendConfirm } = this.state;
     const avatarUrl = resolveAvatarUrl(profile.avatar, sorceryCards);
 
@@ -353,9 +354,15 @@ export default class FriendProfileOverlay extends Component {
                   Trade
                 </button>
               ) : null}
-              {!canInvite && !canSpectate && !canTrade ? (
-                <div className="flex-1 text-center text-xs py-2.5" style={{ color: TEXT_MUTED }}>Player is offline</div>
-              ) : null}
+              <button
+                type="button"
+                className="px-3 py-2.5 text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5"
+                style={{ ...BEVELED_BTN, color: ACCENT_GOLD, borderRadius: '6px' }}
+                onClick={() => { if (onSendMail) onSendMail(profileId); }}
+              >
+                <Mail size={12} />
+                Mail
+              </button>
               {isFriend !== false ? (
                 <button
                   type="button"
