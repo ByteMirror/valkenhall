@@ -38,58 +38,50 @@ function adjustAlpha(rgba, alpha) {
   return rgba.replace(/[\d.]+\)$/, `${alpha})`);
 }
 
-const DIAMOND_POSITIONS = [
-  'top-[-2px] left-[-2px]',
-  'top-[-2px] right-[-2px]',
-  'bottom-[-2px] left-[-2px]',
-  'bottom-[-2px] right-[-2px]',
-];
-
 /* ── Ornate medieval menu button ──────────────────────── */
-function MenuButton({ title, description, onClick }) {
-  const outerBorder = 'rgba(166,160,155,0.35)';
-  const innerBorder = 'rgba(166,160,155,0.15)';
-  const accent = 'rgba(166,160,155,';
-  const glow = 'rgba(166,160,155,0.1)';
-  const titleColor = '#A6A09B';
-  const descColor = 'rgba(166,160,155,0.45)';
+const CORNER_SIZE = 10;
+const CORNER_THICKNESS = 2;
+const BTN_BORDER = 'rgba(166,160,155,0.3)';
+const BTN_BORDER_HOVER = 'rgba(166,160,155,0.55)';
+const BTN_CORNER = 'rgba(166,160,155,0.5)';
+const BTN_CORNER_HOVER = 'rgba(166,160,155,0.85)';
 
-  const outerHover = adjustAlpha(outerBorder, Math.min(1, parseFloat(outerBorder.match(/[\d.]+\)$/)[0]) + 0.2));
-  const innerHover = adjustAlpha(innerBorder, Math.min(1, parseFloat(innerBorder.match(/[\d.]+\)$/)[0]) + 0.1));
-  const diamondDefault = adjustAlpha(outerBorder, 0.5);
-  const diamondShadowDefault = `0 0 4px ${adjustAlpha(outerBorder, 0.3)}`;
-  const diamondHover = adjustAlpha(outerBorder, 0.8);
-  const diamondShadowHover = `0 0 8px ${adjustAlpha(outerBorder, 0.6)}`;
+function CornerPlating({ position, color }) {
+  const s = CORNER_SIZE;
+  const t = CORNER_THICKNESS;
+  const styles = {
+    'top-left': { top: -1, left: -1, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: 6, width: s, height: s },
+    'top-right': { top: -1, right: -1, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: 6, width: s, height: s },
+    'bottom-left': { bottom: -1, left: -1, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: 6, width: s, height: s },
+    'bottom-right': { bottom: -1, right: -1, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: 6, width: s, height: s },
+  };
+  return <div className="absolute pointer-events-none" style={{ ...styles[position], transition: 'border-color 0.2s ease' }} data-corner="" />;
+}
 
+function MenuButton({ title, onClick }) {
   return (
     <button
       type="button"
-      className="relative group w-full text-left cursor-pointer transition-all duration-200 mb-1.5"
+      className="relative group w-full text-left cursor-pointer transition-all duration-200 mb-2"
       style={{ transform: 'scale(1)' }}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
-        el.style.transform = 'scale(1.01)';
-        el.style.boxShadow = `0 0 20px ${glow}`;
-        el.querySelector('[data-outer]').style.borderColor = outerHover;
-        el.querySelector('[data-inner]').style.borderColor = innerHover;
-        el.querySelectorAll('[data-diamond]').forEach((d) => {
-          d.style.background = diamondHover;
-          d.style.boxShadow = diamondShadowHover;
+        el.style.transform = 'scale(1.02)';
+        el.style.boxShadow = '0 0 20px rgba(166,160,155,0.08)';
+        el.querySelector('[data-frame]').style.borderColor = BTN_BORDER_HOVER;
+        el.querySelectorAll('[data-corner]').forEach((c) => {
+          c.style.borderColor = BTN_CORNER_HOVER;
         });
-        el.querySelector('[data-accent-bar]').style.opacity = '1';
         el.querySelector('[data-content]').style.background = CONTENT_BG_HOVER;
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget;
         el.style.transform = 'scale(1)';
         el.style.boxShadow = 'none';
-        el.querySelector('[data-outer]').style.borderColor = outerBorder;
-        el.querySelector('[data-inner]').style.borderColor = innerBorder;
-        el.querySelectorAll('[data-diamond]').forEach((d) => {
-          d.style.background = diamondDefault;
-          d.style.boxShadow = diamondShadowDefault;
+        el.querySelector('[data-frame]').style.borderColor = BTN_BORDER;
+        el.querySelectorAll('[data-corner]').forEach((c) => {
+          c.style.borderColor = BTN_CORNER;
         });
-        el.querySelector('[data-accent-bar]').style.opacity = '0.7';
         el.querySelector('[data-content]').style.background = CONTENT_BG_DEFAULT;
       }}
       onMouseDown={(e) => {
@@ -97,47 +89,29 @@ function MenuButton({ title, description, onClick }) {
         e.currentTarget.querySelector('[data-content]').style.background = CONTENT_BG_ACTIVE;
       }}
       onMouseUp={(e) => {
-        e.currentTarget.style.transform = 'scale(1.01)';
+        e.currentTarget.style.transform = 'scale(1.02)';
         e.currentTarget.querySelector('[data-content]').style.background = CONTENT_BG_HOVER;
       }}
       onClick={onClick}
     >
+      {/* Main border frame */}
       <div
-        data-outer=""
+        data-frame=""
         className="absolute inset-0 pointer-events-none"
-        style={{ border: `1px solid ${outerBorder}`, borderRadius: '6px', transition: 'border-color 0.2s ease' }}
+        style={{ border: `1px solid ${BTN_BORDER}`, borderRadius: '6px', transition: 'border-color 0.2s ease' }}
       />
-      <div
-        data-inner=""
-        className="absolute inset-[3px] pointer-events-none"
-        style={{ border: `1px solid ${innerBorder}`, borderRadius: '4px', transition: 'border-color 0.2s ease' }}
-      />
-      <div
-        data-accent-bar=""
-        className="absolute left-0 top-[20%] bottom-[20%] w-[3px] rounded-r pointer-events-none"
-        style={{
-          background: `linear-gradient(180deg, transparent, ${accent}0.5), ${accent}0.7), ${accent}0.5), transparent)`,
-          opacity: 0.7,
-          transition: 'opacity 0.2s ease',
-        }}
-      />
-      {DIAMOND_POSITIONS.map((pos, i) => (
-        <div
-          key={i}
-          data-diamond=""
-          className={`absolute ${pos} w-[5px] h-[5px] rotate-45 pointer-events-none`}
-          style={{ background: diamondDefault, boxShadow: diamondShadowDefault, transition: 'all 0.2s ease' }}
-        />
-      ))}
+      {/* Corner platings — thicker corner brackets */}
+      <CornerPlating position="top-left" color={BTN_CORNER} />
+      <CornerPlating position="top-right" color={BTN_CORNER} />
+      <CornerPlating position="bottom-left" color={BTN_CORNER} />
+      <CornerPlating position="bottom-right" color={BTN_CORNER} />
+      {/* Content */}
       <div
         data-content=""
-        className="relative px-5 py-4"
+        className="relative px-5 py-3.5 flex items-center"
         style={{ background: CONTENT_BG_DEFAULT, textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}
       >
-        <div className="text-lg font-bold arena-heading mb-0.5" style={{ color: titleColor, textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
-          {title}
-        </div>
-        <div className="text-xs" style={{ color: descColor }}>{description}</div>
+        <span className="text-lg font-bold arena-heading" style={{ color: '#A6A09B' }}>{title}</span>
       </div>
     </button>
   );
@@ -298,7 +272,11 @@ export default class ArenaHub extends Component {
           <div className="max-w-[1400px] mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
 
             {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-            <div className="flex items-center gap-8 py-5 shrink-0">
+            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2" style={{ border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+              <CornerPlating position="top-left" color={`${GOLD} 0.45)`} />
+              <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
+              <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
+              <CornerPlating position="bottom-right" color={`${GOLD} 0.45)`} />
               {/* Avatar with ornate frame */}
               <button
                 type="button"
@@ -418,11 +396,11 @@ export default class ArenaHub extends Component {
               <div className="w-[280px] shrink-0 flex flex-col overflow-visible py-1 pl-1">
 
                 {/* FIND MATCH — hero button */}
-                <MenuButton title="Find Match" description="Ranked matchmaking — earn LP" onClick={onFindMatch} />
-                <MenuButton title="Casual Play" description="Play with a friend" onClick={onPlayMatch} />
-                <MenuButton title="Store" description="Buy packs & bundles" onClick={onOpenStore} />
-                <MenuButton title="Deck Builder" description="Build & manage decks" onClick={onOpenDeckBuilder} />
-                <MenuButton title="Auction House" description="Buy & sell cards" onClick={onOpenAuctionHouse} />
+                <MenuButton title="Find Match" onClick={onFindMatch} />
+                <MenuButton title="Casual Play" onClick={onPlayMatch} />
+                <MenuButton title="Store" onClick={onOpenStore} />
+                <MenuButton title="Deck Builder" onClick={onOpenDeckBuilder} />
+                <MenuButton title="Auction House" onClick={onOpenAuctionHouse} />
 
                 {/* Recent Matches */}
                 {totalMatches > 0 && (
