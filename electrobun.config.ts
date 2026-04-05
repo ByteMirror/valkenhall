@@ -4,6 +4,9 @@ export default {
     identifier: 'dev.fabianurbanek.arsenal',
     version: '0.1.0',
   },
+  release: {
+    baseUrl: 'https://github.com/ByteMirror/valkenhall/releases/latest/download',
+  },
   build: {
     bun: {
       entrypoint: 'src/bun/index.js',
