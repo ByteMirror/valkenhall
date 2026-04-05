@@ -697,15 +697,18 @@ export default class Mailbox extends Component {
     return (
       <AnimatePresence>
         {!open ? null : (
-      <div className="fixed inset-0 z-[60]" onClick={onClose}>
-        <div className="absolute" style={{ top: '100%', left: '50%', marginTop: 8, marginLeft: -200 }}>
+      <>
+        <div className="fixed inset-0 z-[59]" onClick={onClose} />
         <motion.div
-          className="flex flex-col"
+          className="absolute flex flex-col z-[60]"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           style={{
+            top: 'calc(100% + 8px)',
+            right: '50%',
+            marginRight: -200,
             width: 400,
             height: 580,
             transformOrigin: 'top center',
@@ -785,9 +788,7 @@ export default class Mailbox extends Component {
             {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
           </AnimatePresence>
         </motion.div>
-        </div>
-
-      </div>
+      </>
         )}
       </AnimatePresence>
     );
