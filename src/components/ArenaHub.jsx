@@ -30,13 +30,124 @@ const BEVELED_BTN = {
   textShadow: '0 1px 2px rgba(0,0,0,0.5)',
 };
 
-const HERO_BTN_GREEN = {
-  background: `linear-gradient(180deg, rgba(34,197,94,0.22) 0%, rgba(16,120,50,0.14) 100%)`,
-  border: '2px solid rgba(34,197,94,0.4)',
-  boxShadow: '0 0 30px rgba(34,197,94,0.12), 0 0 60px rgba(34,197,94,0.06), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.2)',
-  borderRadius: '14px',
-  textShadow: '0 1px 3px rgba(0,0,0,0.6)',
-};
+const CONTENT_BG_DEFAULT = 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)';
+const CONTENT_BG_HOVER = 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.04) 100%)';
+const CONTENT_BG_ACTIVE = 'linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(255,255,255,0.02) 100%)';
+
+function adjustAlpha(rgba, alpha) {
+  return rgba.replace(/[\d.]+\)$/, `${alpha})`);
+}
+
+const DIAMOND_POSITIONS = [
+  'top-[-2px] left-[-2px]',
+  'top-[-2px] right-[-2px]',
+  'bottom-[-2px] left-[-2px]',
+  'bottom-[-2px] right-[-2px]',
+];
+
+/* ── Ornate medieval menu button ──────────────────────── */
+function MenuButton({ title, description, onClick, color, borderColor, accentColor, hero, glowColor }) {
+  const outerBorder = borderColor || 'rgba(180,140,60,0.35)';
+  const innerBorder = adjustAlpha(outerBorder, 0.15);
+  const accent = accentColor || 'rgba(180,140,60,';
+  const glow = glowColor || 'rgba(180,140,60,0.1)';
+  const titleColor = color || 'rgba(228,213,160,0.8)';
+  const descColor = adjustAlpha(outerBorder, 0.4);
+
+  const outerHover = adjustAlpha(outerBorder, Math.min(1, parseFloat(outerBorder.match(/[\d.]+\)$/)[0]) + 0.2));
+  const innerHover = adjustAlpha(innerBorder, Math.min(1, parseFloat(innerBorder.match(/[\d.]+\)$/)[0]) + 0.1));
+  const diamondDefault = adjustAlpha(outerBorder, 0.5);
+  const diamondShadowDefault = `0 0 4px ${adjustAlpha(outerBorder, 0.3)}`;
+  const diamondHover = adjustAlpha(outerBorder, 0.8);
+  const diamondShadowHover = `0 0 8px ${adjustAlpha(outerBorder, 0.6)}`;
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        'relative group w-full text-left cursor-pointer transition-all duration-200',
+        hero ? 'mb-2' : 'mb-1.5',
+      )}
+      style={{ transform: 'scale(1)' }}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget;
+        el.style.transform = 'scale(1.01)';
+        el.style.boxShadow = `0 0 20px ${glow}`;
+        el.querySelector('[data-outer]').style.borderColor = outerHover;
+        el.querySelector('[data-inner]').style.borderColor = innerHover;
+        el.querySelectorAll('[data-diamond]').forEach((d) => {
+          d.style.background = diamondHover;
+          d.style.boxShadow = diamondShadowHover;
+        });
+        el.querySelector('[data-accent-bar]').style.opacity = '1';
+        el.querySelector('[data-content]').style.background = CONTENT_BG_HOVER;
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget;
+        el.style.transform = 'scale(1)';
+        el.style.boxShadow = hero ? `0 0 30px ${glow}` : 'none';
+        el.querySelector('[data-outer]').style.borderColor = outerBorder;
+        el.querySelector('[data-inner]').style.borderColor = innerBorder;
+        el.querySelectorAll('[data-diamond]').forEach((d) => {
+          d.style.background = diamondDefault;
+          d.style.boxShadow = diamondShadowDefault;
+        });
+        el.querySelector('[data-accent-bar]').style.opacity = '0.7';
+        el.querySelector('[data-content]').style.background = CONTENT_BG_DEFAULT;
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform = 'scale(0.98)';
+        e.currentTarget.querySelector('[data-content]').style.background = CONTENT_BG_ACTIVE;
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.transform = 'scale(1.01)';
+        e.currentTarget.querySelector('[data-content]').style.background = CONTENT_BG_HOVER;
+      }}
+      onClick={onClick}
+    >
+      <div
+        data-outer=""
+        className="absolute inset-0 pointer-events-none"
+        style={{ border: `1px solid ${outerBorder}`, borderRadius: '6px', transition: 'border-color 0.2s ease' }}
+      />
+      <div
+        data-inner=""
+        className="absolute inset-[3px] pointer-events-none"
+        style={{ border: `1px solid ${innerBorder}`, borderRadius: '4px', transition: 'border-color 0.2s ease' }}
+      />
+      <div
+        data-accent-bar=""
+        className="absolute left-0 top-[20%] bottom-[20%] w-[3px] rounded-r pointer-events-none"
+        style={{
+          background: `linear-gradient(180deg, transparent, ${accent}0.5), ${accent}0.7), ${accent}0.5), transparent)`,
+          opacity: 0.7,
+          transition: 'opacity 0.2s ease',
+        }}
+      />
+      {DIAMOND_POSITIONS.map((pos, i) => (
+        <div
+          key={i}
+          data-diamond=""
+          className={`absolute ${pos} w-[5px] h-[5px] rotate-45 pointer-events-none`}
+          style={{ background: diamondDefault, boxShadow: diamondShadowDefault, transition: 'all 0.2s ease' }}
+        />
+      ))}
+      <div
+        data-content=""
+        className={`relative px-5 ${hero ? 'py-5' : 'py-4'}`}
+        style={{ background: CONTENT_BG_DEFAULT, textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}
+      >
+        <div
+          className={cn('font-bold arena-heading', hero ? 'text-xl mb-0.5' : 'text-lg mb-0.5')}
+          style={{ color: titleColor, textShadow: hero ? `0 0 20px ${titleColor}, 0 2px 4px rgba(0,0,0,0.5)` : '0 1px 3px rgba(0,0,0,0.6)' }}
+        >
+          {title}
+        </div>
+        <div className={hero ? 'text-[11px] font-medium' : 'text-xs'} style={{ color: descColor }}>{description}</div>
+      </div>
+    </button>
+  );
+}
 
 function OrnamentalDivider({ className }) {
   return (
@@ -313,66 +424,51 @@ export default class ArenaHub extends Component {
               <div className="w-[280px] shrink-0 flex flex-col overflow-y-auto pr-1">
 
                 {/* FIND MATCH — hero button */}
-                <button
-                  type="button"
-                  className="w-full relative group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer mb-2"
-                  style={HERO_BTN_GREEN}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 0 40px rgba(34,197,94,0.2), 0 0 80px rgba(34,197,94,0.1), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2)';
-                    e.currentTarget.style.borderColor = 'rgba(34,197,94,0.6)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = HERO_BTN_GREEN.boxShadow;
-                    e.currentTarget.style.borderColor = 'rgba(34,197,94,0.4)';
-                  }}
+                <MenuButton
+                  title="Find Match"
+                  description="Ranked matchmaking — earn LP"
                   onClick={onFindMatch}
-                >
-                  <div className="py-5 px-5 text-left">
-                    <div className="text-xl font-bold arena-heading mb-0.5" style={{ color: '#6ee7a0', textShadow: '0 0 20px rgba(110,231,160,0.3), 0 2px 4px rgba(0,0,0,0.5)' }}>
-                      Find Match
-                    </div>
-                    <div className="text-[11px] font-medium" style={{ color: 'rgba(110,231,160,0.5)' }}>Ranked matchmaking — earn LP</div>
-                  </div>
-                  <div className="absolute top-3 right-4 text-3xl opacity-[0.07]" style={{ color: '#6ee7a0' }}>⚔</div>
-                </button>
+                  hero
+                  color="rgba(34,197,94,0.9)"
+                  borderColor="rgba(34,197,94,0.4)"
+                  accentColor="rgba(34,197,94,"
+                  glowColor="rgba(34,197,94,0.1)"
+                />
 
                 {/* Menu buttons */}
-                {[
-                  { label: 'Casual Play', sub: 'Play with a friend', onClick: onPlayMatch, accent: null },
-                  { label: 'Store', sub: 'Buy packs & bundles', onClick: onOpenStore, accent: [212, 168, 67] },
-                  { label: 'Deck Builder', sub: 'Build & manage decks', onClick: onOpenDeckBuilder, accent: [168, 85, 247] },
-                  { label: 'Auction House', sub: 'Buy & sell cards', onClick: onOpenAuctionHouse, accent: [212, 168, 67] },
-                ].map(({ label, sub, onClick, accent }) => {
-                  const accentColor = accent ? `rgba(${accent[0]},${accent[1]},${accent[2]},` : GOLD;
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      className="w-full relative group text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer mb-1.5"
-                      style={{
-                        ...BEVELED_BTN,
-                        borderRadius: '10px',
-                        border: `1px solid ${accentColor} 0.2)`,
-                        padding: '12px 16px',
-                        background: accent
-                          ? `linear-gradient(180deg, rgba(${accent[0]},${accent[1]},${accent[2]},0.06) 0%, rgba(0,0,0,0.1) 100%)`
-                          : BEVELED_BTN.background,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = `${accentColor} 0.45)`;
-                        e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px ${accentColor} 0.08)`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = `${accentColor} 0.2)`;
-                        e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow;
-                      }}
-                      onClick={onClick}
-                    >
-                      <div className="text-sm font-bold arena-heading mb-0.5" style={{ color: accent ? `rgba(${accent[0]},${accent[1]},${accent[2]},0.85)` : '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{label}</div>
-                      <div className="text-[10px]" style={{ color: `${accentColor} 0.4)` }}>{sub}</div>
-                    </button>
-                  );
-                })}
+                <MenuButton
+                  title="Casual Play"
+                  description="Play with a friend"
+                  onClick={onPlayMatch}
+                  color="rgba(228,213,160,0.8)"
+                />
+                <MenuButton
+                  title="Store"
+                  description="Buy packs & bundles"
+                  onClick={onOpenStore}
+                  color="rgba(245,158,11,0.9)"
+                  borderColor="rgba(245,158,11,0.35)"
+                  accentColor="rgba(245,158,11,"
+                  glowColor="rgba(245,158,11,0.1)"
+                />
+                <MenuButton
+                  title="Deck Builder"
+                  description="Build & manage decks"
+                  onClick={onOpenDeckBuilder}
+                  color="rgba(168,85,247,0.9)"
+                  borderColor="rgba(168,85,247,0.3)"
+                  accentColor="rgba(168,85,247,"
+                  glowColor="rgba(168,85,247,0.1)"
+                />
+                <MenuButton
+                  title="Auction House"
+                  description="Buy & sell cards"
+                  onClick={onOpenAuctionHouse}
+                  color="rgba(245,158,11,0.9)"
+                  borderColor="rgba(245,158,11,0.35)"
+                  accentColor="rgba(245,158,11,"
+                  glowColor="rgba(245,158,11,0.1)"
+                />
 
                 {/* Recent Matches */}
                 {totalMatches > 0 && (
