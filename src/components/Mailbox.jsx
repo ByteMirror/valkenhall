@@ -230,14 +230,20 @@ export default class Mailbox extends Component {
     }
   };
 
-  toggleCardInCompose = (cardId) => {
+  addCardToCompose = (cardId) => {
     this.setState(s => {
-      const idx = s.composeCards.indexOf(cardId);
-      if (idx >= 0) {
-        return { composeCards: s.composeCards.filter((_, i) => i !== idx) };
-      }
       if (s.composeCards.length >= 10) return null;
       return { composeCards: [...s.composeCards, cardId] };
+    });
+  };
+
+  removeCardFromCompose = (cardId) => {
+    this.setState(s => {
+      const idx = s.composeCards.lastIndexOf(cardId);
+      if (idx < 0) return null;
+      const next = [...s.composeCards];
+      next.splice(idx, 1);
+      return { composeCards: next };
     });
   };
 
@@ -639,7 +645,7 @@ export default class Mailbox extends Component {
                       className="relative rounded overflow-hidden cursor-pointer"
                       style={{ border: `1px solid ${ACCENT_GOLD}`, width: 36 }}
                       title={`${name} — click to remove`}
-                      onClick={() => this.toggleCardInCompose(cardId)}
+                      onClick={() => this.removeCardFromCompose(cardId)}
                     >
                       {imgUrl ? (
                         <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
@@ -797,7 +803,7 @@ export default class Mailbox extends Component {
         className="absolute flex flex-col"
         style={{
           top: `${48 * viewScale}px`,
-          right: `${(24 + 400 + 8) * viewScale}px`,
+          right: `${(24 + 400) * viewScale + 8}px`,
           width: 320,
           height: 580,
           zoom: viewScale,
@@ -839,67 +845,60 @@ export default class Mailbox extends Component {
               const isSelected = selectedCount > 0;
               const canAddMore = selectedCount < entry.quantity && composeCards.length < 10;
               return (
-                <button
-                  key={entry.cardId}
-                  type="button"
-                  className="relative rounded-lg overflow-hidden transition-all cursor-pointer"
-                  style={isSelected
-                    ? { border: `2px solid ${ACCENT_GOLD}`, boxShadow: `0 0 10px ${GOLD} 0.25)` }
-                    : { border: `2px solid ${GOLD} 0.1)` }
-                  }
-                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
-                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.1)`; }}
-                  onClick={() => {
-                    if (isSelected) {
-                      this.toggleCardInCompose(entry.cardId);
-                    } else if (canAddMore) {
-                      this.toggleCardInCompose(entry.cardId);
+                <div key={entry.cardId} className="relative">
+                  <button
+                    type="button"
+                    className="relative w-full rounded-lg overflow-hidden transition-all cursor-pointer"
+                    style={isSelected
+                      ? { border: `2px solid ${ACCENT_GOLD}`, boxShadow: `0 0 10px ${GOLD} 0.25)` }
+                      : { border: `2px solid ${GOLD} 0.1)` }
                     }
-                  }}
-                >
-                  {imgUrl ? (
-                    <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
-                  ) : (
-                    <div className="w-full aspect-[5/7] flex items-center justify-center text-[8px] p-1 text-center" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
-                      {name}
-                    </div>
-                  )}
-                  {entry.quantity > 1 && (
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.1)`; }}
+                    onClick={() => { if (canAddMore) this.addCardToCompose(entry.cardId); }}
+                  >
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
+                    ) : (
+                      <div className="w-full aspect-[5/7] flex items-center justify-center text-[8px] p-1 text-center" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
+                        {name}
+                      </div>
+                    )}
                     <span
                       className="absolute top-1 right-1 text-[8px] font-bold px-1 py-0.5 rounded"
                       style={{ background: 'rgba(0,0,0,0.8)', color: TEXT_BODY }}
                     >
-                      x{entry.quantity}
+                      x{entry.quantity - selectedCount}
                     </span>
-                  )}
-                  {isSelected && (
-                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(212,168,67,0.3)' }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}>
-                        <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                    {isSelected && (
+                      <div className="absolute top-1 left-1 min-w-[18px] h-[18px] rounded flex items-center justify-center text-[9px] font-bold" style={{ background: ACCENT_GOLD, color: '#1a1408', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                        {selectedCount}
+                      </div>
+                    )}
+                    <div
+                      className="absolute bottom-0 left-0 right-0 text-[7px] text-center py-0.5 truncate px-0.5"
+                      style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_BODY }}
+                    >
+                      {name}
                     </div>
+                  </button>
+                  {isSelected && (
+                    <button
+                      type="button"
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold cursor-pointer z-10"
+                      style={{ background: '#c45050', color: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
+                      onClick={() => this.removeCardFromCompose(entry.cardId)}
+                    >
+                      −
+                    </button>
                   )}
-                  <div
-                    className="absolute bottom-0 left-0 right-0 text-[7px] text-center py-0.5 truncate px-0.5"
-                    style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_BODY }}
-                  >
-                    {name}
-                  </div>
-                </button>
+                </div>
               );
             })}
             {filtered.length === 0 && (
               <div className="col-span-4 text-[10px] py-8 text-center" style={{ color: TEXT_MUTED }}>
                 {cardPickerSearch ? 'No cards match your search' : 'No cards in collection'}
               </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-}
-</div>
             )}
           </div>
         </div>
