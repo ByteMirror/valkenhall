@@ -79,7 +79,7 @@ export default class ArenaStore extends Component {
 
     return (
       <div className="fixed inset-0 z-50 flex flex-col" style={{
-        background: `url('/flesh-and-blood-proxies/store-bg.png') center/cover no-repeat`,
+        background: `url('/store-bg.png') center/cover no-repeat`,
         zoom: this.state.viewScale,
       }}>
         {/* Darken overlay */}
@@ -92,7 +92,7 @@ export default class ArenaStore extends Component {
         ) : null}
 
         {/* ─── TOP BAR ─────────────────────────────── */}
-        <div className="relative z-10 flex items-center gap-4 px-6 py-3" style={{ background: 'rgba(8,6,4,0.85)', borderBottom: `1px solid ${PANEL_BORDER}` }}>
+        <div className="relative z-10 flex items-center gap-4 px-6 py-3" style={{ background: 'rgba(8,6,4,0.85)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${PANEL_BORDER}` }}>
           <button
             type="button"
             className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-[0.97]"
@@ -135,7 +135,7 @@ export default class ArenaStore extends Component {
         </div>
 
         {/* ─── TAB BAR ─────────────────────────────── */}
-        <div className="relative z-10 flex justify-center py-1" style={{ background: 'rgba(8,6,4,0.7)', borderBottom: `1px solid ${GOLD} 0.12)` }}>
+        <div className="relative z-10 flex justify-center py-1" style={{ background: 'rgba(8,6,4,0.7)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${GOLD} 0.12)` }}>
           {[
             { id: 'boosters', label: 'Booster Packs' },
             { id: 'decks', label: 'Pre-constructed Decks' },
@@ -251,6 +251,7 @@ export default class ArenaStore extends Component {
               {/* Cart summary */}
               <div className="relative p-5 flex items-center justify-between" style={{
                 background: PANEL_BG,
+                backdropFilter: 'blur(8px)',
                 border: `1px solid ${cartPacks > 0 ? `${GOLD} 0.35)` : `${GOLD} 0.15)`}`,
                 borderRadius: '8px',
                 boxShadow: cartPacks > 0 ? `0 0 20px ${GOLD} 0.08)` : 'none',
@@ -319,7 +320,7 @@ export default class ArenaStore extends Component {
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm" onClick={() => this.setState({ showConfirm: false })}>
             <div
               className="relative w-96 p-6"
-              style={{ background: PANEL_BG, border: `1px solid ${PANEL_BORDER}`, borderRadius: '8px', boxShadow: `0 0 40px rgba(0,0,0,0.5), 0 0 20px ${GOLD} 0.05)` }}
+              style={{ background: PANEL_BG, backdropFilter: 'blur(8px)', border: `1px solid ${PANEL_BORDER}`, borderRadius: '8px', boxShadow: `0 0 40px rgba(0,0,0,0.5), 0 0 20px ${GOLD} 0.05)` }}
               onClick={(e) => e.stopPropagation()}
             >
               <CornerPlating position="top-left" />
