@@ -2466,35 +2466,36 @@ export default class App extends Component {
             onInput={(e) => this.setState({ savedDeckSearchQuery: e.target.value })}
             placeholder="Search saved decks"
             className="min-w-0 flex-1"
+            style={{ background: 'rgba(8,8,10,0.8)', borderColor: 'rgba(180,140,60,0.25)', color: '#e8d5a0' }}
           />
 
           {isArena ? (
-            <Button
+            <button
               type="button"
-              size="sm"
-              variant="outline"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+              style={{ border: '1px solid rgba(180,140,60,0.3)', background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)', color: '#A6A09B' }}
               onClick={() => this.setState({ chosenCards: [], currentDeckName: '', currentSavedDeckId: '', leftPanelTab: 'archive' })}
             >
               New Deck
-            </Button>
+            </button>
           ) : null}
         </div>
 
         <div className="left-pane-scroll scrollbar-rail-less scrollbar-stable min-h-0 flex-1 overflow-y-auto">
           {effectiveLoading ? (
-            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed border-border/70 bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed px-6 text-center text-sm" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.3)', color: '#A6A09B' }}>
               Loading saved decks...
             </div>
           ) : effectiveError ? (
-            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed border-destructive/40 bg-destructive/5 px-6 text-center text-sm text-destructive">
+            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed px-6 text-center text-sm" style={{ borderColor: 'rgba(180,60,60,0.35)', background: 'rgba(180,60,60,0.05)', color: '#e8a0a0' }}>
               {effectiveError}
             </div>
           ) : effectiveDecks.length === 0 ? (
-            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed border-border/70 bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed px-6 text-center text-sm" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.3)', color: '#A6A09B' }}>
               {isArena ? 'No arena decks yet' : 'No saved decks yet'}
             </div>
           ) : filteredDecks.length === 0 ? (
-            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed border-border/70 bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed px-6 text-center text-sm" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.3)', color: '#A6A09B' }}>
               No saved decks match that search
             </div>
           ) : (
@@ -2504,13 +2505,14 @@ export default class App extends Component {
                   <div
                     key={savedDeck.id}
                     data-saved-deck-card={savedDeck.id}
-                    className="left-pane-raised-surface overflow-hidden rounded-[16px] border border-border/60 p-3"
+                    className="overflow-hidden rounded-[16px] border p-3"
+                    style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(12,10,8,0.7)', boxShadow: '0 18px 44px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)' }}
                   >
                     <div className="flex flex-col gap-4 md:grid md:grid-cols-[minmax(0,220px)_minmax(0,1fr)] md:items-stretch md:gap-5">
                       <div className="flex min-w-0 flex-col gap-3 md:min-h-[128px]">
                         <div className="min-w-0">
-                          <strong className="block min-w-0 truncate text-sm text-card-foreground md:text-base">{savedDeck.name}</strong>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:text-sm">
+                          <strong className="block min-w-0 truncate text-sm md:text-base" style={{ color: '#e8d5a0' }}>{savedDeck.name}</strong>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs md:text-sm" style={{ color: '#A6A09B' }}>
                             <span>{getCardsReadyLabel(savedDeck.cardCount || 0)}</span>
                             {savedDeck.savedAt ? (
                               <span>{new Date(savedDeck.savedAt).toLocaleDateString()}</span>
@@ -2519,27 +2521,26 @@ export default class App extends Component {
                         </div>
 
                         <div className="flex items-center justify-start gap-2 md:mt-auto">
-                          <Button
+                          <button
                             type="button"
-                            size="icon-sm"
-                            variant="ghost"
+                            className="size-8 rounded-lg inline-flex items-center justify-center transition-colors"
+                            style={{ color: '#A6A09B' }}
                             aria-label={`Delete saved deck ${savedDeck.name}`}
                             onClick={() => isArena ? this.deleteArenaDeck(savedDeck.id) : this.deleteSavedDeck(savedDeck.id)}
                           >
                             <IconTrash className="size-4" />
-                          </Button>
-                          <Button
+                          </button>
+                          <button
                             type="button"
-                            size="sm"
-                            variant="secondary"
-                            data-icon="inline-end"
+                            className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                            style={{ border: '1px solid rgba(180,140,60,0.3)', background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.1) 100%)', color: '#A6A09B', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 6px rgba(0,0,0,0.3)' }}
                             aria-label={`Load deck ${savedDeck.name}`}
                             disabled={!Array.isArray(this.state.sorceryCards) || loading || isSavingDeck}
                             onClick={() => isArena ? this.loadArenaDeck(savedDeck._arenaDeck || savedDeck) : this.loadSavedDeck(savedDeck.id)}
                           >
                             Load
                             <IconChevronRight className="size-3.5" />
-                          </Button>
+                          </button>
                         </div>
                       </div>
 
@@ -2557,7 +2558,7 @@ export default class App extends Component {
                                 className="block h-full w-full object-cover object-left"
                               />
                             ) : (
-                              <div className="flex h-full items-center justify-center rounded-[16px] border border-dashed border-border/60 px-3 text-center text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground/80">
+                              <div className="flex h-full items-center justify-center rounded-[16px] border border-dashed px-3 text-center text-[11px] font-medium uppercase tracking-[0.22em]" style={{ borderColor: 'rgba(180,140,60,0.15)', color: 'rgba(166,160,155,0.5)' }}>
                                 No preview
                               </div>
                             )}
@@ -2625,6 +2626,7 @@ export default class App extends Component {
               onInput={(event) => this.handleArchiveQueryChange(event.target.value)}
               placeholder="Search cards"
               className="min-w-0 flex-1"
+              style={{ background: 'rgba(8,8,10,0.8)', borderColor: 'rgba(180,140,60,0.25)', color: '#e8d5a0' }}
             />
 
             <Select
@@ -2664,7 +2666,7 @@ export default class App extends Component {
               value={archiveRarityFilter}
             />
 
-            <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border/50 bg-background/50 px-1 h-10">
+            <div className="flex shrink-0 items-center gap-0.5 rounded-lg border px-1 h-10" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.5)' }}>
               {SORCERY_ELEMENT_FILTERS.map((filter) => {
                 const isActive = this.state.archiveElementFilter === filter.id;
                 return (
@@ -2673,10 +2675,11 @@ export default class App extends Component {
                     type="button"
                     aria-label={filter.label}
                     title={filter.label}
-                    className={cn(
-                      'h-7 rounded-md px-1.5 transition-colors inline-flex items-center justify-center',
-                      isActive ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    )}
+                    className="h-7 rounded-md px-1.5 transition-colors inline-flex items-center justify-center"
+                    style={isActive
+                      ? { background: 'rgba(180,140,60,0.18)', color: '#e8d5a0', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }
+                      : { color: '#A6A09B' }
+                    }
                     onClick={() => this.handleArchiveElementFilterChange(filter.id)}
                   >
                     {filter.icon ? filter.icon() : <span className="text-[10px]">All</span>}
@@ -2689,7 +2692,7 @@ export default class App extends Component {
 
         <div className="left-pane-scroll scrollbar-rail-less scrollbar-stable min-h-0 flex-1 overflow-y-auto">
           {shouldShowSearchPrompt ? (
-            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed border-border/70 bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed px-6 text-center text-sm" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.3)', color: '#A6A09B' }}>
               Type 3+ letters or choose a set
             </div>
           ) : searchResultCards.length > 0 ? (
@@ -2705,7 +2708,7 @@ export default class App extends Component {
               ))}
             </div>
           ) : (
-            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed border-border/70 bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+            <div className="flex h-full min-h-56 items-center justify-center rounded-[16px] border border-dashed px-6 text-center text-sm" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.3)', color: '#A6A09B' }}>
               No results
             </div>
           )}
@@ -2732,12 +2735,12 @@ export default class App extends Component {
     }
 
     return (
-      <Card className="left-pane-shell workspace-pane flex h-full min-h-0 flex-col overflow-hidden">
+      <Card className="left-pane-shell workspace-pane flex h-full min-h-0 flex-col overflow-hidden" style={{ background: 'rgba(12, 10, 8, 0.92)', borderColor: 'rgba(180,140,60,0.2)' }}>
         <CardHeader className="left-pane-header justify-center pb-3">
           <div className="left-pane-toolbar flex w-full items-center justify-center gap-3">
             <div
-              className="left-pane-tabs grid w-full gap-1 rounded-xl border border-border/70 bg-card/70 p-1"
-              style={{ gridTemplateColumns: `repeat(${LEFT_PANEL_TABS.length}, minmax(0, 1fr))` }}
+              className="left-pane-tabs grid w-full gap-1 rounded-xl border p-1"
+              style={{ gridTemplateColumns: `repeat(${LEFT_PANEL_TABS.length}, minmax(0, 1fr))`, borderColor: 'rgba(180,140,60,0.25)', background: 'rgba(8,8,10,0.6)' }}
             >
               {LEFT_PANEL_TABS.map((tab) => {
                 const isActive = leftPanelTab === tab.id;
@@ -2752,11 +2755,15 @@ export default class App extends Component {
                     className={cn(
                       'grid h-8 w-full min-w-0 grid-cols-[1.75rem_minmax(0,1fr)_1.75rem] items-center gap-1 rounded-lg px-2 text-xs font-medium transition-colors',
                       isDisabled
-                        ? 'cursor-not-allowed text-muted-foreground/50 opacity-50'
-                        : isActive
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        ? 'cursor-not-allowed opacity-50'
+                        : ''
                     )}
+                    style={isDisabled
+                      ? { color: 'rgba(166,160,155,0.35)' }
+                      : isActive
+                        ? { background: 'linear-gradient(180deg, rgba(180,140,60,0.25) 0%, rgba(180,140,60,0.12) 100%)', color: '#e8d5a0', borderBottom: '2px solid #d4a843' }
+                        : { color: '#A6A09B' }
+                    }
                     onClick={() => this.setLeftPanelTab(tab.id)}
                   >
                     <span className="flex h-full w-7 items-center justify-center">
@@ -2766,14 +2773,13 @@ export default class App extends Component {
                     <span className="flex h-full w-7 items-center justify-center">
                       <span
                         aria-hidden="true"
-                        className={cn(
-                          'left-pane-tab-shortcut inline-flex min-w-5 shrink-0 items-center justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold leading-none',
-                          isDisabled
-                            ? 'border-border/60 bg-background/35 text-muted-foreground/60'
-                            : isActive
-                            ? 'border-primary-foreground/20 bg-primary-foreground/12 text-primary-foreground'
-                            : 'border-border/80 bg-background/50 text-muted-foreground'
-                        )}
+                        className="left-pane-tab-shortcut inline-flex min-w-5 shrink-0 items-center justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold leading-none"
+                        style={isDisabled
+                          ? { borderColor: 'rgba(166,160,155,0.15)', background: 'rgba(8,8,10,0.35)', color: 'rgba(166,160,155,0.35)' }
+                          : isActive
+                            ? { borderColor: 'rgba(180,140,60,0.3)', background: 'rgba(180,140,60,0.12)', color: '#e8d5a0' }
+                            : { borderColor: 'rgba(166,160,155,0.2)', background: 'rgba(8,8,10,0.5)', color: '#A6A09B' }
+                        }
                       >
                         {tab.shortcut}
                       </span>
@@ -2811,7 +2817,7 @@ export default class App extends Component {
       >
         <div className="flex items-center gap-4 px-1 pb-3">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="inline-flex items-center gap-1 rounded-xl border border-border/70 bg-card/80 p-1 shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+            <div className="inline-flex items-center gap-1 rounded-xl border p-1 shadow-[0_12px_28px_rgba(0,0,0,0.18)]" style={{ borderColor: 'rgba(180,140,60,0.25)', background: 'rgba(12,10,8,0.85)' }}>
               {SORCERY_DECK_FILTERS.map((filter) => {
                 const count = chosenCards.filter((entry) => matchesSorceryDeckFilter(filter, entry)).length;
                 const isActive = deckFilter === filter.id;
@@ -2820,14 +2826,15 @@ export default class App extends Component {
                   <button
                     key={filter.id}
                     type="button"
-                    className={cn(
-                      'inline-flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors',
-                      isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    )}
+                    className="inline-flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors"
+                    style={isActive
+                      ? { background: 'linear-gradient(180deg, rgba(180,140,60,0.25) 0%, rgba(180,140,60,0.12) 100%)', color: '#e8d5a0' }
+                      : { color: '#A6A09B' }
+                    }
                     onClick={() => this.setDeckFilter(filter.id)}
                   >
                     <span>{filter.label}</span>
-                    <span className={cn('rounded-md px-1.5 py-0.5 text-[10px]', isActive ? 'bg-primary-foreground/12 text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                    <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={isActive ? { background: 'rgba(180,140,60,0.15)', color: '#e8d5a0' } : { background: 'rgba(166,160,155,0.1)', color: '#A6A09B' }}>
                       {count}
                     </span>
                   </button>
@@ -2835,44 +2842,48 @@ export default class App extends Component {
               })}
             </div>
 
-            <Button
+            <button
               type="button"
-              size="icon"
-              variant="secondary"
-              className="size-10 rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+              className="size-10 rounded-xl inline-flex items-center justify-center transition-colors"
+              style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)', border: '1px solid rgba(180,140,60,0.3)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)', color: '#A6A09B' }}
               aria-label="Save deck"
               title="Save deck"
               disabled={chosenCards.length === 0 || isSavingDeck}
               onClick={this.saveCurrentDeck}
             >
               <IconSave />
-            </Button>
+            </button>
 
-            <Button
+            <button
               type="button"
-              size="icon"
-              variant="secondary"
-              className="size-10 rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+              className="size-10 rounded-xl inline-flex items-center justify-center transition-colors"
+              style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)', border: '1px solid rgba(180,140,60,0.3)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)', color: '#A6A09B' }}
               aria-label="Close deck"
               title="Close deck"
               disabled={chosenCards.length === 0 || isSavingDeck}
               onClick={this.closeCurrentDeck}
             >
               <IconClose />
-            </Button>
+            </button>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
             {this.state.isArenaCollectionMode ? (
-              <Button
+              <button
                 type="button"
-                size="sm"
-                variant="secondary"
-                className="rounded-xl px-3 shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+                className="relative group text-left cursor-pointer transition-all duration-200 rounded-md px-4 py-2"
+                style={{
+                  border: '1px solid rgba(166,160,155,0.3)',
+                  background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)',
+                  color: '#A6A09B',
+                  textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                }}
                 onClick={() => this.setState({ isArenaCollectionMode: false, arenaView: 'hub', chosenCards: [] })}
               >
-                Back to Arena
-              </Button>
+                <span className="arena-heading">Back to Arena</span>
+              </button>
             ) : null}
           </div>
         </div>
@@ -2882,7 +2893,7 @@ export default class App extends Component {
           const mainFiltered = chosenCards.filter((entry) => matchesSorceryDeckFilter(mainFilter, entry));
           return (
             <div className="flex items-center gap-2 px-1 pb-2">
-              <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/50 bg-card/50 p-0.5">
+              <div className="inline-flex items-center gap-0.5 rounded-lg border p-0.5" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.5)' }}>
                 {SORCERY_TYPE_FILTERS.map((filter) => {
                   const isActive = this.state.sorceryTypeFilter === filter.id;
                   const count = filter.id === 'all' ? mainFiltered.length : mainFiltered.filter((e) => e?.card?.type === filter.type).length;
@@ -2891,19 +2902,20 @@ export default class App extends Component {
                       key={filter.id}
                       type="button"
                       aria-label={filter.label}
-                      className={cn(
-                        'inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors',
-                        isActive ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                      )}
+                      className="inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors"
+                      style={isActive
+                        ? { background: 'rgba(180,140,60,0.18)', color: '#e8d5a0', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }
+                        : { color: '#A6A09B' }
+                      }
                       onClick={() => this.setState({ sorceryTypeFilter: filter.id })}
                     >
                       <span>{filter.label}</span>
-                      <span className={cn('text-[9px] tabular-nums', isActive ? 'text-foreground/60' : 'text-muted-foreground/60')}>{count}</span>
+                      <span className="text-[9px] tabular-nums" style={{ color: isActive ? 'rgba(228,213,160,0.6)' : 'rgba(166,160,155,0.45)' }}>{count}</span>
                     </button>
                   );
                 })}
               </div>
-              <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/50 bg-card/50 p-0.5">
+              <div className="inline-flex items-center gap-0.5 rounded-lg border p-0.5" style={{ borderColor: 'rgba(180,140,60,0.2)', background: 'rgba(8,8,10,0.5)' }}>
                 {SORCERY_ELEMENT_FILTERS.map((filter) => {
                   const isActive = this.state.sorceryElementFilter === filter.id;
                   const count = filter.id === 'all'
@@ -2915,14 +2927,15 @@ export default class App extends Component {
                       type="button"
                       aria-label={filter.label}
                       title={`${filter.label} (${count})`}
-                      className={cn(
-                        'h-6 rounded-md px-1 transition-colors inline-flex items-center justify-center gap-1',
-                        isActive ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                      )}
+                      className="h-6 rounded-md px-1 transition-colors inline-flex items-center justify-center gap-1"
+                      style={isActive
+                        ? { background: 'rgba(180,140,60,0.18)', color: '#e8d5a0', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }
+                        : { color: '#A6A09B' }
+                      }
                       onClick={() => this.setState({ sorceryElementFilter: filter.id })}
                     >
-                      {filter.icon ? filter.icon() : <span className="size-2 rounded-full bg-foreground/40 ring-1 ring-border/70 ring-inset" />}
-                      <span className={cn('text-[9px] tabular-nums', isActive ? 'text-foreground/60' : 'text-muted-foreground/60')}>{count}</span>
+                      {filter.icon ? filter.icon() : <span className="size-2 rounded-full ring-1 ring-inset" style={{ background: 'rgba(166,160,155,0.4)', ringColor: 'rgba(180,140,60,0.3)' }} />}
+                      <span className="text-[9px] tabular-nums" style={{ color: isActive ? 'rgba(228,213,160,0.6)' : 'rgba(166,160,155,0.45)' }}>{count}</span>
                     </button>
                   );
                 })}
@@ -2993,38 +3006,39 @@ export default class App extends Component {
 
     return (
       <>
-        <div className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm" onClick={this.closeSaveDialog} />
+        <div className="fixed inset-0 z-40 backdrop-blur-sm" style={{ background: 'rgba(8,8,10,0.75)' }} onClick={this.closeSaveDialog} />
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <section
             role="dialog"
             aria-modal="true"
             aria-label="Save deck"
-            className="w-full max-w-md rounded-[24px] border border-border/70 bg-popover/96 p-5 shadow-[0_32px_120px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+            className="w-full max-w-md rounded-[24px] border p-5 backdrop-blur-xl"
+            style={{ borderColor: 'rgba(180,140,60,0.25)', background: 'rgba(12,10,8,0.96)', boxShadow: '0 32px 120px rgba(0,0,0,0.55)' }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-popover-foreground">Save deck</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <h2 className="text-lg font-semibold arena-heading" style={{ color: '#e8d5a0' }}>Save deck</h2>
+                <p className="mt-1 text-sm" style={{ color: '#A6A09B' }}>
                   {isExistingDeck
                     ? 'Update the current deck or save a renamed copy.'
                     : 'Choose a name for this deck.'}
                 </p>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
+                className="size-8 rounded-lg inline-flex items-center justify-center transition-colors"
+                style={{ color: '#A6A09B', border: '1px solid rgba(166,160,155,0.2)' }}
                 aria-label="Close save dialog"
                 disabled={isSavingDeck}
                 onClick={this.closeSaveDialog}
               >
                 <IconClose className="size-4" />
-              </Button>
+              </button>
             </div>
 
             <div className="mt-4">
               <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Deck name</span>
+                <span className="text-[11px] font-medium uppercase tracking-[0.14em]" style={{ color: 'rgba(180,140,60,0.5)' }}>Deck name</span>
                 <Input
                   id="save-deck-name"
                   type="text"
@@ -3033,26 +3047,41 @@ export default class App extends Component {
                   value={saveDialogName}
                   onInput={this.handleSaveDialogNameChange}
                   placeholder="Name this deck"
+                  style={{ background: 'rgba(8,8,10,0.8)', borderColor: 'rgba(180,140,60,0.25)', color: '#e8d5a0' }}
                 />
               </label>
             </div>
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="ghost" disabled={isSavingDeck} onClick={this.closeSaveDialog}>
-                Cancel
-              </Button>
-              {isExistingDeck && !this.state.isArenaCollectionMode ? (
-                <Button type="button" variant="outline" disabled={isSavingDeck} onClick={this.saveDeckAsCopy}>
-                  Save as copy
-                </Button>
-              ) : null}
-              <Button
+              <button
                 type="button"
+                className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: '#A6A09B' }}
+                disabled={isSavingDeck}
+                onClick={this.closeSaveDialog}
+              >
+                Cancel
+              </button>
+              {isExistingDeck && !this.state.isArenaCollectionMode ? (
+                <button
+                  type="button"
+                  className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                  style={{ border: '1px solid rgba(180,140,60,0.3)', background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)', color: '#A6A09B' }}
+                  disabled={isSavingDeck}
+                  onClick={this.saveDeckAsCopy}
+                >
+                  Save as copy
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                style={{ border: '1px solid rgba(180,140,60,0.4)', background: 'linear-gradient(180deg, rgba(180,140,60,0.2) 0%, rgba(180,140,60,0.08) 100%)', color: '#e8d5a0', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
                 disabled={isSavingDeck}
                 onClick={isExistingDeck ? this.updateCurrentDeck : this.saveDeckAsCopy}
               >
                 {primaryLabel}
-              </Button>
+              </button>
             </div>
           </section>
         </div>
@@ -3069,42 +3098,58 @@ export default class App extends Component {
 
     return (
       <>
-        <div className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm" onClick={this.closeCloseDeckDialog} />
+        <div className="fixed inset-0 z-40 backdrop-blur-sm" style={{ background: 'rgba(8,8,10,0.75)' }} onClick={this.closeCloseDeckDialog} />
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <section
             role="dialog"
             aria-modal="true"
             aria-label="Unsaved changes"
-            className="w-full max-w-md rounded-[24px] border border-border/70 bg-popover/96 p-5 shadow-[0_32px_120px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+            className="w-full max-w-md rounded-[24px] border p-5 backdrop-blur-xl"
+            style={{ borderColor: 'rgba(180,140,60,0.25)', background: 'rgba(12,10,8,0.96)', boxShadow: '0 32px 120px rgba(0,0,0,0.55)' }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-popover-foreground">Unsaved changes</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <h2 className="text-lg font-semibold arena-heading" style={{ color: '#e8d5a0' }}>Unsaved changes</h2>
+                <p className="mt-1 text-sm" style={{ color: '#A6A09B' }}>
                   These cards are not saved to a deck yet. Save them before clearing the grid, or discard them now.
                 </p>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
+                className="size-8 rounded-lg inline-flex items-center justify-center transition-colors"
+                style={{ color: '#A6A09B', border: '1px solid rgba(166,160,155,0.2)' }}
                 aria-label="Close unsaved changes dialog"
                 onClick={this.closeCloseDeckDialog}
               >
                 <IconClose className="size-4" />
-              </Button>
+              </button>
             </div>
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={this.closeCloseDeckDialog}>
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: '#A6A09B' }}
+                onClick={this.closeCloseDeckDialog}
+              >
                 Keep editing
-              </Button>
-              <Button type="button" variant="destructive" onClick={this.discardDeckAndClose}>
+              </button>
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                style={{ border: '1px solid rgba(180,60,60,0.4)', background: 'linear-gradient(180deg, rgba(180,60,60,0.2) 0%, rgba(180,60,60,0.08) 100%)', color: '#e8a0a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+                onClick={this.discardDeckAndClose}
+              >
                 Discard changes
-              </Button>
-              <Button type="button" onClick={this.saveDeckBeforeClose}>
+              </button>
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                style={{ border: '1px solid rgba(180,140,60,0.4)', background: 'linear-gradient(180deg, rgba(180,140,60,0.2) 0%, rgba(180,140,60,0.08) 100%)', color: '#e8d5a0', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+                onClick={this.saveDeckBeforeClose}
+              >
                 Save as deck
-              </Button>
+              </button>
             </div>
           </section>
         </div>
@@ -3202,7 +3247,20 @@ export default class App extends Component {
               />
             ) : null}
 
-            <main className="app-shell h-dvh overflow-hidden flex flex-col" style={workspaceStyle}>
+            <main
+              className="app-shell h-dvh overflow-hidden flex flex-col"
+              style={{
+                ...workspaceStyle,
+                background: [
+                  'radial-gradient(ellipse 80% 50% at 50% 30%, rgba(180,140,60,0.05) 0%, transparent 70%)',
+                  'radial-gradient(ellipse 60% 40% at 50% 80%, rgba(120,80,30,0.06) 0%, transparent 60%)',
+                  'radial-gradient(ellipse 100% 100% at 50% 50%, rgba(30,20,8,0.4) 0%, transparent 80%)',
+                  'radial-gradient(circle at 20% 20%, rgba(100,60,20,0.03) 0%, transparent 40%)',
+                  'radial-gradient(circle at 80% 70%, rgba(100,60,20,0.03) 0%, transparent 40%)',
+                  '#08080a',
+                ].join(', '),
+              }}
+            >
               <div
                 className="workspace-grid grid flex-1 min-h-0 gap-4 xl:grid-cols-[minmax(400px,0.92fr)_minmax(0,1.08fr)]"
                 style={workspaceColumns ? { gridTemplateColumns: workspaceColumns } : undefined}
