@@ -36,8 +36,6 @@ import {
 import { getLocalApiOrigin } from './utils/localApi';
 import { getDesktopWorkspaceColumns, getResponsiveWorkspaceVars, getViewportWidth } from './utils/workspaceLayout';
 import { loadSorceryCardsWithSource } from './utils/sorcery/cardsApi';
-import { parseSorceryImportText, isStandaloneCuriosaDeckUrl } from './utils/sorcery/importInput';
-import { importFromCuriosaUrl } from './utils/sorcery/curiosaApi';
 import SorceryDeckMetricsPanel from './components/SorceryDeckMetricsPanel';
 import GameBoard from './components/GameBoard';
 import SessionLobby from './components/SessionLobby';
@@ -2505,7 +2503,7 @@ export default class App extends Component {
     }
 
     return (
-      <Card className="left-pane-shell workspace-pane no-print flex h-full min-h-0 flex-col overflow-hidden">
+      <Card className="left-pane-shell workspace-pane flex h-full min-h-0 flex-col overflow-hidden">
         <CardHeader className="left-pane-header justify-center pb-3">
           <div className="left-pane-toolbar flex w-full items-center justify-center gap-3">
             <div
@@ -2582,7 +2580,7 @@ export default class App extends Component {
         aria-label="Deck cards panel"
         className="workspace-pane deck-pane flex h-full min-h-0 flex-col rounded-[20px] transition-shadow"
       >
-        <div className="flex items-center gap-4 px-1 pb-3 no-print">
+        <div className="flex items-center gap-4 px-1 pb-3">
           <div className="flex min-w-0 items-center gap-2">
             <div className="inline-flex items-center gap-1 rounded-xl border border-border/70 bg-card/80 p-1 shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
               {SORCERY_DECK_FILTERS.map((filter) => {
@@ -2654,7 +2652,7 @@ export default class App extends Component {
           const mainFilter = SORCERY_DECK_FILTERS.find((f) => f.id === deckFilter) || SORCERY_DECK_FILTERS[0];
           const mainFiltered = chosenCards.filter((entry) => matchesSorceryDeckFilter(mainFilter, entry));
           return (
-            <div className="flex items-center gap-2 px-1 pb-2 no-print">
+            <div className="flex items-center gap-2 px-1 pb-2">
               <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/50 bg-card/50 p-0.5">
                 {SORCERY_TYPE_FILTERS.map((filter) => {
                   const isActive = this.state.sorceryTypeFilter === filter.id;

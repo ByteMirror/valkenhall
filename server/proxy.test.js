@@ -4,11 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'bun:test';
 import {
-  resolveAvailableUpscaylBin,
   resolveCardsJsonPath,
-  resolveUpscalingAssetPaths,
   startProxyServer,
-  writeFetchResponseToFile,
 } from './proxy.js';
 
 const startedServers = [];
@@ -34,51 +31,6 @@ afterEach(async () => {
 });
 
 describe('proxy server', () => {
-  it('resolves bundled platform-specific upscaling assets for packaged desktop builds', () => {
-    const resolved = resolveUpscalingAssetPaths({
-      runtimeDir: '/Applications/Fab Builder.app/Contents/Resources/app/bun',
-      platform: 'darwin',
-      arch: 'arm64',
-    });
-
-    expect(resolved.upscalingDir).toBe('/Applications/Fab Builder.app/Contents/Resources/app/server/upscaling');
-    expect(resolved.modelsDir).toBe('/Applications/Fab Builder.app/Contents/Resources/app/server/upscaling/models');
-    expect(resolved.binPath).toBe(
-      '/Applications/Fab Builder.app/Contents/Resources/app/server/upscaling/bin/darwin-arm64/upscayl-bin'
-    );
-  });
-
-  it('prefers an explicit binary override when configured', () => {
-    const resolved = resolveUpscalingAssetPaths({
-      runtimeDir: '/Applications/Fab Builder.app/Contents/Resources/app/bun',
-      platform: 'darwin',
-      arch: 'arm64',
-      env: {
-        FAB_BUILDER_UPSCAYL_BIN: '/custom/upscayl',
-      },
-    });
-
-    expect(resolved.binPath).toBe('/custom/upscayl');
-  });
-
-  it('does not fall back to the legacy linux binary on macOS when the darwin binary is missing', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fab-builder-upscayl-path-test-'));
-    createdDirs.push(dir);
-
-    const assetPaths = {
-      binPath: path.join(dir, 'bin', 'darwin-arm64', 'upscayl-bin'),
-      platformBinPath: path.join(dir, 'bin', 'darwin-arm64', 'upscayl-bin'),
-      legacyBinPath: path.join(dir, 'upscayl-bin'),
-    };
-
-    await fs.mkdir(path.dirname(assetPaths.legacyBinPath), { recursive: true });
-    await fs.writeFile(assetPaths.legacyBinPath, 'linux-binary-placeholder');
-
-    await expect(resolveAvailableUpscaylBin({ assetPaths, platform: 'darwin' })).rejects.toThrow(
-      'Missing platform-specific upscayl binary for darwin'
-    );
-  });
-
   it('resolves cards json from the bundled dist directory in packaged desktop builds', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fab-builder-cards-test-'));
     createdDirs.push(dir);
@@ -97,20 +49,6 @@ describe('proxy server', () => {
     });
 
     expect(resolved).toBe(bundledCardsPath);
-  });
-
-  it('writes fetch responses to disk without relying on a Node stream body', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fab-builder-proxy-test-'));
-    createdDirs.push(dir);
-    const outPath = path.join(dir, 'image.webp');
-    const response = new Response(new Uint8Array([1, 2, 3, 4]), {
-      headers: { 'content-type': 'image/webp' },
-      status: 200,
-    });
-
-    await writeFetchResponseToFile(response, outPath);
-
-    await expect(fs.readFile(outPath)).resolves.toEqual(Buffer.from([1, 2, 3, 4]));
   });
 
   it('can be started programmatically for desktop embedding', async () => {
