@@ -2,7 +2,6 @@ import { Component, createRef } from 'preact';
 import './app.css';
 import { toast } from 'sonner';
 import ArchiveCardRow from './components/ArchiveCardRow';
-import CardList from './components/CardList';
 import LoadingIndicator from './components/LoadingIndicator';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader } from './components/ui/card';
@@ -32,6 +31,8 @@ import { getLocalApiOrigin } from './utils/localApi';
 import { getDesktopWorkspaceColumns, getResponsiveWorkspaceVars, getViewportWidth } from './utils/workspaceLayout';
 import { loadSorceryCardsWithSource } from './utils/sorcery/cardsApi';
 import SorceryDeckMetricsPanel from './components/SorceryDeckMetricsPanel';
+import CardInspector from './components/CardInspector';
+import DeckCardTile from './components/DeckCardTile';
 import GameBoard from './components/GameBoard';
 import SessionLobby from './components/SessionLobby';
 import ArenaHub from './components/ArenaHub';
@@ -61,6 +62,9 @@ import SpectatorBanner from './components/SpectatorBanner';
 import TradeWindow from './components/TradeWindow';
 import { startPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
+import { createUpdateManager } from './utils/updateManager';
+import UpdateModal from './components/UpdateModal';
+import SettingsScreen from './components/SettingsScreen';
 
 function normalizeText(value) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -241,7 +245,6 @@ const SORCERY_DECK_FORMATS = [
   { id: 'constructed', label: 'Constructed' },
 ];
 
-const CARD_PREVIEW_ANIMATION_MS = 260;
 
 function matchesArchiveRarityFilter(filter, card, setFilter = 'all') {
   if (!filter || filter === 'all') {
@@ -394,6 +397,7 @@ export default class App extends Component {
       previewedDeckEntryIndex: null,
       previewedDeckEntryOrigin: null,
       previewedDeckEntryState: null,
+      hoveredDeckEntryIndex: null,
       deckSelectionAnchorIndex: null,
       deckCardContextMenu: null,
       isDeckPaneScrolling: false,
@@ -411,6 +415,8 @@ export default class App extends Component {
       tradePartnerName: null,
       tradeRoomCode: null,
       gameMenuOpen: false,
+      updateStatus: null,
+      settingsOpen: false,
     };
 
     this.arenaQueuePollTimer = null;
@@ -425,6 +431,7 @@ export default class App extends Component {
     this.deckMenuRef = createRef();
     this.deckCardContextMenuRef = createRef();
     this.themeMediaQuery = null;
+    this.updateManager = null;
   }
 
   componentDidMount() {
@@ -466,6 +473,17 @@ export default class App extends Component {
 
     // Check for existing auth token
     this.checkAuth();
+
+    this.updateManager = createUpdateManager((status) => {
+      const prev = this.state.updateStatus;
+      this.setState({ updateStatus: status });
+
+      if (status.state === 'READY_TO_INSTALL' && prev?.state !== 'READY_TO_INSTALL') {
+        toast.info(`Update ${status.newVersion || ''} ready — restart from Settings to install`.trim());
+      }
+    });
+
+    this.updateManager.init();
   }
 
   checkAuth = async () => {
@@ -477,7 +495,7 @@ export default class App extends Component {
           this.setState({
             authChecking: false,
             loggedIn: true,
-            arenaProfile: this.profileFromServer(result.profile),
+            arenaProfile: this.seedFoilCards(this.profileFromServer(result.profile)),
             arenaLoading: false,
           });
           this.postLoginInit();
@@ -572,11 +590,40 @@ export default class App extends Component {
     };
   };
 
+  // TEMP: seed foil cards for testing — remove after verifying
+  seedFoilCards = (profile) => {
+    if (!profile || profile.name !== 'Clutterfox') return profile;
+    const foilEntries = [
+      { cardId: 'sorcery-angel_ascendant', printingId: 'got-angel_ascendant-b-f', quantity: 1 },
+      { cardId: 'sorcery-abaddon_succubus', printingId: 'got-abaddon_succubus-b-f', quantity: 1 },
+      { cardId: 'sorcery-day_of_judgment', printingId: 'got-day_of_judgment-b-f', quantity: 1 },
+      { cardId: 'sorcery-river_of_blood', printingId: 'got-river_of_blood-b-f', quantity: 1 },
+      { cardId: 'sorcery-bladedancer', printingId: 'got-bladedancer-b-f', quantity: 1 },
+      { cardId: 'sorcery-excalibur', printingId: 'art-excalibur-b-f', quantity: 1 },
+      { cardId: 'sorcery-black_knight', printingId: 'art-black_knight-b-f', quantity: 1 },
+      { cardId: 'sorcery-dragonlord', printingId: 'pro-dragonlord-op-rf', quantity: 1 },
+      { cardId: 'sorcery-witch', printingId: 'pro-witch-op-rf', quantity: 1 },
+    ];
+    const collection = [...(profile.collection || [])];
+    for (const entry of foilEntries) {
+      if (!collection.some((c) => c.printingId === entry.printingId)) {
+        collection.push(entry);
+      }
+    }
+    if (collection.length !== profile.collection?.length) {
+      const updated = { ...profile, collection };
+      saveArenaProfile(updated).catch(() => {});
+      return updated;
+    }
+    return profile;
+  };
+
   handleLogin = (result) => {
+    const profile = this.seedFoilCards(this.profileFromServer(result.profile));
     this.setState({
       loggedIn: true,
       authChecking: false,
-      arenaProfile: this.profileFromServer(result.profile),
+      arenaProfile: profile,
       arenaLoading: false,
     });
     this.postLoginInit();
@@ -948,6 +995,18 @@ export default class App extends Component {
   handleArenaPlayMatch = () => {
     playMusic('arena-match', { fadeInDuration: 3000 });
     this.setState({ isGameBoardOpen: true, isArenaMatch: true, isRankedMatch: false });
+  };
+
+  handleApplyUpdate = () => {
+    this.updateManager?.apply();
+  };
+
+  handleOpenSettings = () => {
+    this.setState({ settingsOpen: true });
+  };
+
+  handleCloseSettings = () => {
+    this.setState({ settingsOpen: false });
   };
 
   processAchievements = (profile) => {
@@ -1607,6 +1666,10 @@ export default class App extends Component {
     return entries;
   };
 
+  handleDeckCardHover = (entryIndex, isHovering) => {
+    this.setState({ hoveredDeckEntryIndex: isHovering ? entryIndex : null });
+  };
+
   handleDeckCardSelect = (entryIndex, event) => {
     this.setState((state) => {
       const visibleEntryIndices = this.getVisibleDeckEntries(state).map((entry) => entry.entryIndex);
@@ -1898,24 +1961,18 @@ export default class App extends Component {
   };
 
   closeCardPreview = () => {
-    if (
-      (this.state.previewedDeckEntryIndex === null && !this.state.previewedArchiveCard) ||
-      this.state.previewedDeckEntryState === 'closing'
-    ) {
+    if (this.state.previewedDeckEntryIndex === null && !this.state.previewedArchiveCard) {
       return;
     }
 
     clearTimeout(this.cardPreviewTimer);
-    this.setState({ previewedDeckEntryState: 'closing' });
-    this.cardPreviewTimer = setTimeout(() => {
-      this.cardPreviewTimer = null;
-      this.setState({
-        previewedArchiveCard: null,
-        previewedDeckEntryIndex: null,
-        previewedDeckEntryOrigin: null,
-        previewedDeckEntryState: null,
-      });
-    }, CARD_PREVIEW_ANIMATION_MS);
+    this.cardPreviewTimer = null;
+    this.setState({
+      previewedArchiveCard: null,
+      previewedDeckEntryIndex: null,
+      previewedDeckEntryOrigin: null,
+      previewedDeckEntryState: null,
+    });
   };
 
   toggleSelectedCardPreview = () => {
@@ -1938,21 +1995,23 @@ export default class App extends Component {
       return;
     }
 
+    const effectiveEntryIndex = selectedPreviewEntryIndex ?? this.state.hoveredDeckEntryIndex;
+
     if (
       this.state.previewedDeckEntryIndex !== null &&
-      selectedPreviewEntryIndex === this.state.previewedDeckEntryIndex &&
+      effectiveEntryIndex === this.state.previewedDeckEntryIndex &&
       this.state.previewedDeckEntryState !== 'closing'
     ) {
       this.closeCardPreview();
       return;
     }
 
-    if (selectedPreviewEntryIndex === null) {
+    if (effectiveEntryIndex === null) {
       this.closeCardPreview();
       return;
     }
 
-    this.openCardPreview(selectedPreviewEntryIndex);
+    this.openCardPreview(effectiveEntryIndex);
   };
 
   navigateArchivePreview = (direction) => {
@@ -2955,15 +3014,23 @@ export default class App extends Component {
           onScroll={this.handleDeckPaneScroll}
         >
           {visibleCards.length > 0 ? (
-            <CardList
-              cards={visibleCards}
-              chosenList={true}
-              changeCardPrintingFromChosenCards={this.changeCardPrintingFromChosenCards}
-              onChosenCardContextMenu={this.handleDeckCardContextMenu}
-              onChosenCardSelect={this.handleDeckCardSelect}
-              removeCardFromChosenCards={this.removeCardFromChosenCards}
-              selectedEntryIndices={selectedDeckEntryIndices}
-            />
+            <div
+              role="listbox"
+              aria-label="Deck cards"
+              aria-multiselectable="true"
+              className="deck-card-grid"
+            >
+              {visibleCards.map((entry) => (
+                <DeckCardTile
+                  key={`${entry.card.unique_id}-${entry.printing?.unique_id || 'none'}-${entry.entryIndex}`}
+                  entry={entry}
+                  isSelected={selectedDeckEntryIndices.includes(entry.entryIndex)}
+                  onClick={(e) => this.handleDeckCardSelect(entry.entryIndex, e)}
+                  onContextMenu={(e) => this.handleDeckCardContextMenu(entry.entryIndex, e)}
+                  onHoverChange={(hovering) => this.handleDeckCardHover(entry.entryIndex, hovering)}
+                />
+              ))}
+            </div>
           ) : null}
         </div>
 
@@ -3165,45 +3232,14 @@ export default class App extends Component {
     }
 
     const { card, printing } = previewedEntry;
-    const previewState = this.state.previewedDeckEntryState || 'open';
-    const isClosing = previewState === 'closing';
-    const previewMotionStyle = this.getCardPreviewMotionStyle(this.state.previewedDeckEntryOrigin);
 
     return (
-      <>
-        <div
-          aria-hidden="true"
-          className={cn(
-            'card-preview-backdrop card-preview-backdrop--blurred fixed inset-0 z-40',
-            isClosing && 'is-closing'
-          )}
-          data-preview-state={previewState}
-          onClick={this.closeCardPreview}
-        />
-        <div className="card-preview-stage fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Card preview"
-            data-preview-state={previewState}
-            className="card-preview-dialog flex items-center justify-center"
-          >
-            <div
-              className={cn(
-                'card-preview-card',
-                isClosing && 'is-closing'
-              )}
-              style={previewMotionStyle}
-            >
-              <img
-                src={printing?.image_url}
-                alt={`Preview of ${card.name}`}
-                className="card-preview-image h-full w-full object-contain"
-              />
-            </div>
-          </section>
-        </div>
-      </>
+      <CardInspector
+        card={card}
+        imageUrl={printing?.image_url}
+        foiling={printing?.foiling}
+        onClose={this.closeCardPreview}
+      />
     );
   }
 
@@ -3350,6 +3386,16 @@ export default class App extends Component {
             onResetProfile={this.resetArenaProfile}
             friendListData={this.state.friendListData}
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            onOpenSettings={this.handleOpenSettings}
+            updateStatus={this.state.updateStatus}
+          />
+        ) : null}
+        {this.state.settingsOpen ? (
+          <SettingsScreen
+            updateStatus={this.state.updateStatus}
+            updateManager={this.updateManager}
+            onApply={this.handleApplyUpdate}
+            onBack={this.handleCloseSettings}
           />
         ) : null}
         {showArena && this.state.arenaView === 'deck-select' ? (
@@ -3429,6 +3475,13 @@ export default class App extends Component {
           sorceryCards={this.state.sorceryCards}
           onViewProfile={this.handleViewFriendProfile}
         />
+        {this.state.updateStatus?.state === 'READY_TO_INSTALL' ? (
+          <UpdateModal
+            newVersion={this.state.updateStatus.newVersion}
+            releaseNotes={this.state.updateStatus.releaseNotes}
+            onApply={this.handleApplyUpdate}
+          />
+        ) : null}
         <Toaster />
         <ToastManager
           toasts={this.state.toasts}
