@@ -3,6 +3,7 @@ import { cn } from '../lib/utils';
 import { getPublicProfile } from '../utils/friendsApi';
 import { xpProgressInLevel, levelFromXp } from '../utils/arena/profileDefaults';
 import { formatRank, TIER_COLORS, TIER_LABELS } from '../utils/arena/rankUtils';
+import { ACHIEVEMENTS } from '../utils/arena/achievements';
 
 function resolveAvatarUrl(cardId, sorceryCards) {
   if (!cardId || !sorceryCards) return null;
@@ -213,16 +214,33 @@ export default class FriendProfileOverlay extends Component {
           ) : null}
 
           {/* Achievements */}
-          {achievements.length > 0 ? (
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-2">Achievements ({achievements.length})</div>
-              <div className="flex flex-wrap gap-1.5">
-                {achievements.map((achId, i) => (
-                  <span key={i} className="rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-1 text-[11px] text-amber-400/80">{achId}</span>
-                ))}
-              </div>
+          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-2">
+              Achievements ({achievements.length}/{ACHIEVEMENTS.length})
             </div>
-          ) : null}
+            <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+              {ACHIEVEMENTS.map((a) => {
+                const unlocked = achievements.includes(a.id);
+                return (
+                  <div
+                    key={a.id}
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg px-2.5 py-1.5 border transition-colors',
+                      unlocked
+                        ? 'border-amber-500/20 bg-amber-500/[0.06]'
+                        : 'border-white/[0.04] bg-white/[0.01] opacity-35'
+                    )}
+                  >
+                    <span className="text-sm shrink-0">{unlocked ? a.icon : '🔒'}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className={cn('text-[11px] font-medium truncate', unlocked ? 'text-white/80' : 'text-white/30')}>{a.name}</div>
+                      <div className={cn('text-[9px] truncate', unlocked ? 'text-white/40' : 'text-white/15')}>{a.description}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Action bar */}
