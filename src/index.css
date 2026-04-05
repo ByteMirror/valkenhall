@@ -203,3 +203,47 @@ img {
 .arena-heading {
   font-family: 'MedievalSharp', cursive;
 }
+
+/* Medieval cursors — Gauntlet Medieval set by THTH (Public Domain) */
+html {
+  cursor: url('../public/cursors/default.png') 4 2, auto;
+}
+
+/* All elements inherit from parent by default — no * override */
+
+button, [role="button"], a, label, select, summary,
+input[type="checkbox"], input[type="radio"], input[type="submit"],
+.cursor-pointer, [onclick] {
+  cursor: url('../public/cursors/pointer.png') 20 4, pointer;
+}
+
+/* Children inside interactive elements must inherit the pointer cursor */
+button *, [role="button"] *, a *, label *, .cursor-pointer * {
+  cursor: inherit !important;
+}
+
+button:active, [role="button"]:active, a:active, .cursor-pointer:active {
+  cursor: url('../public/cursors/grabbing.png') 24 14, pointer;
+}
+
+[disabled], .cursor-not-allowed, button:disabled {
+  cursor: url('../public/cursors/default.png') 4 2, not-allowed !important;
+}
+
+input[type="text"], input[type="email"], input[type="number"],
+input[type="password"], input[type="search"], input[type="url"],
+input[type="tel"], textarea, [contenteditable] {
+  cursor: text !important;
+}
+
+.cursor-grab, [draggable="true"] {
+  cursor: url('../public/cursors/grab.png') 24 14, grab;
+}
+
+.cursor-grabbing {
+  cursor: url('../public/cursors/grabbing.png') 24 14, grabbing;
+}
+
+canvas {
+  cursor: url('../public/cursors/default.png') 4 2, auto;
+}

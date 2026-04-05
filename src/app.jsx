@@ -27,12 +27,7 @@ import {
 } from './utils/imageQuality';
 import { deleteSavedDeckById, listSavedDecks, loadSavedDeckById, saveSavedDeck } from './utils/deckStorageApi';
 import { createSavedDeckCardIndex, restoreSavedDeckCards } from './utils/savedDeckRestore';
-import {
-  applyThemePreference,
-  getStoredThemePreference,
-  persistThemePreference,
-  THEME_PREFERENCES,
-} from './utils/themePreference';
+import { applyThemePreference, getStoredThemePreference } from './utils/themePreference';
 import { getLocalApiOrigin } from './utils/localApi';
 import { getDesktopWorkspaceColumns, getResponsiveWorkspaceVars, getViewportWidth } from './utils/workspaceLayout';
 import { loadSorceryCardsWithSource } from './utils/sorcery/cardsApi';
@@ -54,8 +49,9 @@ import { resolveStarterDeck } from './utils/arena/starterDecks';
 import ArenaMatchmaking from './components/ArenaMatchmaking';
 import ArenaDeckSelect from './components/ArenaDeckSelect';
 import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
+import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
-import { registerPlayer, clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult, deleteAccount } from './utils/arena/matchmakingApi';
+import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult, deleteAccount } from './utils/arena/matchmakingApi';
 import { formatRank, TIER_COLORS } from './utils/arena/rankUtils';
 import { getStoredToken, validateToken } from './utils/authApi';
 import ToastManager from './components/ToastManager';
@@ -414,6 +410,7 @@ export default class App extends Component {
       tradeActive: false,
       tradePartnerName: null,
       tradeRoomCode: null,
+      gameMenuOpen: false,
     };
 
     this.arenaQueuePollTimer = null;
@@ -440,6 +437,9 @@ export default class App extends Component {
       this.themeMediaQuery.addEventListener('change', this.handleThemeMediaQueryChange);
     }
     applyThemePreference(this.state.themePreference);
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
     this.refreshSavedDecks();
 
     // Load sorcery cards
@@ -805,13 +805,9 @@ export default class App extends Component {
 
   registerArenaUsername = async (username) => {
     const { arenaProfile } = this.state;
-    const result = await registerPlayer(arenaProfile.id, username);
     const updatedProfile = {
       ...arenaProfile,
       name: username,
-      serverToken: result.token,
-      serverRegistered: true,
-      rank: result.rank,
     };
     this.setState({ arenaProfile: updatedProfile });
     await saveArenaProfile(updatedProfile).catch((e) => console.error('Failed to save profile:', e));
@@ -1451,7 +1447,21 @@ export default class App extends Component {
     }
   };
 
+  handleGameMenuResume = () => this.setState({ gameMenuOpen: false });
+
+  handleGameMenuQuit = () => window.close();
+
   handleDocumentKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.setState((s) => ({ gameMenuOpen: !s.gameMenuOpen }));
+      return;
+    }
+
+    if (this.state.gameMenuOpen) {
+      return;
+    }
+
     if (event.key === 'Tab') {
       event.preventDefault();
       if (this.state.isGameBoardOpen) {
@@ -1564,10 +1574,8 @@ export default class App extends Component {
     });
   };
 
-  setThemePreference = (themePreference) => {
-    persistThemePreference(themePreference);
-    applyThemePreference(themePreference);
-    this.setState({ themePreference });
+  setThemePreference = () => {
+    // Dark mode is forced — no-op
   };
 
   handleDeckPaneScroll = () => {
@@ -3157,14 +3165,22 @@ export default class App extends Component {
   render() {
     if (this.state.authChecking) {
       return (
-        <div className="fixed inset-0 bg-black flex items-center justify-center">
-          <div className="text-white/40 text-sm">Loading...</div>
-        </div>
+        <>
+          <div className="fixed inset-0 bg-black flex items-center justify-center">
+            <div className="text-white/40 text-sm">Loading...</div>
+          </div>
+          {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} /> : null}
+        </>
       );
     }
 
     if (!this.state.loggedIn) {
-      return <LoginScreen onLogin={this.handleLogin} />;
+      return (
+        <>
+          <LoginScreen onLogin={this.handleLogin} />
+          {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} /> : null}
+        </>
+      );
     }
 
     const workspaceStyle = getResponsiveWorkspaceVars(this.state.viewportWidth);
@@ -3255,13 +3271,13 @@ export default class App extends Component {
             onStarterChosen={this.handleStarterChosen}
           />
         ) : null}
-        {showArena && this.state.arenaProfile?.starterDeck && !this.state.arenaProfile?.serverRegistered ? (
+        {showArena && this.state.arenaProfile?.starterDeck && !this.state.arenaProfile?.name ? (
           <ArenaUsernamePrompt
             currentName={this.state.arenaProfile.name}
             onRegister={this.registerArenaUsername}
           />
         ) : null}
-        {showArena && this.state.arenaProfile?.starterDeck && this.state.arenaProfile?.serverRegistered && this.state.arenaView === 'hub' ? (
+        {showArena && this.state.arenaProfile?.starterDeck && this.state.arenaProfile?.name && this.state.arenaView === 'hub' ? (
           <ArenaHub
             profile={this.state.arenaProfile}
             sorceryCards={this.state.sorceryCards}
@@ -3354,6 +3370,7 @@ export default class App extends Component {
           onDismiss={this.dismissToast}
           onAction={this.handleToastAction}
         />
+        {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} /> : null}
       </>
     );
   }

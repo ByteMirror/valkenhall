@@ -34,7 +34,7 @@ const rendererUrl = getRendererUrl({
 ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
 const mainWindow = new BrowserWindow({
-  title: 'arsenal',
+  title: 'Valkenhall',
   url: rendererUrl,
   renderer: 'cef',
   titleBarStyle: 'hiddenInset',

@@ -84,7 +84,13 @@ export function playMusic(track, { fadeInDuration = 3000 } = {}) {
   // Set as current BEFORE play to prevent race conditions
   currentAudio = audio;
   currentTrack = track;
-  killAllExcept(audio);
+  // Kill orphans but spare the old audio that's fading out
+  for (const a of allAudios) {
+    if (a !== audio && a !== oldAudio) {
+      try { a.pause(); } catch {}
+      allAudios.delete(a);
+    }
+  }
   allAudios.add(audio);
 
   audio.play().catch(() => {

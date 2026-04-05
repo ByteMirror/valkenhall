@@ -1000,7 +1000,9 @@ export default class GameBoard extends Component {
         }
       }
       this.hoveredMesh = newHovered;
-      this.canvasRef.current.style.cursor = newHovered ? 'pointer' : 'default';
+      this.canvasRef.current.style.cursor = newHovered
+        ? "url('/flesh-and-blood-proxies/cursors/pointer.png') 20 4, pointer"
+        : "url('/flesh-and-blood-proxies/cursors/default.png') 4 2, auto";
     }
 
   };

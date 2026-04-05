@@ -66,7 +66,7 @@ export default class ArenaHub extends Component {
   }
 
   render() {
-    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onUpdateAvatar, onResetProfile, onExit } = this.props;
+    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
     const { showAvatarPicker, showSettings, showResetConfirm, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
@@ -97,18 +97,24 @@ export default class ArenaHub extends Component {
       <div className="fixed inset-0 z-50 bg-black flex flex-col">
         {/* Minimal top nav */}
         <div className="flex items-center px-6 py-2.5 border-b border-white/10">
-          <button
-            type="button"
-            className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
-            onClick={onExit}
-          >
-            Exit Arena
-          </button>
+          <span className="text-sm font-semibold text-white/70">Valkenhall</span>
           <div className="ml-auto flex items-center gap-3">
             <div className="flex items-center gap-1">
               <span className="text-sm font-bold text-yellow-300">{profile.coins}</span>
               <span className="text-[10px] text-muted-foreground">coins</span>
             </div>
+            <button
+              type="button"
+              className="relative rounded-lg border border-white/10 px-2.5 py-1 text-[10px] text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
+              onClick={onToggleFriends}
+            >
+              Friends
+              {(friendListData?.pendingCount || 0) > 0 ? (
+                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1">
+                  {friendListData.pendingCount}
+                </span>
+              ) : null}
+            </button>
             <button
               type="button"
               className="rounded-lg border border-white/10 px-2.5 py-1 text-[10px] text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
@@ -455,8 +461,8 @@ export default class ArenaHub extends Component {
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
                     <div>
-                      <div className="text-sm text-red-400">Quit Arena</div>
-                      <div className="text-xs text-muted-foreground">Return to the main menu</div>
+                      <div className="text-sm text-red-400">Quit Game</div>
+                      <div className="text-xs text-muted-foreground">Close Valkenhall</div>
                     </div>
                     <button type="button" className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors" onClick={() => { this.setState({ showSettings: false }); onExit(); }}>Quit</button>
                   </div>
