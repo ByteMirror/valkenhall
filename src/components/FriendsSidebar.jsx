@@ -36,7 +36,7 @@ const ACTIVITY_STYLES = {
 const DEFAULT_ACTIVITY_STYLE = { color: `${GOLD} 0.6)`, background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.15)` };
 
 const SIDEBAR_STYLE = {
-  background: PANEL_BG,
+  background: 'rgb(12, 10, 8)',
   borderLeft: `1px solid ${GOLD} 0.15)`,
   boxShadow: '-20px 0 60px rgba(0,0,0,0.5), 0 0 30px rgba(180,140,60,0.03)',
 };
