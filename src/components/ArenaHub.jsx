@@ -4,7 +4,6 @@ import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievement
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
 import { cn } from '../lib/utils';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { formatRank, TIER_COLORS, TIER_LABELS, TIERS } from '../utils/arena/rankUtils';
 
 const GOLD = 'rgba(180, 140, 60,';
@@ -447,65 +446,69 @@ export default class ArenaHub extends Component {
                   <CornerPlating position="top-right" color={`${GOLD} 0.4)`} />
                   <CornerPlating position="bottom-left" color={`${GOLD} 0.4)`} />
                   <CornerPlating position="bottom-right" color={`${GOLD} 0.4)`} />
-                  <div className="px-4 pt-4 pb-2 shrink-0">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>Leaderboard</span>
-                      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.25), transparent)` }} />
+                  {/* Header */}
+                  <div className="px-5 pt-5 pb-3 shrink-0">
+                    <span className="arena-heading text-sm font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.55)`, textShadow: '0 0 12px rgba(180,140,60,0.15)' }}>Leaderboard</span>
+                    {/* Tier filter — medieval styled */}
+                    <div className="flex flex-wrap gap-1 mt-3 mb-3">
+                      {[{ value: 'all', label: 'All' }, ...TIERS.map(t => ({ value: t, label: TIER_LABELS[t] }))].map((t) => (
+                        <button
+                          key={t.value}
+                          type="button"
+                          className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide transition-all"
+                          style={{
+                            color: leaderboardFilter === t.value ? '#e8d5a0' : 'rgba(166,160,155,0.5)',
+                            background: leaderboardFilter === t.value ? `${GOLD} 0.12)` : 'transparent',
+                            border: `1px solid ${leaderboardFilter === t.value ? `${GOLD} 0.3)` : 'rgba(166,160,155,0.1)'}`,
+                            borderRadius: '4px',
+                          }}
+                          onClick={() => this.setState({ leaderboardFilter: t.value })}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
                     </div>
-
-                    <Tabs value={leaderboardFilter} onValueChange={(v) => this.setState({ leaderboardFilter: v })} className="mb-2">
-                      <TabsList className="w-full gap-0.5 rounded-xl p-0.5 flex-wrap h-auto">
-                        <TabsTrigger value="all" className="px-2.5 py-1 text-[10px] h-6">All</TabsTrigger>
-                        {TIERS.map((tier) => (
-                          <TabsTrigger key={tier} value={tier} className="px-2.5 py-1 text-[10px] h-6">
-                            {TIER_LABELS[tier]}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                    </Tabs>
-
+                    {/* Search */}
                     <input
                       type="text"
                       value={leaderboardSearch}
                       placeholder="Search players..."
-                      className="w-full px-3 py-1.5 text-xs outline-none placeholder:text-amber-800/30"
+                      className="w-full px-3 py-2 text-xs outline-none"
                       style={{
-                        background: `${GOLD} 0.04)`,
+                        background: 'rgba(0,0,0,0.25)',
                         border: `1px solid ${GOLD} 0.12)`,
-                        borderRadius: '8px',
-                        color: '#e8d5a0',
-                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)',
+                        borderRadius: '4px',
+                        color: '#A6A09B',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
                       }}
                       onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
                     />
                   </div>
-
-                  <div className="flex-1 overflow-y-auto px-3 pb-3">
+                  {/* Divider */}
+                  <div className="mx-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD} 0.2), transparent)` }} />
+                  {/* Player list */}
+                  <div className="flex-1 overflow-y-auto px-4 py-3">
                     {leaderboardLoading ? (
                       <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>Loading...</div>
                     ) : filteredLeaderboard.length === 0 ? (
-                      <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players in this tier yet</div>
+                      <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players found</div>
                     ) : (
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex flex-col">
                         {filteredLeaderboard.map((player, i) => {
                           const isMe = player.name === profile.name;
                           const color = TIER_COLORS[player.tier] || 'text-white/60';
+                          const isTop3 = i < 3;
                           return (
                             <div
                               key={i}
-                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs transition-all"
-                              style={isMe
-                                ? {
-                                    background: `linear-gradient(90deg, ${GOLD} 0.1), ${GOLD} 0.05))`,
-                                    border: `1px solid ${GOLD} 0.25)`,
-                                    borderRadius: '8px',
-                                    boxShadow: `0 0 12px ${GOLD} 0.06)`,
-                                  }
-                                : { borderRadius: '8px' }
-                              }
+                              className="flex items-center gap-3 px-3 py-2 transition-all"
+                              style={{
+                                borderBottom: `1px solid ${GOLD} 0.06)`,
+                                background: isMe ? `linear-gradient(90deg, ${GOLD} 0.08), transparent)` : 'transparent',
+                              }}
                             >
-                              <span className="w-5 text-right font-mono text-[10px]" style={{ color: i < 3 ? '#d4a843' : `${GOLD} 0.3)` }}>{i + 1}</span>
-                              <span className="flex-1 font-medium truncate" style={{ color: isMe ? '#d4a843' : `${PARCHMENT} 0.55)` }}>
+                              <span className="w-5 text-right font-mono text-[11px] font-bold" style={{ color: isTop3 ? '#d4a843' : 'rgba(166,160,155,0.3)' }}>{i + 1}</span>
+                              <span className="flex-1 font-medium truncate text-[13px]" style={{ color: isMe ? '#d4a843' : '#A6A09B' }}>
                                 {player.name}
                               </span>
                               <span className={cn('text-[10px] font-semibold shrink-0', color)}>
@@ -535,17 +538,18 @@ export default class ArenaHub extends Component {
                   <CornerPlating position="top-right" color={`${GOLD} 0.4)`} />
                   <CornerPlating position="bottom-left" color={`${GOLD} 0.4)`} />
                   <CornerPlating position="bottom-right" color={`${GOLD} 0.4)`} />
-                  <div className="px-4 pt-4 pb-2 shrink-0">
-                    <div className="flex items-center gap-3">
-                      <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>
-                        Achievements ({unlockedCount}/{ACHIEVEMENTS.length})
-                      </span>
-                      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.25), transparent)` }} />
-                    </div>
+                  {/* Header */}
+                  <div className="px-5 pt-5 pb-3 shrink-0">
+                    <span className="arena-heading text-sm font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.55)`, textShadow: '0 0 12px rgba(180,140,60,0.15)' }}>
+                      Achievements
+                    </span>
+                    <span className="ml-2 text-[10px] tabular-nums" style={{ color: `${GOLD} 0.3)` }}>{unlockedCount}/{ACHIEVEMENTS.length}</span>
                   </div>
-
-                  <div className="flex-1 overflow-y-auto px-3 pb-3">
-                    <div className="flex flex-col gap-1.5">
+                  {/* Divider */}
+                  <div className="mx-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD} 0.2), transparent)` }} />
+                  {/* Achievement list */}
+                  <div className="flex-1 overflow-y-auto px-4 py-3">
+                    <div className="flex flex-col">
                       {ACHIEVEMENTS.map((a) => {
                         const unlocked = (profile.achievements || []).includes(a.id);
                         const prog = !unlocked ? getAchievementProgress(a.id, profile, sorceryCards) : null;
@@ -554,37 +558,26 @@ export default class ArenaHub extends Component {
                         return (
                           <div
                             key={a.id}
-                            className="flex items-center gap-2.5 px-3 py-2 text-xs transition-all"
-                            style={unlocked
-                              ? {
-                                  background: 'linear-gradient(135deg, rgba(40,30,10,0.5) 0%, rgba(25,20,8,0.3) 100%)',
-                                  border: `1px solid ${GOLD} 0.25)`,
-                                  borderRadius: '8px',
-                                  boxShadow: `0 0 10px ${GOLD} 0.04)`,
-                                  color: '#e8d5a0',
-                                }
-                              : {
-                                  background: 'rgba(255,255,255,0.01)',
-                                  border: '1px solid rgba(255,255,255,0.04)',
-                                  borderRadius: '8px',
-                                  color: 'rgba(255,255,255,0.2)',
-                                }
-                            }
+                            className="flex items-center gap-3 px-3 py-2.5 transition-all"
+                            style={{
+                              borderBottom: `1px solid ${unlocked ? `${GOLD} 0.1)` : 'rgba(255,255,255,0.03)'}`,
+                              opacity: unlocked ? 1 : 0.4,
+                            }}
                           >
-                            <span className="text-base shrink-0">{unlocked ? a.icon : '🔒'}</span>
+                            <span className="text-base shrink-0 w-6 text-center">{unlocked ? a.icon : '🔒'}</span>
                             <div className="min-w-0 flex-1">
-                              <div className="font-medium truncate">{a.name}</div>
-                              <div className="text-[10px] truncate" style={{ color: unlocked ? `${PARCHMENT} 0.4)` : 'rgba(255,255,255,0.12)' }}>{a.description}</div>
+                              <div className="text-[12px] font-medium truncate" style={{ color: unlocked ? '#e8d5a0' : '#A6A09B' }}>{a.name}</div>
+                              <div className="text-[10px] truncate" style={{ color: unlocked ? 'rgba(166,160,155,0.6)' : 'rgba(166,160,155,0.3)' }}>{a.description}</div>
                               {hasProgress && (
-                                <div className="mt-1 flex items-center gap-1.5">
-                                  <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.1)` }}>
-                                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `${GOLD} 0.5)` }} />
+                                <div className="mt-1.5 flex items-center gap-2">
+                                  <div className="flex-1 h-1 overflow-hidden" style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1px' }}>
+                                    <div className="h-full transition-all" style={{ width: `${pct}%`, background: `${GOLD} 0.5)`, borderRadius: '1px' }} />
                                   </div>
-                                  <span className="text-[9px] shrink-0 tabular-nums" style={{ color: `${GOLD} 0.3)` }}>{prog.current}/{prog.target}</span>
+                                  <span className="text-[9px] shrink-0 tabular-nums" style={{ color: `${GOLD} 0.35)` }}>{prog.current}/{prog.target}</span>
                                 </div>
                               )}
                             </div>
-                            {unlocked && <span className="text-[9px] shrink-0 font-medium" style={{ color: '#d4a843' }}>+{a.coins}</span>}
+                            {unlocked && <span className="text-[9px] shrink-0 font-semibold" style={{ color: '#d4a843' }}>+{a.coins}</span>}
                           </div>
                         );
                       })}
