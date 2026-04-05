@@ -32,6 +32,7 @@ function timeAgo(timestamp) {
 }
 
 const TAB_KEYS = [
+  { key: 'all', label: 'All' },
   { key: 'friend', label: 'Friends' },
   { key: 'auction', label: 'Auction' },
   { key: 'news', label: 'News' },
@@ -41,7 +42,7 @@ export default class Mailbox extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      tab: 'friend',
+      tab: 'all',
       view: props.initialView === 'compose' ? 'compose' : 'list',
       mail: [],
       loading: true,
@@ -275,7 +276,7 @@ export default class Mailbox extends Component {
       );
     }
 
-    const filtered = mail.filter(m => (m.type || 'friend') === tab);
+    const filtered = tab === 'all' ? mail : mail.filter(m => (m.type || 'friend') === tab);
 
     if (filtered.length === 0) {
       return (
@@ -718,7 +719,6 @@ export default class Mailbox extends Component {
             height: 580,
             zoom: this.state.viewScale,
             ...DIALOG_STYLE,
-            overflow: 'hidden',
           }}
           onClick={e => e.stopPropagation()}
         >
@@ -759,7 +759,7 @@ export default class Mailbox extends Component {
 
           {/* Pinned footer — always at bottom */}
           <div className="shrink-0 px-3 py-2.5 flex items-center justify-end gap-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
-            {view === 'list' && this.state.tab === 'friend' ? (
+            {view === 'list' && (this.state.tab === 'all' || this.state.tab === 'friend') ? (
               <button
                 type="button"
                 className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"
@@ -819,7 +819,6 @@ export default class Mailbox extends Component {
           height: 580,
           zoom: viewScale,
           ...DIALOG_STYLE,
-          overflow: 'hidden',
         }}
         onClick={e => e.stopPropagation()}
       >
