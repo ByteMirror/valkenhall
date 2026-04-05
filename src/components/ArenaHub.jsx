@@ -1,8 +1,6 @@
 import { Component } from 'preact';
 import { xpProgressInLevel } from '../utils/arena/profileDefaults';
 import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievements';
-import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
-import { updateMusicVolume } from '../utils/arena/musicManager';
 import { cn } from '../lib/utils';
 import { formatRank, TIER_COLORS, TIER_LABELS, TIERS } from '../utils/arena/rankUtils';
 import {
@@ -11,7 +9,7 @@ import {
   BTN_BORDER, BTN_BORDER_HOVER, BTN_CORNER, BTN_CORNER_HOVER,
   DIALOG_STYLE, DIALOG_BORDER, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners,
-  getViewportScale,
+  getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 import AmbientParticles from './AmbientParticles';
 
@@ -20,9 +18,6 @@ export default class ArenaHub extends Component {
     super(props);
     this.state = {
       showAvatarPicker: false,
-      showSettings: false,
-      showResetConfirm: false,
-      soundSettings: getSoundSettings(),
       leaderboard: null,
       leaderboardLoading: false,
       leaderboardFilter: 'all',
@@ -31,17 +26,13 @@ export default class ArenaHub extends Component {
     };
   }
 
-  handleHubResize = () => {
-    this.setState({ hubScale: getViewportScale() });
-  };
-
   componentDidMount() {
-    window.addEventListener('resize', this.handleHubResize);
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ hubScale: scale }));
     this.loadLeaderboard();
   }
 
   componentWillUnmount() {
-    window.removeEventListener('resize', this.handleHubResize);
+    this.unsubScale?.();
   }
 
   loadLeaderboard = async () => {
@@ -85,7 +76,7 @@ export default class ArenaHub extends Component {
 
   render() {
     const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
-    const { showAvatarPicker, showSettings, showResetConfirm, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
+    const { showAvatarPicker, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
     const collectionSize = profile.collection.reduce((sum, c) => sum + c.quantity, 0);
@@ -165,7 +156,7 @@ export default class ArenaHub extends Component {
               style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
-              onClick={() => this.setState({ showSettings: true })}
+              onClick={onOpenSettings}
             >
               Settings
             </button>
@@ -510,121 +501,6 @@ export default class ArenaHub extends Component {
             </div>
           </div>
         </div>
-
-        {/* ─── SETTINGS OVERLAY ──────────────────────────────── */}
-        {showSettings && (() => {
-          const ss = this.state.soundSettings;
-          const updateSound = (key, value) => {
-            const next = { ...ss, [key]: value };
-            saveSoundSettings(next);
-            this.setState({ soundSettings: next });
-            updateMusicVolume();
-          };
-          return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" style={{ zoom: this.state.hubScale }} onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}>
-              <div
-                className="w-full max-w-md p-6 shadow-2xl"
-                style={{
-                  background: 'linear-gradient(180deg, rgba(25,20,10,0.98) 0%, rgba(15,12,6,0.98) 100%)',
-                  border: `1px solid ${GOLD} 0.3)`,
-                  borderRadius: '16px',
-                  boxShadow: `0 0 60px rgba(0,0,0,0.5), 0 0 30px ${GOLD} 0.05)`,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h2 className="text-lg font-bold arena-heading mb-5" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Settings</h2>
-
-                <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.4)` }}>Profile</div>
-                <div className="flex flex-col mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${GOLD} 0.15)` }}>
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
-                    <div>
-                      <div className="text-sm" style={{ color: '#e8d5a0' }}>Username</div>
-                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.4)` }}>{profile.name}</div>
-                    </div>
-                    <span className="text-[10px]" style={{ color: `${GOLD} 0.25)` }}>Set at registration</span>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <div>
-                      <div className="text-sm" style={{ color: '#e8d5a0' }}>Avatar</div>
-                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.4)` }}>Change your profile picture</div>
-                    </div>
-                    <button
-                      type="button"
-                      className="px-3 py-1 text-xs font-medium transition-all"
-                      style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)` }}
-                      onClick={() => this.setState({ showSettings: false, showAvatarPicker: true })}
-                    >
-                      Change
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.4)` }}>Sound</div>
-                <div className="flex flex-col mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${GOLD} 0.15)` }}>
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
-                    <span className="text-sm" style={{ color: '#e8d5a0' }}>Master Volume</span>
-                    <div className="flex items-center gap-3">
-                      <input type="range" min="0" max="100" value={Math.round(ss.masterVolume * 100)} className="w-24 h-1 accent-amber-500 cursor-pointer" onInput={(e) => updateSound('masterVolume', parseInt(e.target.value, 10) / 100)} />
-                      <span className="text-xs w-8 text-right tabular-nums" style={{ color: `${PARCHMENT} 0.4)` }}>{Math.round(ss.masterVolume * 100)}%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
-                    <span className="text-sm" style={{ color: '#e8d5a0' }}>Music</span>
-                    <div className="flex items-center gap-3">
-                      <button type="button" className={cn('rounded-md px-2 py-0.5 text-[10px] font-medium border transition-colors', ss.musicEnabled ? 'border-green-500/40 bg-green-500/15 text-green-400' : 'border-white/15 text-white/30')} onClick={() => updateSound('musicEnabled', !ss.musicEnabled)}>{ss.musicEnabled ? 'On' : 'Off'}</button>
-                      <input type="range" min="0" max="100" value={Math.round(ss.musicVolume * 100)} className="w-20 h-1 accent-amber-500 cursor-pointer" disabled={!ss.musicEnabled} onInput={(e) => updateSound('musicVolume', parseInt(e.target.value, 10) / 100)} />
-                      <span className="text-xs w-8 text-right tabular-nums" style={{ color: `${PARCHMENT} 0.4)` }}>{Math.round(ss.musicVolume * 100)}%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm" style={{ color: '#e8d5a0' }}>Sound Effects</span>
-                    <div className="flex items-center gap-3">
-                      <button type="button" className={cn('rounded-md px-2 py-0.5 text-[10px] font-medium border transition-colors', ss.sfxEnabled ? 'border-green-500/40 bg-green-500/15 text-green-400' : 'border-white/15 text-white/30')} onClick={() => updateSound('sfxEnabled', !ss.sfxEnabled)}>{ss.sfxEnabled ? 'On' : 'Off'}</button>
-                      <input type="range" min="0" max="100" value={Math.round(ss.sfxVolume * 100)} className="w-20 h-1 accent-amber-500 cursor-pointer" disabled={!ss.sfxEnabled} onInput={(e) => updateSound('sfxVolume', parseInt(e.target.value, 10) / 100)} />
-                      <span className="text-xs w-8 text-right tabular-nums" style={{ color: `${PARCHMENT} 0.4)` }}>{Math.round(ss.sfxVolume * 100)}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'rgba(239,68,68,0.4)' }}>Danger Zone</div>
-                <div className="flex flex-col rounded-xl overflow-hidden" style={{ border: '1px solid rgba(239,68,68,0.15)' }}>
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(239,68,68,0.08)' }}>
-                    <div>
-                      <div className="text-sm text-red-400">Reset Profile</div>
-                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.3)` }}>Delete all progress and start over</div>
-                    </div>
-                    {showResetConfirm ? (
-                      <div className="flex items-center gap-2">
-                        <button type="button" className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700" onClick={() => { this.setState({ showSettings: false, showResetConfirm: false }); if (onResetProfile) onResetProfile(); }}>Confirm</button>
-                        <button type="button" className="rounded-lg px-3 py-1 text-xs transition-colors" style={{ ...BEVELED_BTN, color: `${PARCHMENT} 0.5)` }} onClick={() => this.setState({ showResetConfirm: false })}>Cancel</button>
-                      </div>
-                    ) : (
-                      <button type="button" className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors" onClick={() => this.setState({ showResetConfirm: true })}>Reset</button>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <div>
-                      <div className="text-sm text-red-400">Quit Game</div>
-                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.3)` }}>Close Valkenhall</div>
-                    </div>
-                    <button type="button" className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors" onClick={() => { this.setState({ showSettings: false }); onExit(); }}>Quit</button>
-                  </div>
-                </div>
-
-                <div className="mt-5 text-right">
-                  <button
-                    type="button"
-                    className="px-5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all"
-                    style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)` }}
-                    onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
 
         {/* ─── AVATAR PICKER OVERLAY ────────────────────────── */}
         {showAvatarPicker && (

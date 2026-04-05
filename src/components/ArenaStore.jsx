@@ -3,11 +3,9 @@ import { CURRENCY, SET_UNLOCK_LEVELS, levelFromXp, isArenaDebugMode } from '../u
 import { BOOSTER_SETS } from '../utils/arena/packGenerator';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { cn } from '../lib/utils';
+import { GOLD, PANEL_BG, PANEL_BORDER, CornerPlating, getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
 
 const SET_ORDER = ['gothic', 'arthurian', 'beta'];
-const GOLD = 'rgba(180, 140, 60,';
-const PANEL_BG = 'rgba(12, 10, 8, 0.92)';
-const PANEL_BORDER = `${GOLD} 0.25)`;
 
 function getBoosterImage(setKey) {
   const base = getLocalApiOrigin();
@@ -20,19 +18,6 @@ const BOOSTER_SCALE = {
   beta: 1,
 };
 
-function CornerPlating({ position }) {
-  const s = 10;
-  const t = 2;
-  const color = `${GOLD} 0.45)`;
-  const styles = {
-    'top-left': { top: -1, left: -1, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: 6, width: s, height: s },
-    'top-right': { top: -1, right: -1, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: 6, width: s, height: s },
-    'bottom-left': { bottom: -1, left: -1, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: 6, width: s, height: s },
-    'bottom-right': { bottom: -1, right: -1, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: 6, width: s, height: s },
-  };
-  return <div className="absolute pointer-events-none" style={styles[position]} />;
-}
-
 export default class ArenaStore extends Component {
   constructor(props) {
     super(props);
@@ -41,7 +26,16 @@ export default class ArenaStore extends Component {
       cart: { gothic: 0, arthurian: 0, beta: 0 },
       showConfirm: false,
       purchaseFlash: false,
+      viewScale: getViewportScale(),
     };
+  }
+
+  componentDidMount() {
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+  }
+
+  componentWillUnmount() {
+    this.unsubScale?.();
   }
 
   setCart = (setKey, value) => {
@@ -86,6 +80,7 @@ export default class ArenaStore extends Component {
     return (
       <div className="fixed inset-0 z-50 flex flex-col" style={{
         background: `url('/flesh-and-blood-proxies/store-bg.png') center/cover no-repeat`,
+        zoom: this.state.viewScale,
       }}>
         {/* Darken overlay */}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 40%, rgba(0,0,0,0.5) 70%, rgba(0,0,0,0.85) 100%)' }} />

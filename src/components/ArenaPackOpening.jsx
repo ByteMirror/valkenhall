@@ -1,34 +1,13 @@
 import { Component } from 'preact';
-import { useState } from 'preact/hooks';
 import { motion, AnimatePresence } from 'framer-motion';
-import { extractKeywordAbilities, findGlossaryTermsInText, getGlossaryEntry } from '../utils/game/sorceryKeywords';
 import { cn } from '../lib/utils';
+import CardInspector, { RARITY_LABEL_COLOR } from './CardInspector';
 import PackOpeningFX from './PackOpeningFX';
 import { getLocalApiOrigin } from '../utils/localApi';
+import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
+import { getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
 
 const BOOSTER_SCALE = { gothic: 1, arthurian: 1.4, beta: 1 };
-
-function GlossaryTip({ keyword, description }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <span
-      className="relative inline"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <span className="cursor-help text-amber-300/90">{keyword}</span>
-      {open ? (
-        <span
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 rounded-lg bg-popover border border-border/70 p-3 text-xs text-popover-foreground shadow-xl backdrop-blur-xl"
-          style={{ zIndex: 200 }}
-        >
-          <span className="font-semibold block mb-1">{keyword}</span>
-          <span className="text-muted-foreground leading-relaxed">{description}</span>
-        </span>
-      ) : null}
-    </span>
-  );
-}
 
 function getBoosterImage(setKey) {
   const base = getLocalApiOrigin();
@@ -68,14 +47,6 @@ const RARITY_BORDER_COLOR = {
   Avatar: 'rgba(220,40,40,0.6)',
 };
 
-const RARITY_LABEL_COLOR = {
-  Ordinary: 'text-white/40',
-  Exceptional: 'text-blue-400',
-  Elite: 'text-purple-400',
-  Unique: 'text-amber-400',
-  Avatar: 'text-red-400',
-};
-
 export default class ArenaPackOpening extends Component {
   constructor(props) {
     super(props);
@@ -84,11 +55,13 @@ export default class ArenaPackOpening extends Component {
       shaking: false,
       hoveredIndex: -1,
       inspectedEntry: null,
+      viewScale: getViewportScale(),
     };
   }
 
   componentDidMount() {
     window.addEventListener('keydown', this.handleKeyDown);
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
     if (this.props.autoOpen) {
       // Skip the sealed chooser — go straight to opening animation
       this.handlePackClick();
@@ -97,6 +70,7 @@ export default class ArenaPackOpening extends Component {
 
   componentWillUnmount() {
     window.removeEventListener('keydown', this.handleKeyDown);
+    this.unsubScale?.();
   }
 
   handleKeyDown = (e) => {
@@ -128,31 +102,6 @@ export default class ArenaPackOpening extends Component {
     }, 900);
   };
 
-  renderTextWithTooltips(text, depth = 0) {
-    if (!text || depth > 1) return text;
-    const terms = findGlossaryTermsInText(text);
-    const patterns = terms.map((t) => t.keyword).sort((a, b) => b.length - a.length);
-    if (patterns.length === 0) return <span className={depth === 0 ? 'whitespace-pre-line' : ''}>{text}</span>;
-    const regex = new RegExp(`(${patterns.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
-    const parts = text.split(regex);
-    return (
-      <span className={depth === 0 ? 'whitespace-pre-line' : ''}>
-        {parts.map((part, i) => {
-          const entry = getGlossaryEntry(part);
-          if (entry) {
-            if (depth > 0) {
-              return <span key={i} className="text-amber-300/90">{entry.keyword}</span>;
-            }
-            return (
-              <GlossaryTip key={i} keyword={entry.keyword} description={entry.description} />
-            );
-          }
-          return <span key={i}>{part}</span>;
-        })}
-      </span>
-    );
-  }
-
   render() {
     const { pack, onDone, onOpenAnother, canAffordAnother, remainingPacks } = this.props;
     const { phase, shaking, hoveredIndex, inspectedEntry } = this.state;
@@ -160,7 +109,7 @@ export default class ArenaPackOpening extends Component {
     const N = pack.cards.length;
 
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col overflow-hidden">
+      <div className="fixed inset-0 z-50 bg-black flex flex-col overflow-hidden" style={{ zoom: this.state.viewScale }}>
         {/* Particle FX overlay */}
         <PackOpeningFX active={phase === 'opening' || phase === 'summary'} />
 
@@ -261,6 +210,7 @@ export default class ArenaPackOpening extends Component {
                         const rowN = row.length;
                         const rarity = entry.rarity || 'Ordinary';
                         const isSite = entry.card?.type === 'Site' || entry.card?.played_horizontally;
+                        const entryFoil = isFoilFinish(entry.printing?.foiling);
                         const isHovered = hoveredIndex === i;
                         const isEntryDone = this.state.entryDone;
                         const cardWidth = 170;
@@ -305,11 +255,14 @@ export default class ArenaPackOpening extends Component {
                             onClick={() => this.setState({ inspectedEntry: inspectedEntry === entry ? null : entry })}
                           >
                             <motion.div
+                              className={cn(entryFoil && FOIL_OVERLAY_CLASSES)}
+                              data-foil={entryFoil ? entry.printing?.foiling : undefined}
                               style={{
                                 width: cardWidth,
                                 height: cardHeight,
                                 borderRadius: 10,
                                 overflow: 'hidden',
+                                background: '#000',
                                 border: `2px solid ${RARITY_BORDER_COLOR[rarity]}`,
                               }}
                               animate={rarity !== 'Ordinary' && !isHovered ? {
@@ -324,7 +277,7 @@ export default class ArenaPackOpening extends Component {
                               } : { duration: 0.15 }}
                             >
                               <img
-                                src={entry.card?.printings?.[0]?.image_url || entry.printing?.image_url || ''}
+                                src={entry.printing?.image_url || entry.card?.printings?.[0]?.image_url || ''}
                                 alt={entry.card?.name || ''}
                                 className="w-full h-full object-cover"
                                 draggable={false}
@@ -380,76 +333,15 @@ export default class ArenaPackOpening extends Component {
         </div>
 
         {/* Card inspector */}
-        <AnimatePresence>
-          {inspectedEntry ? (() => {
-            const card = inspectedEntry.card || {};
-            const rulesText = card.functional_text_plain || card.functional_text || '';
-            const keywordAbilities = extractKeywordAbilities(rulesText);
-            const isSite = card.type === 'Site' || card.played_horizontally;
-            const imgUrl = card.printings?.[0]?.image_url || '';
-
-            return (
-              <motion.div
-                className="fixed inset-0 z-[1200] flex items-center justify-center backdrop-blur-md bg-black/20"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => this.setState({ inspectedEntry: null })}
-              >
-                <motion.div
-                  className="flex items-start gap-8 max-w-[90vw]"
-                  initial={{ scale: 0.85, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.85, opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex-shrink-0" style={isSite ? { width: 'calc(40vh * 88.9 / 63.5)', height: '40vh' } : {}}>
-                    <img
-                      src={imgUrl} alt={card.name || ''}
-                      className="rounded-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
-                      style={isSite
-                        ? { height: 'calc(40vh * 88.9 / 63.5)', width: '40vh', transform: 'rotate(90deg) translateX(0%) translateY(-100%)', transformOrigin: 'top left' }
-                        : { height: '40vh' }
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-col gap-3 min-w-[340px] max-w-[480px]">
-                    <div className="rounded-xl bg-card/95 border border-border/60 p-4 shadow-xl backdrop-blur-xl">
-                      <h2 className="text-lg font-bold text-white">{card.name}</h2>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className={cn('text-xs font-semibold', RARITY_LABEL_COLOR[inspectedEntry.rarity])}>{inspectedEntry.rarity}</span>
-                        <span className="text-xs text-muted-foreground">{card.type_text || card.type || ''}</span>
-                      </div>
-                      {rulesText ? (
-                        <div className="mt-3 text-sm leading-relaxed text-white/80">{this.renderTextWithTooltips(rulesText)}</div>
-                      ) : null}
-                      {(card.power || card.defense) ? (
-                        <div className="mt-3 flex gap-3 text-sm">
-                          {card.power ? <span className="text-red-400">ATK {card.power}</span> : null}
-                          {card.defense ? <span className="text-blue-400">DEF {card.defense}</span> : null}
-                          {card.health ? <span className="text-green-400">HP {card.health}</span> : null}
-                          {card.cost ? <span className="text-yellow-400">Cost {card.cost}</span> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                    {keywordAbilities.length > 0 ? (
-                      <div className="flex flex-col gap-2">
-                        {keywordAbilities.map(({ keyword, description }) => (
-                          <div key={keyword} className="rounded-xl bg-card border border-border/60 p-3 shadow-lg">
-                            <div className="text-sm font-semibold text-white">{keyword}</div>
-                            <div className="mt-1 text-xs leading-relaxed text-white/70">{this.renderTextWithTooltips(description, 1)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div className="text-center text-[10px] text-white/30 mt-1">Hover highlighted words for explanations · Space / Click to close</div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            );
-          })() : null}
-        </AnimatePresence>
+        {inspectedEntry ? (
+          <CardInspector
+            card={inspectedEntry.card}
+            imageUrl={inspectedEntry.printing?.image_url}
+            rarity={inspectedEntry.rarity}
+            foiling={inspectedEntry.printing?.foiling}
+            onClose={() => this.setState({ inspectedEntry: null })}
+          />
+        ) : null}
       </div>
     );
   }

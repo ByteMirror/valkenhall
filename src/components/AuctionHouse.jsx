@@ -14,7 +14,7 @@ import {
   PANEL_BG, PANEL_BORDER, BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
   TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR, ACCENT_GOLD,
   DIALOG_STYLE, FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
-  getViewportScale,
+  getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
 function cardImageUrl(card) {
@@ -76,18 +76,14 @@ export default class AuctionHouse extends Component {
   }
 
   componentDidMount() {
-    window.addEventListener('resize', this.handleResize);
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
     this.doSync();
     this.loadListings();
   }
 
   componentWillUnmount() {
-    window.removeEventListener('resize', this.handleResize);
+    this.unsubScale?.();
   }
-
-  handleResize = () => {
-    this.setState({ viewScale: getViewportScale() });
-  };
 
   doSync = async () => {
     const { profile } = this.props;

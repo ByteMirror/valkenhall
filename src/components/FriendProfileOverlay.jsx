@@ -8,7 +8,7 @@ import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, VIGNETTE, COIN_COLOR,
   FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
-  getViewportScale,
+  getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
 function resolveAvatarUrl(cardId, sorceryCards) {
@@ -55,17 +55,13 @@ export default class FriendProfileOverlay extends Component {
   }
 
   componentDidMount() {
-    window.addEventListener('resize', this.handleResize);
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
     this.loadProfile();
   }
 
   componentWillUnmount() {
-    window.removeEventListener('resize', this.handleResize);
+    this.unsubScale?.();
   }
-
-  handleResize = () => {
-    this.setState({ viewScale: getViewportScale() });
-  };
 
   async loadProfile() {
     try {
@@ -85,10 +81,10 @@ export default class FriendProfileOverlay extends Component {
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
         <div
           className="relative w-full max-w-2xl flex flex-col overflow-hidden"
-          style={{ ...DIALOG_STYLE, borderRadius: '12px', zoom: this.state.viewScale, maxHeight: `${75 / this.state.viewScale}vh` }}
+          style={{ ...DIALOG_STYLE, zoom: this.state.viewScale, maxHeight: `${75 / this.state.viewScale}vh` }}
           onClick={(e) => e.stopPropagation()}
         >
-          <FourCorners />
+          <FourCorners radius={12} />
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-6 h-6 rounded-full animate-spin" style={{ border: `2px solid ${GOLD} 0.2)`, borderTopColor: ACCENT_GOLD }} />
