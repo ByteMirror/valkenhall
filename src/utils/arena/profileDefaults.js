@@ -29,11 +29,14 @@ export const SET_UNLOCK_LEVELS = {
 export const MAX_LEVEL = 100;
 const XP_CAP_LEVEL = 60;
 
+const XP_BASE = 200;
+const XP_CAP = 3500;
+const XP_STEP = (XP_CAP - XP_BASE) / (XP_CAP_LEVEL - 1);
+
 function xpToNextLevel(level) {
-  if (level < 1) return 200;
-  if (level >= XP_CAP_LEVEL) return 3500;
-  // Starts at 200 XP (level 1→2, ~3 matches), scales up to 3500 at level 60
-  return Math.floor(200 + 3300 * Math.pow((level - 1) / (XP_CAP_LEVEL - 1), 1.4));
+  if (level < 1) return XP_BASE;
+  if (level >= XP_CAP_LEVEL) return XP_CAP;
+  return Math.floor(XP_BASE + XP_STEP * (level - 1));
 }
 
 const XP_TABLE = [];
