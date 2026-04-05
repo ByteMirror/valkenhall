@@ -777,10 +777,11 @@ export default class Mailbox extends Component {
               </>
             ) : null}
           </div>
+
+          {/* Card picker — anchored to left of this panel */}
+          {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
         </div>
 
-        {/* Floating card picker — to the left of the mailbox */}
-        {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
       </div>
     );
   }
@@ -802,11 +803,11 @@ export default class Mailbox extends Component {
       <div
         className="absolute flex flex-col"
         style={{
-          top: `${48 * viewScale}px`,
-          right: `${(24 + 400) * viewScale + 8}px`,
+          top: 0,
+          right: '100%',
+          marginRight: 8,
           width: 320,
-          height: 580,
-          zoom: viewScale,
+          height: '100%',
           ...DIALOG_STYLE,
         }}
         onClick={e => e.stopPropagation()}
