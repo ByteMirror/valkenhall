@@ -164,56 +164,18 @@ export function adjustAlpha(rgba, alpha) {
   return rgba.replace(/[\d.]+\)$/, `${alpha})`);
 }
 
-/* ── SVG filter defs — mount once at app root ──────────── */
-export function MedievalSvgDefs() {
-  return (
-    <svg width="0" height="0" style={{ position: 'absolute' }}>
-      <defs>
-        <filter id="gold-emboss" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="0.5" result="blur" />
-          <feSpecularLighting in="blur" surfaceScale="3" specularConstant="0.6" specularExponent="20" lightingColor="#d4a843" result="spec">
-            <fePointLight x="-50" y="-80" z="120" />
-          </feSpecularLighting>
-          <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn" />
-          <feComposite in="SourceGraphic" in2="specIn" operator="arithmetic" k1="0" k2="1" k3="0.7" k4="0" />
-        </filter>
-      </defs>
-    </svg>
-  );
-}
-
-/* ── SVG corner flourish ornament ──────────────────────── */
+/* ── Corner plating ornament ───────────────────────────── */
 export function CornerPlating({ position, color = GOLD_CORNER, radius = 6 }) {
-  // Ornamental L-bracket with a small flourish curl
-  const size = 18;
-  const posStyle = {
-    'top-left': { top: -2, left: -2 },
-    'top-right': { top: -2, right: -2, transform: 'scaleX(-1)' },
-    'bottom-left': { bottom: -2, left: -2, transform: 'scaleY(-1)' },
-    'bottom-right': { bottom: -2, right: -2, transform: 'scale(-1, -1)' },
+  const s = CORNER_SIZE;
+  const t = CORNER_THICKNESS;
+  const r = radius;
+  const styles = {
+    'top-left': { top: -1, left: -1, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: r, width: s, height: s },
+    'top-right': { top: -1, right: -1, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: r, width: s, height: s },
+    'bottom-left': { bottom: -1, left: -1, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: r, width: s, height: s },
+    'bottom-right': { bottom: -1, right: -1, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: r, width: s, height: s },
   };
-  return (
-    <svg
-      className="absolute pointer-events-none"
-      width={size}
-      height={size}
-      viewBox="0 0 18 18"
-      fill="none"
-      style={{ ...posStyle[position], transition: 'opacity 0.2s ease' }}
-      data-corner=""
-    >
-      {/* Main L-bracket with subtle curve */}
-      <path
-        d={`M1 ${radius > 8 ? 12 : 10} V${Math.min(radius, 5)} Q1 1 ${Math.min(radius, 5)} 1 H${radius > 8 ? 12 : 10}`}
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        filter="url(#gold-emboss)"
-      />
-      {/* Small decorative dot at corner intersection */}
-      <circle cx={Math.min(radius, 5)} cy={Math.min(radius, 5)} r="1.2" fill={color} filter="url(#gold-emboss)" />
-    </svg>
-  );
+  return <div className="absolute pointer-events-none" style={{ ...styles[position], transition: 'border-color 0.2s ease' }} data-corner="" />;
 }
 
 /* ── Four corners shorthand ────────────────────────────── */
@@ -228,20 +190,12 @@ export function FourCorners({ color = GOLD_CORNER, radius = 6 }) {
   );
 }
 
-/* ── Ornamental divider with scrollwork ────────────────── */
+/* ── Ornamental divider with celtic rune ───────────────── */
 export function OrnamentalDivider({ className }) {
   return (
-    <div className={`flex items-center gap-0 select-none ${className || ''}`}>
+    <div className={`flex items-center gap-3 select-none ${className || ''}`}>
       <div className="flex-1 h-px" style={{ background: DIVIDER_GRADIENT }} />
-      <svg width="40" height="12" viewBox="0 0 40 12" fill="none" className="shrink-0">
-        {/* Left scrollwork curl */}
-        <path d="M2 6 Q6 2 10 6 Q14 10 18 6" stroke={`${GOLD} 0.3)`} strokeWidth="1" strokeLinecap="round" fill="none" filter="url(#gold-emboss)" />
-        {/* Center diamond */}
-        <path d="M18 3 L20 1 L22 3 L20 5 Z" fill={`${GOLD} 0.35)`} filter="url(#gold-emboss)" />
-        <path d="M18 9 L20 7 L22 9 L20 11 Z" fill={`${GOLD} 0.2)`} filter="url(#gold-emboss)" />
-        {/* Right scrollwork curl */}
-        <path d="M22 6 Q26 2 30 6 Q34 10 38 6" stroke={`${GOLD} 0.3)`} strokeWidth="1" strokeLinecap="round" fill="none" filter="url(#gold-emboss)" />
-      </svg>
+      <img src="/rune-divider.svg" alt="" className="h-5" draggable={false} style={{ opacity: 0.25, filter: 'sepia(1) saturate(3) brightness(0.6) hue-rotate(15deg)' }} />
       <div className="flex-1 h-px" style={{ background: DIVIDER_GRADIENT }} />
     </div>
   );
@@ -259,7 +213,7 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
         el.style.transform = 'scale(1.02)';
         el.style.boxShadow = '0 0 20px rgba(166,160,155,0.08)';
         el.querySelector('[data-frame]').style.borderColor = BTN_BORDER_HOVER;
-        el.querySelectorAll('[data-corner]').forEach((c) => { c.style.opacity = '1'; });
+        el.querySelectorAll('[data-corner]').forEach((c) => { c.style.borderColor = BTN_CORNER_HOVER; });
         el.querySelector('[data-content]').style.background = `${CONTENT_BG_HOVER}, rgba(12, 10, 8, 0.92)`;
       }}
       onMouseLeave={(e) => {
@@ -267,7 +221,7 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
         el.style.transform = 'scale(1)';
         el.style.boxShadow = 'none';
         el.querySelector('[data-frame]').style.borderColor = BTN_BORDER;
-        el.querySelectorAll('[data-corner]').forEach((c) => { c.style.opacity = '0.7'; });
+        el.querySelectorAll('[data-corner]').forEach((c) => { c.style.borderColor = BTN_CORNER; });
         el.querySelector('[data-content]').style.background = `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`;
       }}
       onMouseDown={(e) => {
@@ -285,7 +239,7 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
       <CornerPlating position="top-right" color={BTN_CORNER} />
       <CornerPlating position="bottom-left" color={BTN_CORNER} />
       <CornerPlating position="bottom-right" color={BTN_CORNER} />
-      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
+      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(12px)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
         <span className="text-lg font-bold arena-heading" style={{ color: TEXT_BODY }}>{title}</span>
       </div>
     </button>
