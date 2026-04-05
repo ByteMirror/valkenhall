@@ -239,7 +239,7 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
       <CornerPlating position="top-right" color={BTN_CORNER} />
       <CornerPlating position="bottom-left" color={BTN_CORNER} />
       <CornerPlating position="bottom-right" color={BTN_CORNER} />
-      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(12px)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
+      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(8px)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
         <span className="text-lg font-bold arena-heading" style={{ color: TEXT_BODY }}>{title}</span>
       </div>
     </button>

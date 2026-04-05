@@ -121,7 +121,7 @@ export default class ArenaHub extends Component {
         <AmbientParticles />
 
         {/* ─── TOP BAR ─────────────────────────────────────── */}
-        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(12px)', zoom: this.state.hubScale }}>
+        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', zoom: this.state.hubScale }}>
           <img src="/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
 
           <div className="ml-auto flex items-center gap-5">
@@ -168,7 +168,7 @@ export default class ArenaHub extends Component {
           <div className="mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
 
             {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2 w-[60%] mx-auto" style={{ background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(12px)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2 w-[60%] mx-auto" style={{ background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
               <CornerPlating position="top-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
@@ -312,7 +312,7 @@ export default class ArenaHub extends Component {
 
                 {/* Recent Matches */}
                 {totalMatches > 0 && (
-                  <div className="mt-4 p-3" style={{ background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(12px)', border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
+                  <div className="mt-4 p-3" style={{ background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
                     <div className="flex items-center gap-3 mb-2">
                       <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>Recent Matches</span>
                       <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
@@ -346,7 +346,7 @@ export default class ArenaHub extends Component {
                   className="relative overflow-hidden flex-1 flex flex-col"
                   style={{
                     background: 'rgba(12, 10, 8, 0.94)',
-                    backdropFilter: 'blur(12px)',
+                    backdropFilter: 'blur(8px)',
                     border: `1px solid ${GOLD} 0.18)`,
                     borderRadius: '8px',
                     boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
@@ -442,7 +442,7 @@ export default class ArenaHub extends Component {
                   className="relative flex-1 flex flex-col overflow-hidden"
                   style={{
                     background: 'rgba(12, 10, 8, 0.94)',
-                    backdropFilter: 'blur(12px)',
+                    backdropFilter: 'blur(8px)',
                     border: `1px solid ${GOLD} 0.18)`,
                     borderRadius: '8px',
                     boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
