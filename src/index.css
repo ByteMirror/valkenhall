@@ -204,6 +204,56 @@ img {
   font-family: 'MedievalSharp', cursive;
 }
 
+/* ── Game-feel: disable web-browser behaviors ──────────── */
+
+/* No text selection anywhere (except input fields) */
+*, *::before, *::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* No text drag (images already have draggable=false) */
+img, svg, a, button, [role="button"] {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* No tap highlight on mobile/touch (CEF on some platforms) */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* No focus outlines (we use custom ring styles) */
+*:focus {
+  outline: none;
+}
+
+/* Disable pull-to-refresh and bounce scrolling */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* Disable browser context menu on the entire app (JS handles right-click) */
+html {
+  -webkit-touch-callout: none;
+}
+
+/* Prevent pinch-zoom */
+html {
+  touch-action: manipulation;
+}
+
+/* Disable spell-check underlines on inputs */
+input, textarea {
+  spellcheck: false;
+}
+
+
 /* Medieval cursors — Gauntlet Medieval set by THTH (Public Domain) */
 html {
   cursor: url('../public/cursors/default.png') 4 2, auto;
@@ -236,6 +286,16 @@ input[type="tel"], textarea, [contenteditable] {
   cursor: text !important;
 }
 
+/* Hide native number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .cursor-grab, [draggable="true"] {
   cursor: url('../public/cursors/grab.png') 24 14, grab;
 }
@@ -246,4 +306,60 @@ input[type="tel"], textarea, [contenteditable] {
 
 canvas {
   cursor: url('../public/cursors/default.png') 4 2, auto;
+}
+
+/* ── Medieval overlay scrollbar ─────────────────────────
+   - Overlays content (no layout shift)
+   - Hidden by default, fades in on scroll
+   - Gold-tinted thumb matching the medieval theme
+   ─────────────────────────────────────────────────────── */
+
+/* Use overlay scrollbar so it doesn't consume space */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* Webkit: overlay + invisible by default */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(180, 140, 60, 0.35);
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 140, 60, 0.55);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Show-on-scroll: JS adds .is-scrolling class, CSS fades in the thumb */
+.is-scrolling {
+  scrollbar-color: rgba(180, 140, 60, 0.35) transparent;
+}
+
+.is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(180, 140, 60, 0.35);
+}
+
+/* When NOT scrolling, thumb is invisible */
+:not(.is-scrolling) {
+  scrollbar-color: transparent transparent;
+}
+
+:not(.is-scrolling)::-webkit-scrollbar-thumb {
+  background: transparent;
 }
