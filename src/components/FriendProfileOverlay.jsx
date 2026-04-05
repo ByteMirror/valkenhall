@@ -4,6 +4,11 @@ import { getPublicProfile } from '../utils/friendsApi';
 import { xpProgressInLevel, levelFromXp } from '../utils/arena/profileDefaults';
 import { formatRank, TIER_COLORS, TIER_LABELS } from '../utils/arena/rankUtils';
 import { ACHIEVEMENTS } from '../utils/arena/achievements';
+import {
+  GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
+  DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, VIGNETTE, COIN_COLOR,
+  FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
+} from '../lib/medievalTheme';
 
 function resolveAvatarUrl(cardId, sorceryCards) {
   if (!cardId || !sorceryCards) return null;
@@ -15,6 +20,24 @@ const ACTIVITY_LABELS = {
   hub: 'In Hub', store: 'In Store', deckbuilder: 'Deck Builder',
   'in-match': 'In Match', 'pack-opening': 'Opening Packs',
   'deck-select': 'Selecting Deck', matchmaking: 'In Queue', 'auction-house': 'Auction House',
+};
+
+const STAT_CARD = {
+  background: `${GOLD} 0.04)`,
+  border: `1px solid ${GOLD} 0.1)`,
+  borderRadius: '8px',
+};
+
+const SECTION_CARD = {
+  background: `${GOLD} 0.03)`,
+  border: `1px solid ${GOLD} 0.1)`,
+  borderRadius: '8px',
+};
+
+const SET_COLORS = {
+  gothic: `linear-gradient(90deg, rgba(168,120,50,0.5) 0%, rgba(168,120,50,0) 100%)`,
+  arthurian: `linear-gradient(90deg, rgba(107,140,174,0.5) 0%, rgba(107,140,174,0) 100%)`,
+  beta: `linear-gradient(90deg, rgba(124,110,160,0.5) 0%, rgba(124,110,160,0) 100%)`,
 };
 
 export default class FriendProfileOverlay extends Component {
@@ -42,20 +65,26 @@ export default class FriendProfileOverlay extends Component {
   }
 
   render() {
-    const { onClose, onInvite, onSpectate, onTrade, onRemoveFriend, profileId, isFriend } = this.props;
-    const { profile, loading, error, showUnfriendConfirm } = this.state;
+    const { onClose } = this.props;
+    const { profile, loading, error } = this.state;
 
     return (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-md" onClick={onClose}>
-        <div className="w-full max-w-lg max-h-[85vh] rounded-2xl border border-white/[0.08] bg-[#111114] shadow-[0_24px_80px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+        <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
+        <div
+          className="relative w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+          style={{ ...DIALOG_STYLE, borderRadius: '12px' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <FourCorners />
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+              <div className="w-6 h-6 rounded-full animate-spin" style={{ border: `2px solid ${GOLD} 0.2)`, borderTopColor: ACCENT_GOLD }} />
             </div>
           ) : error ? (
-            <div className="text-center text-red-400 py-16 px-6">
-              <div className="text-sm">{error}</div>
-              <button type="button" className="mt-3 text-xs text-white/40 hover:text-white/60" onClick={onClose}>Close</button>
+            <div className="text-center py-16 px-6">
+              <div className="text-sm" style={{ color: '#c45050' }}>{error}</div>
+              <button type="button" className="mt-3 text-xs cursor-pointer" style={{ color: TEXT_MUTED }} onClick={onClose}>Close</button>
             </div>
           ) : profile ? this.renderProfile(profile) : null}
         </div>
@@ -82,18 +111,12 @@ export default class FriendProfileOverlay extends Component {
     const canSpectate = isOnline && activity === 'in-match';
     const canTrade = isOnline;
 
-    // Most played decks (as proxy for most played avatars/heroes)
     const deckNames = (profile.decks || []).map(d => d.name);
-
-    // Recent match history
     const recentMatches = profile.matchHistory || [];
-
-    // Achievements
     const achievements = profile.achievements || [];
 
-    // Per-set collection stats
     const setNameMap = { Gothic: 'gothic', 'Arthurian Legends': 'arthurian', Beta: 'beta' };
-    const setStats = { gothic: { owned: 0, total: 0, label: 'Gothic', color: 'bg-purple-500/70' }, arthurian: { owned: 0, total: 0, label: 'Arthurian', color: 'bg-blue-500/70' }, beta: { owned: 0, total: 0, label: 'Beta', color: 'bg-emerald-500/70' } };
+    const setStats = { gothic: { owned: 0, total: 0, label: 'Gothic' }, arthurian: { owned: 0, total: 0, label: 'Arthurian' }, beta: { owned: 0, total: 0, label: 'Beta' } };
     const ownedCardIds = new Set((profile.collection || []).map(c => c.cardId));
     if (sorceryCards) {
       for (const card of sorceryCards) {
@@ -111,81 +134,78 @@ export default class FriendProfileOverlay extends Component {
     return (
       <div className="flex flex-col max-h-[85vh]">
         {/* Hero banner */}
-        <div className="relative px-6 pt-6 pb-5 bg-gradient-to-b from-white/[0.03] to-transparent">
-          {/* Close button */}
+        <div className="relative px-6 pt-6 pb-5" style={{ background: `linear-gradient(180deg, ${GOLD} 0.04) 0%, transparent 100%)` }}>
           <button
             type="button"
-            className="absolute top-4 right-4 w-8 h-8 rounded-lg flex items-center justify-center text-white/25 hover:text-white/50 hover:bg-white/5 transition-colors"
+            className="absolute top-4 right-4 w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer"
+            style={{ color: TEXT_MUTED }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
             onClick={onClose}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </button>
 
           <div className="flex items-center gap-5">
-            {/* Avatar */}
             <div className="relative shrink-0">
               {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="w-20 h-20 rounded-xl object-cover object-top border-2 border-white/[0.08] shadow-lg" />
+                <img src={avatarUrl} alt="" className="w-20 h-20 rounded-xl object-cover object-top shadow-lg" style={{ border: `2px solid ${GOLD} 0.3)` }} />
               ) : (
-                <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border-2 border-amber-500/20 flex items-center justify-center text-3xl text-amber-400/60 font-bold">
+                <div className="w-20 h-20 rounded-xl flex items-center justify-center text-3xl font-bold" style={{ background: `${GOLD} 0.1)`, border: `2px solid ${GOLD} 0.25)`, color: ACCENT_GOLD }}>
                   {(profile.name || '?')[0].toUpperCase()}
                 </div>
               )}
-              {/* Online indicator */}
-              <div className={cn(
-                'absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-[3px] border-[#111114]',
-                isOnline ? 'bg-green-500' : 'bg-white/20'
-              )} />
+              <div
+                className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full"
+                style={{ background: isOnline ? ACCENT_GOLD : `${GOLD} 0.15)`, border: `3px solid rgba(15,12,6,0.98)` }}
+              />
             </div>
 
-            {/* Name + status */}
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-white truncate arena-heading">{profile.name}</h2>
+              <h2 className="text-xl font-bold truncate arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{profile.name}</h2>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-amber-400 text-sm font-semibold">Level {level}</span>
-                <span className="text-white/15">|</span>
+                <span className="text-sm font-semibold" style={{ color: ACCENT_GOLD }}>Level {level}</span>
+                <span style={{ color: `${GOLD} 0.2)` }}>|</span>
                 <span className={cn('text-sm font-semibold', rankColor)}>
                   {formatRank(profile.rank?.tier, profile.rank?.division)}
                 </span>
               </div>
               {isOnline ? (
                 <div className="flex items-center gap-1.5 mt-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[11px] text-green-400/80">{ACTIVITY_LABELS[activity] || 'Online'}</span>
+                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: ACCENT_GOLD }} />
+                  <span className="text-[11px]" style={{ color: `${GOLD} 0.6)` }}>{ACTIVITY_LABELS[activity] || 'Online'}</span>
                 </div>
               ) : (
-                <div className="text-[11px] text-white/25 mt-1.5">Offline</div>
+                <div className="text-[11px] mt-1.5" style={{ color: TEXT_MUTED }}>Offline</div>
               )}
             </div>
           </div>
         </div>
 
+        <OrnamentalDivider />
+
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
+          {/* Stats grid */}
           <div className="grid grid-cols-4 gap-2 mb-4">
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-center">
-              <div className="text-xl font-bold text-white tabular-nums">{total}</div>
-              <div className="text-[10px] text-white/30 mt-0.5">Matches</div>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-center">
-              <div className="text-xl font-bold text-green-400 tabular-nums">{wins}</div>
-              <div className="text-[10px] text-white/30 mt-0.5">Wins</div>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-center">
-              <div className="text-xl font-bold text-red-400 tabular-nums">{losses}</div>
-              <div className="text-[10px] text-white/30 mt-0.5">Losses</div>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-center">
-              <div className="text-xl font-bold text-white/70 tabular-nums">{winRate}%</div>
-              <div className="text-[10px] text-white/30 mt-0.5">Win Rate</div>
-            </div>
+            {[
+              { val: total, label: 'Matches', color: TEXT_PRIMARY },
+              { val: wins, label: 'Wins', color: '#6ab04c' },
+              { val: losses, label: 'Losses', color: '#c45050' },
+              { val: `${winRate}%`, label: 'Win Rate', color: TEXT_BODY },
+            ].map((s) => (
+              <div key={s.label} className="p-3 text-center" style={STAT_CARD}>
+                <div className="text-xl font-bold tabular-nums" style={{ color: s.color }}>{s.val}</div>
+                <div className="text-[10px] mt-0.5" style={{ color: TEXT_MUTED }}>{s.label}</div>
+              </div>
+            ))}
           </div>
 
           {/* Collection */}
-          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
+          <div className="p-3 mb-4" style={SECTION_CARD}>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25">Collection</div>
-              <div className="text-[10px] text-white/30">{profile.uniqueCards || 0} unique &middot; {profile.collectionSize || 0} total</div>
+              <div className="text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Collection</div>
+              <div className="text-[10px]" style={{ color: TEXT_MUTED }}>{profile.uniqueCards || 0} unique &middot; {profile.collectionSize || 0} total</div>
             </div>
             <div className="flex flex-col gap-1.5">
               {['gothic', 'arthurian', 'beta'].map((key) => {
@@ -193,11 +213,11 @@ export default class FriendProfileOverlay extends Component {
                 const pct = s.total > 0 ? Math.round((s.owned / s.total) * 100) : 0;
                 return (
                   <div key={key} className="flex items-center gap-2">
-                    <span className="text-[10px] text-white/40 w-16 truncate">{s.label}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                      <div className={cn('h-full rounded-full transition-all', s.color)} style={{ width: `${pct}%` }} />
+                    <span className="text-[10px] w-16 truncate" style={{ color: TEXT_MUTED }}>{s.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.06)` }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: SET_COLORS[key] || `${GOLD} 0.4)` }} />
                     </div>
-                    <span className="text-[10px] text-white/30 tabular-nums w-14 text-right">{s.owned}/{s.total}</span>
+                    <span className="text-[10px] tabular-nums w-14 text-right" style={{ color: TEXT_MUTED }}>{s.owned}/{s.total}</span>
                   </div>
                 );
               })}
@@ -205,24 +225,24 @@ export default class FriendProfileOverlay extends Component {
           </div>
 
           {/* Rank Progress */}
-          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-1.5">Rank Progress</div>
+          <div className="p-3 mb-4" style={SECTION_CARD}>
+            <div className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={SECTION_HEADER_STYLE}>Rank Progress</div>
             <div className={cn('text-sm font-semibold', rankColor)}>{tierLabel}</div>
             <div className="flex items-center gap-2 mt-1">
-              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full rounded-full bg-amber-500/60 transition-all" style={{ width: `${profile.rank?.lp || 0}%` }} />
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.06)` }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${profile.rank?.lp || 0}%`, background: `linear-gradient(90deg, #8b6914, ${ACCENT_GOLD}, #c49a38)` }} />
               </div>
-              <span className="text-[10px] text-white/30 tabular-nums">{profile.rank?.lp || 0} LP</span>
+              <span className="text-[10px] tabular-nums" style={{ color: TEXT_MUTED }}>{profile.rank?.lp || 0} LP</span>
             </div>
           </div>
 
-          {/* Decks / most played */}
+          {/* Decks */}
           {deckNames.length > 0 ? (
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-2">Decks</div>
+            <div className="p-3 mb-4" style={SECTION_CARD}>
+              <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={SECTION_HEADER_STYLE}>Decks</div>
               <div className="flex flex-wrap gap-1.5">
                 {deckNames.map((name, i) => (
-                  <span key={i} className="rounded-md bg-white/[0.05] border border-white/[0.06] px-2.5 py-1 text-[11px] text-white/50">{name}</span>
+                  <span key={i} className="px-2.5 py-1 text-[11px]" style={{ background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.1)`, borderRadius: '4px', color: TEXT_BODY }}>{name}</span>
                 ))}
               </div>
             </div>
@@ -230,16 +250,16 @@ export default class FriendProfileOverlay extends Component {
 
           {/* Recent matches */}
           {recentMatches.length > 0 ? (
-            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-2">Recent Matches</div>
+            <div className="p-3 mb-4" style={SECTION_CARD}>
+              <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={SECTION_HEADER_STYLE}>Recent Matches</div>
               <div className="flex flex-col gap-1">
                 {recentMatches.slice(0, 5).map((m, i) => (
-                  <div key={i} className="flex items-center gap-2 py-1">
-                    <span className={cn('text-xs font-bold w-4', m.won ? 'text-green-400' : 'text-red-400')}>
+                  <div key={i} className="flex items-center gap-2 py-1" style={{ borderBottom: i < 4 ? `1px solid ${GOLD} 0.04)` : 'none' }}>
+                    <span className="text-xs font-bold w-4" style={{ color: m.won ? '#6ab04c' : '#c45050' }}>
                       {m.won ? 'W' : 'L'}
                     </span>
-                    <span className="text-xs text-white/50 flex-1 truncate">vs {m.opponentName || 'Opponent'}</span>
-                    {m.coinsEarned ? <span className="text-[10px] text-yellow-400/60 tabular-nums">+{m.coinsEarned}</span> : null}
+                    <span className="text-xs flex-1 truncate" style={{ color: TEXT_MUTED }}>vs {m.opponentName || 'Opponent'}</span>
+                    {m.coinsEarned ? <span className="text-[10px] tabular-nums" style={{ color: `${GOLD} 0.5)` }}>+{m.coinsEarned}</span> : null}
                   </div>
                 ))}
               </div>
@@ -247,8 +267,8 @@ export default class FriendProfileOverlay extends Component {
           ) : null}
 
           {/* Achievements */}
-          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-2">
+          <div className="p-3 mb-4" style={SECTION_CARD}>
+            <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={SECTION_HEADER_STYLE}>
               Achievements ({achievements.length}/{ACHIEVEMENTS.length})
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -257,17 +277,16 @@ export default class FriendProfileOverlay extends Component {
                 return (
                   <div
                     key={a.id}
-                    className={cn(
-                      'flex items-center gap-2 rounded-lg px-2.5 py-1.5 border transition-colors',
-                      unlocked
-                        ? 'border-amber-500/20 bg-amber-500/[0.06]'
-                        : 'border-white/[0.04] bg-white/[0.01] opacity-35'
-                    )}
+                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors"
+                    style={unlocked
+                      ? { border: `1px solid ${GOLD} 0.2)`, background: `${GOLD} 0.06)` }
+                      : { border: `1px solid ${GOLD} 0.04)`, background: `${GOLD} 0.01)`, opacity: 0.35 }
+                    }
                   >
-                    <span className="text-sm shrink-0">{unlocked ? a.icon : '🔒'}</span>
+                    <span className="text-sm shrink-0">{unlocked ? a.icon : '\u{1F512}'}</span>
                     <div className="min-w-0 flex-1">
-                      <div className={cn('text-[11px] font-medium truncate', unlocked ? 'text-white/80' : 'text-white/30')}>{a.name}</div>
-                      <div className={cn('text-[9px] truncate', unlocked ? 'text-white/40' : 'text-white/15')}>{a.description}</div>
+                      <div className="text-[11px] font-medium truncate" style={{ color: unlocked ? TEXT_PRIMARY : TEXT_MUTED }}>{a.name}</div>
+                      <div className="text-[9px] truncate" style={{ color: unlocked ? TEXT_MUTED : `${GOLD} 0.15)` }}>{a.description}</div>
                     </div>
                   </div>
                 );
@@ -277,20 +296,22 @@ export default class FriendProfileOverlay extends Component {
         </div>
 
         {/* Action bar */}
-        <div className="px-6 py-4 border-t border-white/[0.06] bg-white/[0.01]">
+        <div className="px-6 py-4" style={{ borderTop: `1px solid ${GOLD} 0.12)`, background: `${GOLD} 0.02)` }}>
           {showUnfriendConfirm ? (
             <div className="flex items-center gap-3">
-              <span className="text-xs text-white/50 flex-1">Remove {profile.name} from friends?</span>
+              <span className="text-xs flex-1" style={{ color: TEXT_MUTED }}>Remove {profile.name} from friends?</span>
               <button
                 type="button"
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/50 hover:bg-white/5 transition-colors"
+                className="px-3 py-1.5 text-xs cursor-pointer transition-all"
+                style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                 onClick={() => this.setState({ showUnfriendConfirm: false })}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium cursor-pointer transition-all"
+                style={{ ...DANGER_BTN, borderRadius: '6px' }}
                 onClick={() => { if (onRemoveFriend) onRemoveFriend(profileId); onClose(); }}
               >
                 Remove
@@ -301,7 +322,8 @@ export default class FriendProfileOverlay extends Component {
               {canInvite ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-lg bg-green-500 py-2.5 text-xs font-semibold text-black hover:bg-green-400 transition-colors"
+                  className="flex-1 py-2.5 text-xs font-semibold cursor-pointer transition-all"
+                  style={GOLD_BTN}
                   onClick={() => { if (onInvite) onInvite(profileId); onClose(); }}
                 >
                   Invite to Match
@@ -310,7 +332,8 @@ export default class FriendProfileOverlay extends Component {
               {canSpectate ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-lg bg-blue-500 py-2.5 text-xs font-semibold text-white hover:bg-blue-400 transition-colors"
+                  className="flex-1 py-2.5 text-xs font-semibold cursor-pointer transition-all"
+                  style={{ ...BEVELED_BTN, color: TEXT_PRIMARY, borderRadius: '6px' }}
                   onClick={() => { if (onSpectate) onSpectate(profileId); onClose(); }}
                 >
                   Spectate Match
@@ -319,19 +342,23 @@ export default class FriendProfileOverlay extends Component {
               {canTrade ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-lg bg-purple-500/20 border border-purple-500/30 py-2.5 text-xs font-semibold text-purple-400 hover:bg-purple-500/30 transition-colors"
+                  className="flex-1 py-2.5 text-xs font-semibold cursor-pointer transition-all"
+                  style={{ ...BEVELED_BTN, color: ACCENT_GOLD, borderRadius: '6px' }}
                   onClick={() => { if (onTrade) onTrade(profileId); onClose(); }}
                 >
                   Trade
                 </button>
               ) : null}
               {!canInvite && !canSpectate && !canTrade ? (
-                <div className="flex-1 text-center text-xs text-white/20 py-2.5">Player is offline</div>
+                <div className="flex-1 text-center text-xs py-2.5" style={{ color: TEXT_MUTED }}>Player is offline</div>
               ) : null}
               {isFriend !== false ? (
                 <button
                   type="button"
-                  className="rounded-lg border border-white/[0.08] px-3 py-2.5 text-xs text-white/30 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-colors"
+                  className="px-3 py-2.5 text-xs cursor-pointer transition-all"
+                  style={{ ...BEVELED_BTN, color: TEXT_MUTED, borderRadius: '6px' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#c45050'; e.currentTarget.style.borderColor = 'rgba(180,60,60,0.3)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
                   onClick={() => this.setState({ showUnfriendConfirm: true })}
                 >
                   Remove Friend
