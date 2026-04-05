@@ -21,6 +21,7 @@ import AuctionHouse from './components/AuctionHouse';
 import ArenaPackOpening from './components/ArenaPackOpening';
 import { saveArenaProfile } from './utils/arena/profileApi';
 import { playMusic, stopMusic } from './utils/arena/musicManager';
+import { playUI, UI, preloadUISounds } from './utils/arena/uiSounds';
 import { createDefaultProfile, CURRENCY, isArenaDebugMode } from './utils/arena/profileDefaults';
 import { checkAchievements, getAchievement } from './utils/arena/achievements';
 import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from './utils/arena/collectionUtils';
@@ -38,6 +39,7 @@ import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
 import SpectatorBanner from './components/SpectatorBanner';
 import RuneSpinner from './components/RuneSpinner';
+import LoadingIndicator from './components/LoadingIndicator';
 import TradeWindow from './components/TradeWindow';
 import { startPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
@@ -157,6 +159,24 @@ export default class App extends Component {
     applyThemePreference(this.state.themePreference);
     this.refreshSavedDecks();
 
+    this.loadCardsWithRetry = async (retries = 3, delay = 2000) => {
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          return await loadSorceryCardsWithSource();
+        } catch (error) {
+          console.warn(`Card load attempt ${attempt}/${retries} failed:`, error.message);
+          if (attempt < retries) {
+            this.setState({ loadingDetail: `Retrying... (${attempt}/${retries})` });
+            await new Promise((r) => setTimeout(r, delay));
+          } else {
+            console.error('Failed to load Sorcery cards after retries:', error);
+            return { cards: null, source: '' };
+          }
+        }
+      }
+      return { cards: null, source: '' };
+    };
+
     // Load sorcery cards
     this.setState({
       loading: true,
@@ -164,11 +184,7 @@ export default class App extends Component {
       loadingDetail: 'Fetching card data...',
     });
 
-    loadSorceryCardsWithSource()
-      .catch((error) => {
-        console.error('Failed to load Sorcery cards:', error);
-        return { cards: null, source: '' };
-      })
+    this.loadCardsWithRetry()
       .then((sorceryResult) => {
         this.setState({
           sorceryCards: sorceryResult.cards,
@@ -203,7 +219,7 @@ export default class App extends Component {
           this.setState({
             authChecking: false,
             loggedIn: true,
-            arenaProfile: this.seedFoilCards(this.profileFromServer(result.profile, token)),
+            arenaProfile: this.profileFromServer(result.profile, token),
             arenaLoading: false,
           });
           this.postLoginInit();
@@ -298,46 +314,8 @@ export default class App extends Component {
     };
   };
 
-  // TEMP: seed foil cards for testing — remove after verifying
-  seedFoilCards = (profile) => {
-    if (!profile || profile.name !== 'Clutterfox') return profile;
-    const foilEntries = [
-      { cardId: 'sorcery-angel_ascendant', printingId: 'got-angel_ascendant-b-f', quantity: 4 },
-      { cardId: 'sorcery-abaddon_succubus', printingId: 'got-abaddon_succubus-b-f', quantity: 4 },
-      { cardId: 'sorcery-day_of_judgment', printingId: 'got-day_of_judgment-b-f', quantity: 4 },
-      { cardId: 'sorcery-river_of_blood', printingId: 'got-river_of_blood-b-f', quantity: 4 },
-      { cardId: 'sorcery-bladedancer', printingId: 'got-bladedancer-b-f', quantity: 4 },
-      { cardId: 'sorcery-excalibur', printingId: 'art-excalibur-b-f', quantity: 4 },
-      { cardId: 'sorcery-black_knight', printingId: 'art-black_knight-b-f', quantity: 4 },
-      { cardId: 'sorcery-dragonlord', printingId: 'pro-dragonlord-op-rf', quantity: 4 },
-      { cardId: 'sorcery-witch', printingId: 'pro-witch-op-rf', quantity: 4 },
-      { cardId: 'sorcery-avatar_of_fire', printingId: 'pro-avatar_of_fire-op-rf', quantity: 4 },
-      { cardId: 'sorcery-elementalist', printingId: 'pro-elementalist-op-rf', quantity: 4 },
-    ];
-    const collection = [...(profile.collection || [])];
-    let changed = false;
-    for (const entry of foilEntries) {
-      const existing = collection.find((c) => c.printingId === entry.printingId);
-      if (existing) {
-        if (existing.quantity < entry.quantity) {
-          existing.quantity = entry.quantity;
-          changed = true;
-        }
-      } else {
-        collection.push(entry);
-        changed = true;
-      }
-    }
-    if (changed) {
-      const updated = { ...profile, collection };
-      saveArenaProfile(updated).catch(() => {});
-      return updated;
-    }
-    return profile;
-  };
-
   handleLogin = (result) => {
-    const profile = this.seedFoilCards(this.profileFromServer(result.profile, result.token));
+    const profile = this.profileFromServer(result.profile, result.token);
     this.setState({
       loggedIn: true,
       authChecking: false,
@@ -348,6 +326,7 @@ export default class App extends Component {
   };
 
   postLoginInit = () => {
+    preloadUISounds();
     playMusic('arena-hub', { fadeInDuration: 3000 });
     startPresence('hub', {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
@@ -546,6 +525,7 @@ export default class App extends Component {
       return {
         id: arenaDeck.id,
         name: arenaDeck.name,
+        cards: arenaDeck.cards || [],
         cardCount: arenaDeck.cards?.length || 0,
         previewUrl: local?.previewUrl || arenaDeck.previewUrl || null,
         savedAt: local?.savedAt || null,
@@ -584,12 +564,27 @@ export default class App extends Component {
 
   resetArenaProfile = async () => {
     const { arenaProfile } = this.state;
-    if (arenaProfile?.serverToken) {
-      await deleteAccount(arenaProfile.serverToken).catch((e) => console.error('Failed to delete server account:', e));
+    const token = arenaProfile?.serverToken;
+
+    // Delete game account on server (matchmaking, leaderboard, etc.)
+    if (token) {
+      await deleteAccount(token).catch((e) => console.error('Failed to delete server account:', e));
     }
-    const profile = createDefaultProfile();
+
+    // Create a fresh default profile but keep the auth token so we can save it
+    const profile = {
+      ...createDefaultProfile(),
+      serverToken: token || null,
+      email: arenaProfile?.email || null,
+      id: arenaProfile?.id || null,
+    };
+
     this.setState({ arenaProfile: profile });
-    await saveArenaProfile(profile).catch((e) => console.error('Failed to save profile:', e));
+
+    // Save the blank profile to the server, overwriting the old data
+    if (token) {
+      await saveArenaProfile(profile).catch((e) => console.error('Failed to save reset profile:', e));
+    }
   };
 
   registerArenaUsername = async (username) => {
@@ -889,6 +884,7 @@ export default class App extends Component {
   };
 
   buyArenaPack = (setKey, quantity = 1) => {
+    playUI(UI.PURCHASE);
     const debug = isArenaDebugMode();
     const totalCost = quantity * CURRENCY.PACK_PRICE;
 
@@ -1007,6 +1003,7 @@ export default class App extends Component {
   };
 
   openArenaDeckBuilder = () => {
+    playUI(UI.OPEN);
     playMusic('arena-deckbuilder', { fadeInDuration: 3000 });
     this.refreshSavedDecks();
     this.setState({
@@ -1018,17 +1015,15 @@ export default class App extends Component {
   handleOpenDeckInEditor = async (deckId) => {
     if (!deckId || !Array.isArray(this.state.sorceryCards)) return;
     try {
+      // Try arena profile first (avoids 404 for decks not in local storage)
+      const arenaDeck = this.state.arenaProfile?.decks?.find((d) => d.id === deckId);
       let savedDeck;
-      try {
-        savedDeck = await loadSavedDeckById(deckId, 'sorcery');
-      } catch {
-        // Not in local storage — fall back to arena profile
-      }
 
-      if (!savedDeck) {
-        const arenaDeck = this.state.arenaProfile?.decks?.find((d) => d.id === deckId);
-        if (!arenaDeck) return;
+      if (arenaDeck) {
         savedDeck = { id: arenaDeck.id, name: arenaDeck.name, cards: arenaDeck.cards || [] };
+      } else {
+        savedDeck = await loadSavedDeckById(deckId, 'sorcery');
+        if (!savedDeck) return;
       }
 
       const activeCards = this.getActiveCards();
@@ -1053,18 +1048,56 @@ export default class App extends Component {
     });
   };
 
+  // Single source of truth: local deck storage API.
+  // After any deck mutation, sync arenaProfile.decks from the canonical data.
+  syncArenaProfileDecks = (savedDecks, extraDeckData) => {
+    this.setState((state) => {
+      const { arenaProfile } = state;
+      if (!arenaProfile) return null;
+
+      // Build deck list from savedDecks summaries + any full card data we have
+      const currentArenaDecks = arenaProfile.decks || [];
+      const updatedDecks = savedDecks.map((summary) => {
+        // Prefer extra data (just-saved payload), then existing arena deck, then summary-only
+        const extra = extraDeckData?.get(summary.id);
+        const existing = currentArenaDecks.find((d) => d.id === summary.id);
+        return {
+          id: summary.id,
+          name: summary.name,
+          cards: extra?.cards || existing?.cards || [],
+          previewUrl: summary.previewUrl || existing?.previewUrl || null,
+        };
+      });
+
+      return { arenaProfile: { ...arenaProfile, decks: updatedDecks } };
+    }, () => {
+      if (this.state.arenaProfile) {
+        saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to sync arena profile:', e));
+      }
+    });
+  };
+
   handleSaveDeckFromEditor = async (payload) => {
     const savedSummary = await saveSavedDeck(payload, 'sorcery');
-    this.setState((state) => ({
-      savedDecks: [savedSummary, ...state.savedDecks.filter((d) => d.id !== savedSummary.id)],
+
+    const nextSavedDecks = [savedSummary, ...this.state.savedDecks.filter((d) => d.id !== savedSummary.id)];
+
+    this.setState({
+      savedDecks: nextSavedDecks,
       editingDeckData: {
-        ...state.editingDeckData,
+        ...this.state.editingDeckData,
         id: savedSummary.id,
         name: savedSummary.name,
       },
-    }));
+    });
+
+    // Sync arena profile decks with the just-saved card data
+    const extraData = new Map([[savedSummary.id, { cards: payload.cards }]]);
+    this.syncArenaProfileDecks(nextSavedDecks, extraData);
+
     return savedSummary;
   };
+
 
   handleBackToGallery = () => {
     this.refreshSavedDecks();
@@ -1080,9 +1113,9 @@ export default class App extends Component {
     if (!deckId) return;
     try {
       await deleteSavedDeckById(deckId, 'sorcery');
-      this.setState((state) => ({
-        savedDecks: state.savedDecks.filter((d) => d.id !== deckId),
-      }));
+      const nextSavedDecks = this.state.savedDecks.filter((d) => d.id !== deckId);
+      this.setState({ savedDecks: nextSavedDecks });
+      this.syncArenaProfileDecks(nextSavedDecks);
     } catch (error) {
       console.error('Failed to delete deck:', error);
     }
@@ -1266,7 +1299,7 @@ export default class App extends Component {
       return (
         <>
           <div className="fixed inset-0 bg-black flex items-center justify-center">
-            <RuneSpinner size={48} />
+            <RuneSpinner size={120} useViewportUnits />
           </div>
           {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} /> : null}
         </>
@@ -1353,9 +1386,7 @@ export default class App extends Component {
         ) : null}
         {this.state.isSpectating ? <SpectatorBanner onLeave={this.handleLeaveSpectate} /> : null}
         {showArena && this.state.arenaLoading ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
-            <div className="text-white/60 text-sm">Loading arena profile...</div>
-          </div>
+          <LoadingIndicator message="Loading Arena" detail="Fetching your profile..." />
         ) : null}
         {showArena && this.state.arenaProfile && !this.state.arenaProfile.starterDeck ? (
           <ArenaStarterPicker
@@ -1374,6 +1405,7 @@ export default class App extends Component {
             profile={this.state.arenaProfile}
             sorceryCards={this.state.sorceryCards}
             rank={this.state.arenaProfile.rank}
+            isAdmin={this.state.arenaProfile?.name === 'Clutterfox'}
             onPlayMatch={this.handleArenaPlayMatch}
             onFindMatch={this.startMatchmaking}
             onOpenStore={this.openArenaStore}
@@ -1382,6 +1414,7 @@ export default class App extends Component {
             onUpdateName={this.updateArenaName}
             onUpdateAvatar={this.updateArenaAvatar}
             onResetProfile={this.resetArenaProfile}
+            onUpdateProfile={(profile) => this.setState({ arenaProfile: profile })}
             friendListData={this.state.friendListData}
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
             onOpenSettings={this.handleOpenSettings}
@@ -1389,6 +1422,19 @@ export default class App extends Component {
             updateStatus={this.state.updateStatus}
             onToggleMailbox={this.handleToggleMailbox}
             mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+              />
+            }
           />
         ) : null}
         {this.state.settingsOpen ? (
@@ -1472,19 +1518,6 @@ export default class App extends Component {
               await friendsApi.removeFriend(id).catch(() => {});
               this.setState({ viewingFriendProfile: null });
             }}
-          />
-        ) : null}
-        {this.state.mailboxOpen ? (
-          <Mailbox
-            open={this.state.mailboxOpen}
-            onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
-            profile={this.state.arenaProfile}
-            friendListData={this.state.friendListData}
-            sorceryCards={this.state.sorceryCards}
-            onProfileUpdate={this.handleMailProfileUpdate}
-            selectedMailId={this.state.mailboxSelectedMailId}
-            initialView={this.state.mailboxView}
-            composeRecipientId={this.state.mailboxComposeRecipientId}
           />
         ) : null}
         <FriendsSidebar

@@ -14,12 +14,14 @@ import {
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 import AmbientParticles from './AmbientParticles';
+import AdminPanel from './AdminPanel';
 
 export default class ArenaHub extends Component {
   constructor(props) {
     super(props);
     this.state = {
       showAvatarPicker: false,
+      showAdmin: false,
       leaderboard: null,
       leaderboardLoading: false,
       leaderboardFilter: 'all',
@@ -126,6 +128,23 @@ export default class ArenaHub extends Component {
         <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', zoom: this.state.hubScale }}>
           <img src="/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
 
+          {this.props.isAdmin && (
+            <button
+              type="button"
+              className="ml-4 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-[1.05] active:scale-[0.97]"
+              style={{
+                background: 'linear-gradient(180deg, rgba(180,60,60,0.15) 0%, rgba(120,30,30,0.1) 100%)',
+                border: '1px solid rgba(180,60,60,0.35)',
+                borderRadius: '4px',
+                color: '#c45050',
+                textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+              }}
+              onClick={() => this.setState({ showAdmin: true })}
+            >
+              Admin
+            </button>
+          )}
+
           <div className="ml-auto flex items-center gap-5">
             {/* Gold display */}
             <div className="flex items-center gap-1.5">
@@ -134,22 +153,25 @@ export default class ArenaHub extends Component {
               <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
             </div>
 
-            {/* Mailbox button */}
-            <button
-              type="button"
-              className="relative px-3 py-1.5 text-xs font-semibold transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
-              onClick={onToggleMailbox}
-            >
-              <Mail size={16} style={{ color: ACCENT_GOLD }} />
-              {(mailboxUnreadCount || 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
-                  {mailboxUnreadCount}
-                </span>
-              )}
-            </button>
+            {/* Mailbox button + dropdown anchor */}
+            <div className="relative">
+              <button
+                type="button"
+                className="relative px-3 py-1.5 text-xs font-semibold transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
+                onClick={onToggleMailbox}
+              >
+                <Mail size={16} style={{ color: ACCENT_GOLD }} />
+                {(mailboxUnreadCount || 0) > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
+                    {mailboxUnreadCount}
+                  </span>
+                )}
+              </button>
+              {this.props.mailboxDropdown}
+            </div>
 
             {/* Friends button */}
             <button
@@ -192,37 +214,42 @@ export default class ArenaHub extends Component {
               <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-right" color={`${GOLD} 0.45)`} />
-              {/* Avatar with ornate frame */}
+              {/* Avatar with ornate circular frame */}
               <button
                 type="button"
                 className="relative group shrink-0"
+                style={{ width: 72, height: 72 }}
                 onClick={() => this.setState({ showAvatarPicker: true })}
                 title="Click to change avatar"
               >
-                <div className="absolute -inset-2 rounded-2xl" style={{ border: `2px solid ${GOLD} 0.35)`, boxShadow: `0 0 25px ${GOLD} 0.12), 0 0 50px ${GOLD} 0.06)` }} />
-                <div className="absolute -inset-0.5 rounded-xl" style={{ border: `1px solid ${GOLD} 0.6)` }} />
+                {/* Outer glow ring */}
+                <div className="absolute -inset-1.5 rounded-full" style={{ border: `2px solid ${GOLD} 0.3)`, boxShadow: `0 0 16px ${GOLD} 0.1)` }} />
 
+                {/* Avatar image */}
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-xl object-cover object-top relative z-10" style={{ boxShadow: `0 4px 20px rgba(0,0,0,0.6)` }} />
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover object-top relative z-10" style={{ border: `2px solid ${GOLD} 0.5)`, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }} />
                 ) : (
-                  <div className="w-20 h-20 rounded-xl flex items-center justify-center text-2xl relative z-10" style={{ background: `${GOLD} 0.1)`, color: `${GOLD} 0.4)` }}>?</div>
+                  <div className="w-full h-full rounded-full flex items-center justify-center text-xl relative z-10" style={{ background: `${GOLD} 0.08)`, border: `2px solid ${GOLD} 0.3)`, color: `${GOLD} 0.4)` }}>?</div>
                 )}
 
+                {/* Level badge */}
                 <div
-                  className="absolute -bottom-2 -right-2 z-20 flex items-center justify-center"
+                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center"
                   style={{
-                    width: '32px', height: '32px',
-                    background: `linear-gradient(135deg, rgba(200,160,50,0.3) 0%, rgba(120,90,30,0.2) 100%)`,
-                    border: `2px solid ${GOLD} 0.6)`,
-                    borderRadius: '8px',
-                    boxShadow: `0 2px 10px rgba(0,0,0,0.5), 0 0 12px ${GOLD} 0.15)`,
+                    minWidth: '22px', height: '18px',
+                    padding: '0 5px',
+                    background: 'linear-gradient(180deg, rgba(50,42,28,0.95) 0%, rgba(30,25,16,0.95) 100%)',
+                    border: `1.5px solid ${GOLD} 0.5)`,
+                    borderRadius: '9px',
+                    boxShadow: `0 2px 6px rgba(0,0,0,0.5)`,
                   }}
                 >
-                  <span className="text-sm font-bold" style={{ color: '#d4a843', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{level}</span>
+                  <span className="text-[10px] font-bold" style={{ color: ACCENT_GOLD, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{level}</span>
                 </div>
 
-                <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all z-20">
-                  <span className="text-white/0 group-hover:text-white/80 text-xs font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
+                {/* Hover overlay */}
+                <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all z-20">
+                  <span className="text-white/0 group-hover:text-white/80 text-[10px] font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
                 </div>
               </button>
 
@@ -418,7 +445,7 @@ export default class ArenaHub extends Component {
                   {/* Player list */}
                   <div className="flex-1 overflow-y-auto px-4 py-3">
                     {leaderboardLoading ? (
-                      <div className="flex justify-center py-8"><RuneSpinner size={28} /></div>
+                      <div className="flex justify-center py-8"><RuneSpinner size={50} useViewportUnits /></div>
                     ) : filteredLeaderboard.length === 0 ? (
                       <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players found</div>
                     ) : (
@@ -522,6 +549,18 @@ export default class ArenaHub extends Component {
             </div>
           </div>
         </div>
+
+        {/* ─── ADMIN PANEL ───────────────────────────────────── */}
+        {this.state.showAdmin && this.props.isAdmin && (
+          <AdminPanel
+            profile={this.props.profile}
+            sorceryCards={this.props.sorceryCards}
+            onUpdateProfile={(updated) => {
+              this.props.onUpdateProfile?.(updated);
+            }}
+            onClose={() => this.setState({ showAdmin: false })}
+          />
+        )}
 
         {/* ─── AVATAR PICKER OVERLAY ────────────────────────── */}
         {showAvatarPicker && (

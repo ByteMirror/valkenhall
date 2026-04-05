@@ -700,16 +700,16 @@ export default class Mailbox extends Component {
       <div className="fixed inset-0 z-[60]" onClick={onClose}>
         <motion.div
           className="absolute flex flex-col"
-          initial={{ opacity: 0, y: -12, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -12, scale: 0.96 }}
-          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            top: `${48 * this.state.viewScale}px`,
-            right: `${24 * this.state.viewScale}px`,
+            top: '100%',
+            right: 0,
+            marginTop: 8,
             width: 400,
             height: 580,
-            zoom: this.state.viewScale,
             transformOrigin: 'top right',
             ...DIALOG_STYLE,
           }}
