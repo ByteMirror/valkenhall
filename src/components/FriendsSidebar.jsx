@@ -326,15 +326,8 @@ export default class FriendsSidebar extends Component {
 
           {/* Footer — friend count */}
           {activeTab === 'friends' && totalFriends > 0 ? (
-            <div className="px-5 py-3 border-t border-white/[0.04] flex items-center justify-between">
+            <div className="px-5 py-3 border-t border-white/[0.04]">
               <span className="text-[10px] text-white/20">{onlineFriends.length} online &middot; {totalFriends} total</span>
-              <button
-                type="button"
-                className="text-[10px] text-amber-400/50 hover:text-amber-400/80 transition-colors"
-                onClick={() => this.setState({ activeTab: 'search' })}
-              >
-                + Add more
-              </button>
             </div>
           ) : null}
 

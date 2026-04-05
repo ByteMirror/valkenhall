@@ -80,6 +80,9 @@ export default class FriendProfileOverlay extends Component {
     // Recent match history
     const recentMatches = profile.matchHistory || [];
 
+    // Achievements
+    const achievements = profile.achievements || [];
+
     return (
       <div>
         {/* Hero banner */}
@@ -201,6 +204,18 @@ export default class FriendProfileOverlay extends Component {
               </div>
             </div>
           ) : null}
+
+          {/* Achievements */}
+          {achievements.length > 0 ? (
+            <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 mb-4">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-2">Achievements ({achievements.length})</div>
+              <div className="flex flex-wrap gap-1.5">
+                {achievements.map((achId, i) => (
+                  <span key={i} className="rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-1 text-[11px] text-amber-400/80">{achId}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Action bar */}
@@ -260,11 +275,8 @@ export default class FriendProfileOverlay extends Component {
                   type="button"
                   className="rounded-lg border border-white/[0.08] px-3 py-2.5 text-xs text-white/30 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-colors"
                   onClick={() => this.setState({ showUnfriendConfirm: true })}
-                  title="Unfriend"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/>
-                  </svg>
+                  Remove Friend
                 </button>
               ) : null}
             </div>
