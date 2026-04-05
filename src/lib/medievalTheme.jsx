@@ -28,19 +28,23 @@ export const BG_ATMOSPHERE = [
 
 export const VIGNETTE = 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.5) 100%)';
 
+/* ── Noise texture for medieval grit ──────────────────── */
+const NOISE_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")`;
+const NOISE_GOLD_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E")`;
+
 /* ── Beveled button base ───────────────────────────────── */
 export const BEVELED_BTN = {
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)',
+  background: `${NOISE_SVG}, linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)`,
   border: `1px solid ${GOLD} 0.3)`,
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(0,0,0,0.15), inset 0 0 8px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.4)',
   borderRadius: '8px',
   textShadow: '0 1px 2px rgba(0,0,0,0.5)',
 };
 
 /* ── Content background gradients ──────────────────────── */
-export const CONTENT_BG_DEFAULT = 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)';
-export const CONTENT_BG_HOVER = 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.04) 100%)';
-export const CONTENT_BG_ACTIVE = 'linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(255,255,255,0.02) 100%)';
+export const CONTENT_BG_DEFAULT = `${NOISE_SVG}, linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.08) 100%)`;
+export const CONTENT_BG_HOVER = `${NOISE_SVG}, linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.04) 100%)`;
+export const CONTENT_BG_ACTIVE = `${NOISE_SVG}, linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(255,255,255,0.02) 100%)`;
 
 /* ── Corner plating tokens ─────────────────────────────── */
 export const CORNER_SIZE = 10;
@@ -71,20 +75,21 @@ export const DIALOG_STYLE = {
 
 /* ── Gold primary button ───────────────────────────────── */
 export const GOLD_BTN = {
-  background: 'linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)',
+  background: `${NOISE_GOLD_SVG}, linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(180,140,50,0.85) 50%, rgba(160,120,40,0.9) 100%)`,
   border: '1px solid rgba(228,200,100,0.6)',
   borderRadius: '6px',
   color: '#1a1408',
-  boxShadow: '0 0 20px rgba(212,168,67,0.2), inset 0 1px 0 rgba(255,255,255,0.2)',
-  textShadow: '0 1px 0 rgba(255,255,255,0.2)',
+  boxShadow: '0 0 20px rgba(212,168,67,0.2), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2), inset 0 0 6px rgba(120,80,20,0.15)',
+  textShadow: '0 1px 0 rgba(255,255,255,0.15)',
 };
 
 /* ── Danger / destructive button ───────────────────────── */
 export const DANGER_BTN = {
-  background: 'linear-gradient(180deg, rgba(180,60,60,0.15) 0%, rgba(120,30,30,0.1) 100%)',
+  background: `${NOISE_SVG}, linear-gradient(180deg, rgba(180,60,60,0.15) 0%, rgba(120,30,30,0.1) 100%)`,
   border: `1px solid rgba(180,60,60,0.35)`,
   borderRadius: '6px',
   color: '#c45050',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.12), inset 0 0 6px rgba(0,0,0,0.1)',
   textShadow: '0 1px 2px rgba(0,0,0,0.5)',
 };
 
@@ -100,9 +105,10 @@ export const INPUT_STYLE = {
 /* ── Tab styling helpers ───────────────────────────────── */
 export const TAB_ACTIVE = {
   color: TEXT_PRIMARY,
-  background: `${GOLD} 0.12)`,
+  background: `${NOISE_SVG}, ${GOLD} 0.12)`,
   border: `1px solid ${GOLD} 0.3)`,
   borderRadius: '4px',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.1)',
 };
 
 export const TAB_INACTIVE = {
@@ -239,7 +245,7 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
       <CornerPlating position="top-right" color={BTN_CORNER} />
       <CornerPlating position="bottom-left" color={BTN_CORNER} />
       <CornerPlating position="bottom-right" color={BTN_CORNER} />
-      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(8px)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
+      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(8px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.12), inset 0 0 8px rgba(0,0,0,0.1)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
         <span className="text-lg font-bold arena-heading" style={{ color: TEXT_BODY }}>{title}</span>
       </div>
     </button>
