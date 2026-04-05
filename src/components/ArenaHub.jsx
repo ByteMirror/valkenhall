@@ -435,14 +435,18 @@ export default class ArenaHub extends Component {
               {/* ── CENTER COLUMN: LEADERBOARD ──────────────── */}
               <div className="flex-1 min-w-0 flex flex-col">
                 <div
-                  className="overflow-hidden flex-1 flex flex-col"
+                  className="relative overflow-hidden flex-1 flex flex-col"
                   style={{
                     background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
                     border: `1px solid ${GOLD} 0.18)`,
-                    borderRadius: '14px',
+                    borderRadius: '8px',
                     boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
                   }}
                 >
+                  <CornerPlating position="top-left" color={`${GOLD} 0.4)`} />
+                  <CornerPlating position="top-right" color={`${GOLD} 0.4)`} />
+                  <CornerPlating position="bottom-left" color={`${GOLD} 0.4)`} />
+                  <CornerPlating position="bottom-right" color={`${GOLD} 0.4)`} />
                   <div className="px-4 pt-4 pb-2 shrink-0">
                     <div className="flex items-center gap-3 mb-3">
                       <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>Leaderboard</span>
@@ -519,14 +523,18 @@ export default class ArenaHub extends Component {
               {/* ── RIGHT COLUMN: ACHIEVEMENTS ─────────────── */}
               <div className="w-[320px] shrink-0 flex flex-col overflow-hidden">
                 <div
-                  className="flex-1 flex flex-col overflow-hidden"
+                  className="relative flex-1 flex flex-col overflow-hidden"
                   style={{
                     background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
                     border: `1px solid ${GOLD} 0.18)`,
-                    borderRadius: '14px',
+                    borderRadius: '8px',
                     boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
                   }}
                 >
+                  <CornerPlating position="top-left" color={`${GOLD} 0.4)`} />
+                  <CornerPlating position="top-right" color={`${GOLD} 0.4)`} />
+                  <CornerPlating position="bottom-left" color={`${GOLD} 0.4)`} />
+                  <CornerPlating position="bottom-right" color={`${GOLD} 0.4)`} />
                   <div className="px-4 pt-4 pb-2 shrink-0">
                     <div className="flex items-center gap-3">
                       <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>
