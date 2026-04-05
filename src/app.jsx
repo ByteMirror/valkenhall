@@ -44,7 +44,7 @@ import ArenaStarterPicker from './components/ArenaStarterPicker';
 import ArenaStore from './components/ArenaStore';
 import AuctionHouse from './components/AuctionHouse';
 import ArenaPackOpening from './components/ArenaPackOpening';
-import { loadArenaProfile, saveArenaProfile } from './utils/arena/profileApi';
+import { saveArenaProfile } from './utils/arena/profileApi';
 import { playMusic, stopMusic } from './utils/arena/musicManager';
 import { createDefaultProfile, CURRENCY, isArenaDebugMode } from './utils/arena/profileDefaults';
 import { checkAchievements, getAchievement } from './utils/arena/achievements';
@@ -54,8 +54,13 @@ import { resolveStarterDeck } from './utils/arena/starterDecks';
 import ArenaMatchmaking from './components/ArenaMatchmaking';
 import ArenaDeckSelect from './components/ArenaDeckSelect';
 import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
+import LoginScreen from './components/LoginScreen';
 import { registerPlayer, clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult, deleteAccount } from './utils/arena/matchmakingApi';
 import { formatRank, TIER_COLORS } from './utils/arena/rankUtils';
+import { getStoredToken, validateToken } from './utils/authApi';
+import ToastManager from './components/ToastManager';
+import { startPresence, updateActivity } from './utils/presenceManager';
+import * as friendsApi from './utils/friendsApi';
 
 function normalizeText(value) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -336,6 +341,8 @@ export default class App extends Component {
     super();
 
     this.state = {
+      authChecking: true,
+      loggedIn: false,
       isGameBoardOpen: false,
       arenaProfile: null,
       arenaLoading: true,
@@ -392,11 +399,16 @@ export default class App extends Component {
       isDeckPaneScrolling: false,
       themePreference: getStoredThemePreference(),
       viewportWidth: getViewportWidth(),
+      toasts: [],
+      friendListData: null,
+      friendsSidebarOpen: false,
     };
 
     this.arenaQueuePollTimer = null;
     this.deckPaneScrollTimer = null;
     this.cardPreviewTimer = null;
+    this.toastIdCounter = 0;
+    this.toastTimers = new Map();
     this.savedDeckCardIndex = null;
     this.savedDeckCardIndexSource = null;
     this.deckMenuContainerRef = createRef();
@@ -418,7 +430,7 @@ export default class App extends Component {
     applyThemePreference(this.state.themePreference);
     this.refreshSavedDecks();
 
-    // Load sorcery cards then initialize arena
+    // Load sorcery cards
     this.setState({
       loading: true,
       loadingMessage: 'Loading Card Database',
@@ -438,15 +450,37 @@ export default class App extends Component {
           loadingMessage: '',
           loadingDetail: '',
         });
-
-        // Initialize arena mode directly
-        this.initArena();
       });
+
+    // Check for existing auth token
+    this.checkAuth();
   }
+
+  checkAuth = async () => {
+    const token = getStoredToken();
+    if (token) {
+      try {
+        const result = await validateToken(token);
+        if (result.valid) {
+          this.setState({
+            authChecking: false,
+            loggedIn: true,
+            arenaProfile: this.profileFromServer(result.profile),
+            arenaLoading: false,
+          });
+          this.postLoginInit();
+          return;
+        }
+      } catch {}
+    }
+    this.setState({ authChecking: false });
+  };
 
   componentWillUnmount() {
     clearTimeout(this.deckPaneScrollTimer);
     clearTimeout(this.cardPreviewTimer);
+    for (const timer of this.toastTimers.values()) clearTimeout(timer);
+    this.toastTimers.clear();
     document.removeEventListener('mousedown', this.handleDocumentMouseDown);
     document.removeEventListener('keydown', this.handleDocumentKeyDown);
     document.removeEventListener('keyup', this.handleDocumentKeyUp);
@@ -466,6 +500,22 @@ export default class App extends Component {
       if (this.state.isArenaCollectionMode && !prevState.isArenaCollectionMode) {
         playMusic('arena-deckbuilder', { fadeInDuration: 3000 });
       }
+    }
+
+    if (prevState.arenaView !== this.state.arenaView) {
+      const activityMap = {
+        hub: 'hub',
+        store: 'store',
+        'deck-select': 'deck-select',
+        matchmaking: 'matchmaking',
+        'pack-opening': 'pack-opening',
+        'auction-house': 'auction-house',
+      };
+      updateActivity(activityMap[this.state.arenaView] || 'hub');
+    }
+
+    if (!prevState.isGameBoardOpen && this.state.isGameBoardOpen && this.state.sessionMode) {
+      updateActivity('in-match');
     }
   }
 
@@ -491,50 +541,127 @@ export default class App extends Component {
     }
   };
 
-  initArena = async () => {
-    this.setState({ arenaLoading: true, arenaView: 'hub' });
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+  profileFromServer = (serverProfile) => {
+    return {
+      id: serverProfile.id,
+      email: serverProfile.email,
+      name: serverProfile.name,
+      coins: serverProfile.coins || 0,
+      xp: serverProfile.xp || 0,
+      starterDeck: serverProfile.starterDeck || null,
+      profileAvatar: serverProfile.profileAvatar || null,
+      serverToken: getStoredToken(),
+      serverRegistered: true,
+      rank: serverProfile.rank || { tier: 'apprentice', division: 4, lp: 0 },
+      collection: serverProfile.collection || [],
+      decks: serverProfile.decks || [],
+      matchHistory: serverProfile.matchHistory || [],
+      achievements: serverProfile.achievements || [],
+    };
+  };
 
-    if (!this.state.sorceryCards) {
-      try {
-        const { cards, source } = await loadSorceryCardsWithSource();
-        this.setState({ sorceryCards: cards, sorceryCardsLoadSource: source });
-      } catch (error) {
-        console.error('Failed to load sorcery cards for arena:', error);
-      }
+  handleLogin = (result) => {
+    this.setState({
+      loggedIn: true,
+      authChecking: false,
+      arenaProfile: this.profileFromServer(result.profile),
+      arenaLoading: false,
+    });
+    this.postLoginInit();
+  };
+
+  postLoginInit = () => {
+    playMusic('arena-hub', { fadeInDuration: 3000 });
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
     }
+    startPresence('hub', {
+      onFriendListUpdate: (data) => this.setState({ friendListData: data }),
+      onNewNotifications: this.handleNewNotifications,
+    });
+  };
 
-    try {
-      let profile = await loadArenaProfile();
-      if (!profile) {
-        profile = createDefaultProfile();
-        await saveArenaProfile(profile);
+  addToast = (toast) => {
+    const id = ++this.toastIdCounter;
+    const newToast = { ...toast, id, createdAt: Date.now() };
+    this.setState((s) => ({ toasts: [...s.toasts, newToast] }));
+    if (!toast.actions) {
+      this.toastTimers.set(id, setTimeout(() => this.dismissToast(id), 5000));
+    }
+  };
+
+  dismissToast = (id) => {
+    clearTimeout(this.toastTimers.get(id));
+    this.toastTimers.delete(id);
+    this.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  };
+
+  handleToastAction = async (toastId, actionKey) => {
+    const toast = this.state.toasts.find((t) => t.id === toastId);
+    this.dismissToast(toastId);
+    if (!toast) return;
+
+    if (actionKey === 'accept-friend') {
+      await friendsApi.acceptFriendRequest(toast.senderId).catch(() => {});
+    } else if (actionKey === 'decline-friend') {
+      await friendsApi.declineFriendRequest(toast.senderId).catch(() => {});
+    } else if (actionKey === 'accept-invite') {
+      try {
+        const result = await friendsApi.acceptMatchInvite(toast.senderId);
+        this.handleInviteAccepted(result);
+      } catch {}
+    } else if (actionKey === 'decline-invite') {
+      await friendsApi.declineMatchInvite(toast.senderId).catch(() => {});
+    } else if (actionKey === 'allow-spectate') {
+      await friendsApi.allowSpectator(toast.spectatorId).catch(() => {});
+    } else if (actionKey === 'deny-spectate') {
+      await friendsApi.denySpectator(toast.spectatorId).catch(() => {});
+    }
+  };
+
+  // Stub — Task 15 will wire up the match invite flow
+  handleInviteAccepted = (_result) => {};
+
+  handleNewNotifications = (notifications) => {
+    for (const n of notifications) {
+      if (n.type === 'friend-request') {
+        this.addToast({
+          title: 'Friend Request',
+          message: `${n.senderName} wants to be your friend`,
+          avatar: n.senderAvatar,
+          senderId: n.senderId,
+          actions: [
+            { label: 'Accept', key: 'accept-friend', primary: true },
+            { label: 'Decline', key: 'decline-friend' },
+          ],
+        });
+      } else if (n.type === 'friend-accepted') {
+        this.addToast({
+          title: 'Friend Added',
+          message: `${n.name} accepted your friend request`,
+          avatar: n.avatar,
+        });
+      } else if (n.type === 'match-invite') {
+        this.addToast({
+          title: 'Match Invite',
+          message: `${n.senderName} invited you to a match`,
+          senderId: n.senderId,
+          actions: [
+            { label: 'Accept', key: 'accept-invite', primary: true },
+            { label: 'Decline', key: 'decline-invite' },
+          ],
+        });
+      } else if (n.type === 'spectate-request') {
+        this.addToast({
+          title: 'Spectate Request',
+          message: `${n.spectatorName} wants to watch your match`,
+          spectatorId: n.spectatorId,
+          actions: [
+            { label: 'Allow', key: 'allow-spectate', primary: true },
+            { label: 'Deny', key: 'deny-spectate' },
+          ],
+        });
       }
-      if (profile.starterDeck && profile.collection.length === 0 && this.state.sorceryCards) {
-        const { STARTER_DECKS } = await import('./utils/arena/starterDecks');
-        const starterDeck = STARTER_DECKS.find((d) => d.id === profile.starterDeck);
-        if (starterDeck) {
-          const resolvedCards = resolveStarterDeck(starterDeck, this.state.sorceryCards);
-          const collection = [];
-          for (const card of resolvedCards) {
-            const existing = collection.find((c) => c.cardId === card.cardId && c.printingId === card.printingId);
-            if (existing) existing.quantity++;
-            else collection.push({ cardId: card.cardId, printingId: card.printingId, quantity: 1 });
-          }
-          profile = { ...profile, collection, decks: [{ id: `deck-${Date.now()}`, name: starterDeck.name, cards: resolvedCards }] };
-          await saveArenaProfile(profile).catch(() => {});
-        }
-      }
-      const profileWithAchievements = this.processAchievements(profile);
-      if (profileWithAchievements !== profile) {
-        await saveArenaProfile(profileWithAchievements).catch(() => {});
-      }
-      this.setState({ arenaProfile: profileWithAchievements, arenaLoading: false });
-      playMusic('arena-hub', { fadeInDuration: 3000, volume: 0.3 });
-    } catch (error) {
-      console.error('Failed to load arena profile:', error);
-      // Show arena flow anyway; login system will handle this in Task 4
-      this.setState({ arenaLoading: false });
     }
   };
 
@@ -2934,6 +3061,18 @@ export default class App extends Component {
   }
 
   render() {
+    if (this.state.authChecking) {
+      return (
+        <div className="fixed inset-0 bg-black flex items-center justify-center">
+          <div className="text-white/40 text-sm">Loading...</div>
+        </div>
+      );
+    }
+
+    if (!this.state.loggedIn) {
+      return <LoginScreen onLogin={this.handleLogin} />;
+    }
+
     const workspaceStyle = getResponsiveWorkspaceVars(this.state.viewportWidth);
     const workspaceColumns = getDesktopWorkspaceColumns(this.state.viewportWidth);
 
@@ -3086,6 +3225,11 @@ export default class App extends Component {
           />
         ) : null}
         <Toaster />
+        <ToastManager
+          toasts={this.state.toasts}
+          onDismiss={this.dismissToast}
+          onAction={this.handleToastAction}
+        />
       </>
     );
   }
