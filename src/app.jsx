@@ -861,6 +861,17 @@ export default class App extends Component {
   };
 
   startMatchmaking = () => {
+    const us = this.state.updateStatus;
+    if (us && us.state !== 'UP_TO_DATE' && us.state !== null) {
+      if (us.state === 'READY_TO_INSTALL') {
+        toast.error('Please restart to apply the update before playing.');
+      } else if (us.state === 'DOWNLOADING' || us.state === 'CHECKING' || us.state === 'UPDATE_AVAILABLE') {
+        toast.info('An update is downloading. Please wait...');
+      } else if (us.state === 'DOWNLOAD_FAILED') {
+        toast.error('Update required. Check Settings to retry the download.');
+      }
+      return;
+    }
     this.setState({ arenaView: 'deck-select' });
   };
 
@@ -993,6 +1004,17 @@ export default class App extends Component {
   };
 
   handleArenaPlayMatch = () => {
+    const us = this.state.updateStatus;
+    if (us && us.state !== 'UP_TO_DATE' && us.state !== null) {
+      if (us.state === 'READY_TO_INSTALL') {
+        toast.error('Please restart to apply the update before playing.');
+      } else if (us.state === 'DOWNLOADING' || us.state === 'CHECKING' || us.state === 'UPDATE_AVAILABLE') {
+        toast.info('An update is downloading. Please wait...');
+      } else if (us.state === 'DOWNLOAD_FAILED') {
+        toast.error('Update required. Check Settings to retry the download.');
+      }
+      return;
+    }
     playMusic('arena-match', { fadeInDuration: 3000 });
     this.setState({ isGameBoardOpen: true, isArenaMatch: true, isRankedMatch: false });
   };
