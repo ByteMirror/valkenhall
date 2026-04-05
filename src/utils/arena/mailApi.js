@@ -1,10 +1,13 @@
 const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
 
+function getToken() {
+  try { return localStorage.getItem('valkenhall-token'); } catch { return null; }
+}
+
 function authHeaders() {
-  const token = localStorage.getItem('fab-arena-token');
   return {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${getToken()}`,
   };
 }
 
