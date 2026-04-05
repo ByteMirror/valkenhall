@@ -244,20 +244,18 @@ export default class Mailbox extends Component {
   renderTabBar() {
     const { tab, view } = this.state;
     return (
-      <div className="flex items-center gap-1 px-3 pt-3 pb-2">
-        <div className="flex gap-1 flex-1">
-          {TAB_KEYS.map(t => (
-            <button
-              key={t.key}
-              type="button"
-              className="px-3 py-1.5 text-[11px] font-medium transition-all cursor-pointer"
-              style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
-              onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null })}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex gap-1 px-3 pt-3 pb-2">
+        {TAB_KEYS.map(t => (
+          <button
+            key={t.key}
+            type="button"
+            className="flex-1 py-1.5 text-[11px] font-medium text-center transition-all cursor-pointer"
+            style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
+            onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null })}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
     );
   }
@@ -894,6 +892,14 @@ export default class Mailbox extends Component {
               <div className="col-span-4 text-[10px] py-8 text-center" style={{ color: TEXT_MUTED }}>
                 {cardPickerSearch ? 'No cards match your search' : 'No cards in collection'}
               </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+</div>
             )}
           </div>
         </div>
