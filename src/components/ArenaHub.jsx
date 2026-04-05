@@ -47,12 +47,12 @@ const DIAMOND_POSITIONS = [
 
 /* ── Ornate medieval menu button ──────────────────────── */
 function MenuButton({ title, description, onClick }) {
-  const outerBorder = 'rgba(250,249,246,0.25)';
-  const innerBorder = 'rgba(250,249,246,0.1)';
-  const accent = 'rgba(250,249,246,';
-  const glow = 'rgba(250,249,246,0.08)';
-  const titleColor = '#FAF9F6';
-  const descColor = 'rgba(250,249,246,0.35)';
+  const outerBorder = 'rgba(166,160,155,0.35)';
+  const innerBorder = 'rgba(166,160,155,0.15)';
+  const accent = 'rgba(166,160,155,';
+  const glow = 'rgba(166,160,155,0.1)';
+  const titleColor = '#A6A09B';
+  const descColor = 'rgba(166,160,155,0.45)';
 
   const outerHover = adjustAlpha(outerBorder, Math.min(1, parseFloat(outerBorder.match(/[\d.]+\)$/)[0]) + 0.2));
   const innerHover = adjustAlpha(innerBorder, Math.min(1, parseFloat(innerBorder.match(/[\d.]+\)$/)[0]) + 0.1));
@@ -415,7 +415,7 @@ export default class ArenaHub extends Component {
             <div className="flex gap-5 py-4 flex-1 min-h-0">
 
               {/* ── LEFT COLUMN: VERTICAL MENU ──────────────── */}
-              <div className="w-[280px] shrink-0 flex flex-col overflow-y-auto pr-1">
+              <div className="w-[280px] shrink-0 flex flex-col overflow-visible py-1 pl-1">
 
                 {/* FIND MATCH — hero button */}
                 <MenuButton title="Find Match" description="Ranked matchmaking — earn LP" onClick={onFindMatch} />
