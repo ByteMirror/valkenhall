@@ -1,6 +1,7 @@
 import { Component } from 'preact';
 import { extractKeywordAbilities, findGlossaryTermsInText, getGlossaryEntry } from '../utils/game/sorceryKeywords';
 import { isFoilFinish, FOIL_LABEL, FOIL_LABEL_COLOR, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
+import { Sparkles, Rainbow } from 'lucide-react';
 import {
   GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   PANEL_BG, DIALOG_STYLE, POPOVER_STYLE, VIGNETTE,
@@ -137,10 +138,30 @@ export default function CardInspector({ card, imageUrl, rarity, foiling, onClose
           {/* Main card info */}
           <div className="relative p-5" style={{ ...DIALOG_STYLE }}>
             <FourCorners />
-            <h2 className="text-lg font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{card.name}</h2>
+
+            {isFoil ? (
+              <div
+                className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-md"
+                style={{
+                  background: foiling === 'R'
+                    ? 'linear-gradient(135deg, rgba(180,80,200,0.15), rgba(80,160,220,0.15))'
+                    : `${GOLD} 0.1)`,
+                  border: `1px solid ${foiling === 'R' ? 'rgba(180,80,200,0.3)' : `${GOLD} 0.25)`}`,
+                }}
+              >
+                {foiling === 'R'
+                  ? <Rainbow size={13} style={{ color: '#c480e0' }} />
+                  : <Sparkles size={13} style={{ color: ACCENT_GOLD }} />
+                }
+                <span className="text-[10px] font-semibold" style={{ color: foiling === 'R' ? '#c480e0' : ACCENT_GOLD }}>
+                  {FOIL_LABEL[foiling]}
+                </span>
+              </div>
+            ) : null}
+
+            <h2 className="text-lg font-bold arena-heading pr-24" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{card.name}</h2>
             <div className="mt-1.5 flex items-center gap-2">
               {rarity ? <span className="text-xs font-semibold" style={{ color: RARITY_COLORS[rarity] || TEXT_MUTED }}>{rarity}</span> : null}
-              {isFoil ? <span className={`text-xs font-semibold ${FOIL_LABEL_COLOR[foiling]}`}>{FOIL_LABEL[foiling]}</span> : null}
               <span className="text-xs" style={{ color: TEXT_MUTED }}>{card.type_text || card.type || ''}</span>
             </div>
 
