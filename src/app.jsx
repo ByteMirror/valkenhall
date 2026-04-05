@@ -3352,7 +3352,15 @@ export default class App extends Component {
         {this.state.viewingFriendProfile ? (
           <FriendProfileOverlay
             profileId={this.state.viewingFriendProfile}
+            isFriend={true}
             onClose={() => this.setState({ viewingFriendProfile: null })}
+            onInvite={this.handleFriendInvite}
+            onSpectate={this.handleFriendSpectate}
+            onTrade={this.handleFriendTrade}
+            onRemoveFriend={async (id) => {
+              await friendsApi.removeFriend(id).catch(() => {});
+              this.setState({ viewingFriendProfile: null });
+            }}
           />
         ) : null}
         <FriendsSidebar

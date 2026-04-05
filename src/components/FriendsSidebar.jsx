@@ -27,8 +27,6 @@ export default class FriendsSidebar extends Component {
       searchQuery: '',
       searchResults: null,
       searchLoading: false,
-      showRemoveConfirm: null,
-      expandedFriend: null,
       activeTab: 'friends', // 'friends' | 'search'
     };
     this.searchTimeout = null;
@@ -89,13 +87,9 @@ export default class FriendsSidebar extends Component {
     } catch {}
   };
 
-  toggleExpanded = (friendId) => {
-    this.setState((s) => ({ expandedFriend: s.expandedFriend === friendId ? null : friendId }));
-  };
-
   render() {
-    const { open, onClose, friendListData, onInvite, onSpectate, onViewProfile, onTrade } = this.props;
-    const { searchQuery, searchResults, searchLoading, showRemoveConfirm, expandedFriend, activeTab } = this.state;
+    const { open, onClose, friendListData, onViewProfile } = this.props;
+    const { searchQuery, searchResults, searchLoading, activeTab } = this.state;
 
     if (!open) return null;
 
@@ -344,21 +338,6 @@ export default class FriendsSidebar extends Component {
             </div>
           ) : null}
 
-          {/* Remove confirm dialog */}
-          {showRemoveConfirm ? (
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-10" onClick={() => this.setState({ showRemoveConfirm: null })}>
-              <div className="bg-[#1a1a1f] rounded-2xl border border-white/10 p-5 w-72 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="text-center mb-4">
-                  <div className="text-sm font-medium text-white mb-1">Remove Friend</div>
-                  <div className="text-xs text-white/40">Are you sure you want to remove <span className="text-white/70">{showRemoveConfirm.name}</span>?</div>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" className="flex-1 rounded-lg border border-white/15 py-2 text-xs text-white/60 hover:bg-white/5 transition-colors" onClick={() => this.setState({ showRemoveConfirm: null })}>Cancel</button>
-                  <button type="button" className="flex-1 rounded-lg bg-red-600 py-2 text-xs font-medium text-white hover:bg-red-500 transition-colors" onClick={() => this.handleRemove(showRemoveConfirm.id)}>Remove</button>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
 
         <style>{`
@@ -372,117 +351,61 @@ export default class FriendsSidebar extends Component {
   }
 
   renderFriendCard(friend, isOffline = false) {
-    const { onInvite, onSpectate, onViewProfile, onTrade } = this.props;
-    const { expandedFriend } = this.state;
-    const isExpanded = expandedFriend === friend.id;
+    const { onViewProfile } = this.props;
     const lastSeenText = friend.lastSeen ? getRelativeTime(friend.lastSeen) : '';
     const level = levelFromXp(friend.xp || 0);
     const activityStyle = ACTIVITY_COLORS[friend.activity] || 'text-green-400/70 bg-green-500/10 border-green-500/20';
 
     return (
-      <div key={friend.id} className="mb-0.5">
-        <div
-          className={cn(
-            'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all',
-            isExpanded ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]',
-            isOffline && 'opacity-40'
+      <div
+        key={friend.id}
+        className={cn(
+          'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all hover:bg-white/[0.04] mb-0.5',
+          isOffline && 'opacity-40'
+        )}
+        onClick={() => onViewProfile(friend.id)}
+      >
+        {/* Avatar */}
+        <div className="relative shrink-0">
+          {friend.avatar ? (
+            <img src={friend.avatar} alt="" className="w-10 h-10 rounded-lg object-cover object-top border border-white/[0.08]" />
+          ) : (
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/[0.08] flex items-center justify-center text-sm text-white/30 font-medium">
+              {(friend.name || '?')[0].toUpperCase()}
+            </div>
           )}
-          onClick={() => this.toggleExpanded(friend.id)}
-        >
-          {/* Avatar */}
-          <div className="relative shrink-0">
-            {friend.avatar ? (
-              <img src={friend.avatar} alt="" className="w-10 h-10 rounded-lg object-cover object-top border border-white/[0.08]" />
-            ) : (
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/[0.08] flex items-center justify-center text-sm text-white/30 font-medium">
-                {(friend.name || '?')[0].toUpperCase()}
-              </div>
-            )}
-            <div className={cn(
-              'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0d0d0f]',
-              friend.online ? 'bg-green-500' : 'bg-white/20'
-            )} />
-          </div>
-
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-white font-medium truncate">{friend.name}</span>
-              <span className="text-[10px] text-white/20">Lv.{level}</span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {friend.online ? (
-                <span className={cn('text-[10px] px-1.5 py-0.5 rounded border', activityStyle)}>
-                  {ACTIVITY_LABELS[friend.activity] || 'Online'}
-                </span>
-              ) : (
-                <span className="text-[10px] text-white/20">
-                  {lastSeenText ? `Last seen ${lastSeenText}` : 'Offline'}
-                </span>
-              )}
-              <span className={cn('text-[10px]', TIER_COLORS[friend.rank?.tier] || 'text-white/30')}>
-                {formatRank(friend.rank?.tier, friend.rank?.division)}
-              </span>
-            </div>
-          </div>
-
-          {/* Expand indicator */}
-          <svg
-            width="12" height="12" viewBox="0 0 12 12" fill="none"
-            className={cn('text-white/15 transition-transform shrink-0', isExpanded && 'rotate-180')}
-          >
-            <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <div className={cn(
+            'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0d0d0f]',
+            friend.online ? 'bg-green-500' : 'bg-white/20'
+          )} />
         </div>
 
-        {/* Expanded actions */}
-        {isExpanded ? (
-          <div className="px-3 pb-2 pt-1">
-            <div className="flex gap-1.5 ml-[52px]">
-              <button
-                type="button"
-                className="rounded-lg bg-white/[0.05] border border-white/[0.08] px-2.5 py-1.5 text-[10px] text-white/60 hover:bg-white/[0.08] hover:text-white/80 transition-colors"
-                onClick={(e) => { e.stopPropagation(); onViewProfile(friend.id); }}
-              >
-                Profile
-              </button>
-              {friend.online && friend.activity !== 'in-match' ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-green-500/10 border border-green-500/20 px-2.5 py-1.5 text-[10px] text-green-400 hover:bg-green-500/20 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); onInvite(friend.id); }}
-                >
-                  Invite
-                </button>
-              ) : null}
-              {friend.online && friend.activity === 'in-match' ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-2.5 py-1.5 text-[10px] text-blue-400 hover:bg-blue-500/20 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); onSpectate(friend.id); }}
-                >
-                  Spectate
-                </button>
-              ) : null}
-              {friend.online ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-purple-500/10 border border-purple-500/20 px-2.5 py-1.5 text-[10px] text-purple-400 hover:bg-purple-500/20 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); onTrade(friend.id); }}
-                >
-                  Trade
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-2 py-1.5 text-[10px] text-red-400/50 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-colors ml-auto"
-                onClick={(e) => { e.stopPropagation(); this.setState({ showRemoveConfirm: friend }); }}
-              >
-                Remove
-              </button>
-            </div>
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] text-white font-medium truncate">{friend.name}</span>
+            <span className="text-[10px] text-white/20">Lv.{level}</span>
           </div>
-        ) : null}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {friend.online ? (
+              <span className={cn('text-[10px] px-1.5 py-0.5 rounded border', activityStyle)}>
+                {ACTIVITY_LABELS[friend.activity] || 'Online'}
+              </span>
+            ) : (
+              <span className="text-[10px] text-white/20">
+                {lastSeenText ? `Last seen ${lastSeenText}` : 'Offline'}
+              </span>
+            )}
+            <span className={cn('text-[10px]', TIER_COLORS[friend.rank?.tier] || 'text-white/30')}>
+              {formatRank(friend.rank?.tier, friend.rank?.division)}
+            </span>
+          </div>
+        </div>
+
+        {/* Arrow */}
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-white/15 shrink-0">
+          <path d="M4.5 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
       </div>
     );
   }
