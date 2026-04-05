@@ -1,4 +1,5 @@
 import { sendPresence, getFriendList } from './friendsApi';
+import { getUnreadCount } from './arena/mailApi';
 
 let currentActivity = 'hub';
 let heartbeatInterval = null;
@@ -8,10 +9,13 @@ let onNewNotifications = null;
 let lastPendingCount = 0;
 let lastInviteIds = new Set();
 let lastSpectateIds = new Set();
+let onMailCountUpdate = null;
+let lastMailCount = 0;
 
 export function startPresence(activity, callbacks = {}) {
   onFriendListUpdate = callbacks.onFriendListUpdate || null;
   onNewNotifications = callbacks.onNewNotifications || null;
+  onMailCountUpdate = callbacks.onMailCountUpdate || null;
   currentActivity = activity;
 
   sendPresence(currentActivity).catch(() => {});
@@ -40,6 +44,7 @@ export function stopPresence() {
   pollInterval = null;
   onFriendListUpdate = null;
   onNewNotifications = null;
+  onMailCountUpdate = null;
 }
 
 async function pollFriends() {
@@ -94,6 +99,21 @@ async function pollFriends() {
 
     if (notifications.length > 0 && onNewNotifications) {
       onNewNotifications(notifications);
+    }
+
+    // Poll mailbox unread count
+    try {
+      const mailCounts = await getUnreadCount();
+      if (onMailCountUpdate) onMailCountUpdate(mailCounts);
+
+      if (mailCounts.count > lastMailCount && lastMailCount >= 0) {
+        if (onNewNotifications) {
+          onNewNotifications([{ type: 'new-mail', count: mailCounts.count }]);
+        }
+      }
+      lastMailCount = mailCounts.count;
+    } catch {
+      // Silent fail
     }
   } catch {
     // Silent fail — will retry next interval
