@@ -5,24 +5,39 @@ import { getLocalApiOrigin } from '../utils/localApi';
 import { cn } from '../lib/utils';
 
 const SET_ORDER = ['gothic', 'arthurian', 'beta'];
+const GOLD = 'rgba(180, 140, 60,';
+const PANEL_BG = 'rgba(12, 10, 8, 0.92)';
+const PANEL_BORDER = `${GOLD} 0.25)`;
 
 function getBoosterImage(setKey) {
   const base = getLocalApiOrigin();
   return `${base}/game-assets/booster-${setKey}.webp`;
 }
 
-// Per-set scale adjustments to visually match sizes despite different image padding
 const BOOSTER_SCALE = {
   gothic: 1,
   arthurian: 1.85,
   beta: 1,
 };
 
+function CornerPlating({ position }) {
+  const s = 10;
+  const t = 2;
+  const color = `${GOLD} 0.45)`;
+  const styles = {
+    'top-left': { top: -1, left: -1, borderTop: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderTopLeftRadius: 6, width: s, height: s },
+    'top-right': { top: -1, right: -1, borderTop: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderTopRightRadius: 6, width: s, height: s },
+    'bottom-left': { bottom: -1, left: -1, borderBottom: `${t}px solid ${color}`, borderLeft: `${t}px solid ${color}`, borderBottomLeftRadius: 6, width: s, height: s },
+    'bottom-right': { bottom: -1, right: -1, borderBottom: `${t}px solid ${color}`, borderRight: `${t}px solid ${color}`, borderBottomRightRadius: 6, width: s, height: s },
+  };
+  return <div className="absolute pointer-events-none" style={styles[position]} />;
+}
+
 export default class ArenaStore extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      tab: 'boosters', // 'boosters' | 'decks'
+      tab: 'boosters',
       cart: { gothic: 0, arthurian: 0, beta: 0 },
       showConfirm: false,
       purchaseFlash: false,
@@ -52,18 +67,10 @@ export default class ArenaStore extends Component {
   handlePurchase = () => {
     const { cart } = this.state;
     const { onBuyPack } = this.props;
-
     for (const setKey of SET_ORDER) {
-      if (cart[setKey] > 0) {
-        onBuyPack(setKey, cart[setKey]);
-      }
+      if (cart[setKey] > 0) onBuyPack(setKey, cart[setKey]);
     }
-
-    this.setState({
-      cart: { gothic: 0, arthurian: 0, beta: 0 },
-      showConfirm: false,
-      purchaseFlash: true,
-    });
+    this.setState({ cart: { gothic: 0, arthurian: 0, beta: 0 }, showConfirm: false, purchaseFlash: true });
     setTimeout(() => this.setState({ purchaseFlash: false }), 1500);
   };
 
@@ -78,41 +85,62 @@ export default class ArenaStore extends Component {
 
     return (
       <div className="fixed inset-0 z-50 flex flex-col" style={{
-        background: `linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.7) 100%), url('/flesh-and-blood-proxies/store-bg.png') center/cover no-repeat`,
+        background: `url('/flesh-and-blood-proxies/store-bg.png') center/cover no-repeat`,
       }}>
-        {/* Purchase flash overlay */}
+        {/* Darken overlay */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 40%, rgba(0,0,0,0.5) 70%, rgba(0,0,0,0.85) 100%)' }} />
+        {/* Vignette */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(0,0,0,0.6) 100%)' }} />
+
         {purchaseFlash ? (
-          <div className="fixed inset-0 z-[60] pointer-events-none bg-amber-500/10 animate-[fadeOut_1.5s_ease-out_forwards]" />
+          <div className="fixed inset-0 z-[60] pointer-events-none" style={{ background: 'rgba(245,158,11,0.08)', animation: 'fadeOut 1.5s ease-out forwards' }} />
         ) : null}
 
-        <div className="flex items-center gap-4 px-6 py-3 border-b border-white/10 bg-black/80 backdrop-blur-sm">
+        {/* ─── TOP BAR ─────────────────────────────── */}
+        <div className="relative z-10 flex items-center gap-4 px-6 py-3" style={{ background: 'rgba(8,6,4,0.85)', borderBottom: `1px solid ${PANEL_BORDER}` }}>
           <button
             type="button"
-            className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+            className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-[0.97]"
+            style={{
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.1) 100%)',
+              border: `1px solid ${GOLD} 0.3)`,
+              borderRadius: '4px',
+              color: '#A6A09B',
+              textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+            }}
             onClick={onBack}
           >
             Back to Hub
           </button>
-          <div className="ml-auto flex items-center gap-4">
+
+          <div className="ml-auto flex items-center gap-5">
             {totalPending > 0 ? (
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 text-xs font-semibold text-amber-400 hover:bg-amber-500/25 transition-colors"
+                className="flex items-center gap-2 px-4 py-1.5 text-xs font-semibold transition-all hover:scale-[1.02]"
+                style={{
+                  background: `${GOLD} 0.12)`,
+                  border: `1px solid ${GOLD} 0.35)`,
+                  borderRadius: '4px',
+                  color: '#d4a843',
+                  boxShadow: `0 0 12px ${GOLD} 0.1)`,
+                }}
                 onClick={onOpenPacks}
               >
-                <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                 {totalPending} pack{totalPending !== 1 ? 's' : ''} to open
               </button>
             ) : null}
             <div className="flex items-center gap-1.5">
-              <span className="text-lg font-bold text-yellow-300">{profile.coins}</span>
-              <span className="text-xs text-muted-foreground">coins</span>
+              <span style={{ color: '#f0d060', fontSize: '14px', textShadow: '0 0 8px rgba(240,208,96,0.3)' }}>●</span>
+              <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
+              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
             </div>
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex justify-center border-b border-white/10">
+        {/* ─── TAB BAR ─────────────────────────────── */}
+        <div className="relative z-10 flex justify-center py-1" style={{ background: 'rgba(8,6,4,0.7)', borderBottom: `1px solid ${GOLD} 0.12)` }}>
           {[
             { id: 'boosters', label: 'Booster Packs' },
             { id: 'decks', label: 'Pre-constructed Decks' },
@@ -120,196 +148,225 @@ export default class ArenaStore extends Component {
             <button
               key={t.id}
               type="button"
-              className={cn(
-                'px-8 py-3 text-sm font-medium transition-colors relative',
-                tab === t.id
-                  ? 'text-white'
-                  : 'text-muted-foreground hover:text-white/80'
-              )}
+              className="px-8 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all relative"
+              style={{
+                color: tab === t.id ? '#e8d5a0' : 'rgba(166,160,155,0.5)',
+                textShadow: tab === t.id ? '0 0 10px rgba(180,140,60,0.2)' : 'none',
+              }}
               onClick={() => this.setState({ tab: t.id })}
             >
-              {t.label}
+              <span className="arena-heading">{t.label}</span>
               {tab === t.id ? (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500" />
+                <div className="absolute bottom-0 left-4 right-4 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${GOLD} 0.6), transparent)` }} />
               ) : null}
             </button>
           ))}
         </div>
 
-        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+        {/* ─── CONTENT ─────────────────────────────── */}
+        <div className="relative z-10 flex-1 flex items-center justify-center p-6 overflow-y-auto">
           {tab === 'boosters' ? (
-          <div className="w-full max-w-4xl">
-            <div className="text-center mb-10">
-              <h1 className="text-3xl font-bold text-white mb-2">Booster Packs</h1>
-              <p className="text-muted-foreground">Each pack contains 15 cards · {CURRENCY.PACK_PRICE} coins per pack</p>
-            </div>
+            <div className="w-full max-w-4xl">
+              {/* Title */}
+              <div className="text-center mb-8">
+                <h1 className="text-3xl font-bold arena-heading mb-1" style={{ color: '#e8d5a0', textShadow: '0 2px 8px rgba(0,0,0,0.6), 0 0 30px rgba(180,140,60,0.15)' }}>Booster Packs</h1>
+                <p className="text-sm" style={{ color: 'rgba(166,160,155,0.6)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>Each pack contains 15 cards · {CURRENCY.PACK_PRICE} gold per pack</p>
+              </div>
 
-            <div className="grid grid-cols-3 gap-8 mb-10">
-              {SET_ORDER.map((setKey) => {
-                const set = BOOSTER_SETS[setKey];
-                const requiredLevel = SET_UNLOCK_LEVELS[setKey];
-                const unlocked = debug || level >= requiredLevel;
-                const qty = cart[setKey] || 0;
+              {/* Booster grid */}
+              <div className="grid grid-cols-3 gap-8 mb-8">
+                {SET_ORDER.map((setKey) => {
+                  const set = BOOSTER_SETS[setKey];
+                  const requiredLevel = SET_UNLOCK_LEVELS[setKey];
+                  const unlocked = debug || level >= requiredLevel;
+                  const qty = cart[setKey] || 0;
 
-                return (
-                  <div
-                    key={setKey}
-                    className="flex flex-col items-center transition-all"
-                  >
-                    {/* Booster image — click to add to cart */}
-                    <button
-                      type="button"
-                      disabled={!unlocked}
-                      className={cn(
-                        'relative mb-4 transition-transform flex items-center justify-center',
-                        unlocked ? 'hover:scale-105 cursor-pointer active:scale-95' : 'opacity-30'
-                      )}
-                      style={{ width: '200px', height: '300px' }}
-                      onClick={() => unlocked && this.addToCart(setKey)}
-                    >
-                      <img
-                        src={getBoosterImage(setKey)}
-                        alt={`${set.label} Booster Pack`}
-                        className="max-w-full max-h-full object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.6)]"
-                        style={{ transform: `scale(${BOOSTER_SCALE[setKey] || 1})` }}
-                        draggable={false}
-                      />
-                      {!unlocked ? (
-                        <div className="absolute inset-0 flex items-end justify-center pb-4">
-                          <span className="text-3xl drop-shadow-lg">🔒</span>
-                        </div>
-                      ) : null}
-                      {/* Cart badge */}
-                      {qty > 0 ? (
-                        <div className="absolute -top-2 -right-2 size-7 rounded-full bg-amber-500 flex items-center justify-center text-xs font-bold text-black shadow-lg">
-                          {qty}
-                        </div>
-                      ) : null}
-                    </button>
-
-                    <div className="text-lg font-bold text-white mb-2">{set.label}</div>
-
-                    {unlocked ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="size-7 rounded-lg border border-white/20 flex items-center justify-center text-white/60 hover:bg-white/10 text-sm"
-                          onClick={() => this.setCart(setKey, qty - 1)}
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          max="99"
-                          value={qty}
-                          className="w-12 rounded-lg border border-white/20 bg-transparent text-center text-sm text-white outline-none focus:border-white/40 py-1 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                          onInput={(e) => this.setCart(setKey, e.target.value)}
+                  return (
+                    <div key={setKey} className="flex flex-col items-center">
+                      {/* Booster image */}
+                      <button
+                        type="button"
+                        disabled={!unlocked}
+                        className={cn(
+                          'relative mb-4 transition-transform flex items-center justify-center',
+                          unlocked ? 'hover:scale-105 cursor-pointer active:scale-95' : 'opacity-30'
+                        )}
+                        style={{ width: '200px', height: '300px' }}
+                        onClick={() => unlocked && this.addToCart(setKey)}
+                      >
+                        <img
+                          src={getBoosterImage(setKey)}
+                          alt={`${set.label} Booster Pack`}
+                          className="max-w-full max-h-full object-contain"
+                          style={{ transform: `scale(${BOOSTER_SCALE[setKey] || 1})`, filter: 'drop-shadow(0 10px 30px rgba(0,0,0,0.7))' }}
+                          draggable={false}
                         />
-                        <button
-                          type="button"
-                          className="size-7 rounded-lg border border-white/20 flex items-center justify-center text-white/60 hover:bg-white/10 text-sm"
-                          onClick={() => this.setCart(setKey, qty + 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground/50">Unlocks at Level {requiredLevel}</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                        {!unlocked ? (
+                          <div className="absolute inset-0 flex items-end justify-center pb-4">
+                            <span className="text-3xl" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))' }}>🔒</span>
+                          </div>
+                        ) : null}
+                        {qty > 0 ? (
+                          <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-black" style={{ background: '#d4a843', boxShadow: '0 0 12px rgba(212,168,67,0.4), 0 2px 4px rgba(0,0,0,0.5)' }}>
+                            {qty}
+                          </div>
+                        ) : null}
+                      </button>
 
-            {/* Cart summary + checkout */}
-            <div className={cn(
-              'rounded-2xl border p-5 flex items-center justify-between transition-all',
-              cartPacks > 0
-                ? 'border-amber-500/30 bg-amber-500/5'
-                : 'border-white/10 bg-white/[0.02]'
-            )}>
-              <div>
-                <div className={cn('text-sm font-semibold', cartPacks > 0 ? 'text-white' : 'text-white/30')}>
-                  {cartPacks > 0 ? `${cartPacks} pack${cartPacks !== 1 ? 's' : ''} selected` : 'No packs selected'}
-                </div>
-                <div className="text-xs text-muted-foreground/50 mt-0.5">
-                  {cartPacks > 0
-                    ? SET_ORDER.filter((k) => cart[k] > 0).map((k) => `${cart[k]}x ${BOOSTER_SETS[k].label}`).join(', ')
-                    : 'Click a pack or use +/- to add to cart'}
-                </div>
+                      {/* Set name */}
+                      <div className="text-base font-bold arena-heading mb-2" style={{ color: '#e8d5a0', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{set.label}</div>
+
+                      {/* Quantity controls */}
+                      {unlocked ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 active:scale-90"
+                            style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '4px', color: '#A6A09B' }}
+                            onClick={() => this.setCart(setKey, qty - 1)}
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max="99"
+                            value={qty}
+                            className="w-10 h-8 text-center text-sm font-bold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.15)`, borderRadius: '4px', color: '#e8d5a0' }}
+                            onInput={(e) => this.setCart(setKey, e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 active:scale-90"
+                            style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '4px', color: '#A6A09B' }}
+                            onClick={() => this.setCart(setKey, qty + 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs" style={{ color: 'rgba(166,160,155,0.4)', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Unlocks at Level {requiredLevel}</div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <div className={cn('text-lg font-bold tabular-nums', cartPacks > 0 ? 'text-yellow-300' : 'text-white/20')}>{cartCost}</div>
-                  <div className="text-[10px] text-muted-foreground/50">coins</div>
+
+              {/* Cart summary */}
+              <div className="relative p-5 flex items-center justify-between" style={{
+                background: PANEL_BG,
+                border: `1px solid ${cartPacks > 0 ? `${GOLD} 0.35)` : `${GOLD} 0.15)`}`,
+                borderRadius: '8px',
+                boxShadow: cartPacks > 0 ? `0 0 20px ${GOLD} 0.08)` : 'none',
+              }}>
+                <CornerPlating position="top-left" />
+                <CornerPlating position="top-right" />
+                <CornerPlating position="bottom-left" />
+                <CornerPlating position="bottom-right" />
+                <div>
+                  <div className="text-sm font-semibold" style={{ color: cartPacks > 0 ? '#e8d5a0' : 'rgba(166,160,155,0.4)' }}>
+                    {cartPacks > 0 ? `${cartPacks} pack${cartPacks !== 1 ? 's' : ''} selected` : 'No packs selected'}
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: 'rgba(166,160,155,0.35)' }}>
+                    {cartPacks > 0
+                      ? SET_ORDER.filter((k) => cart[k] > 0).map((k) => `${cart[k]}× ${BOOSTER_SETS[k].label}`).join(', ')
+                      : 'Click a pack or use +/− to add'}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  disabled={cartPacks === 0 || !canAffordCart}
-                  className={cn(
-                    'rounded-xl px-8 py-3 text-sm font-semibold transition-all',
-                    cartPacks > 0 && canAffordCart
-                      ? 'bg-amber-500 text-black hover:bg-amber-400 shadow-lg shadow-amber-500/20'
-                      : 'bg-white/5 text-white/20 cursor-not-allowed'
-                  )}
-                  onClick={() => this.setState({ showConfirm: true })}
-                >
-                  {cartPacks === 0 ? 'Purchase' : canAffordCart ? 'Purchase' : 'Not enough coins'}
-                </button>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="text-lg font-bold tabular-nums" style={{ color: cartPacks > 0 ? '#f0d060' : 'rgba(166,160,155,0.2)' }}>{cartCost}</div>
+                    <div className="text-[10px]" style={{ color: 'rgba(166,160,155,0.3)' }}>gold</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={cartPacks === 0 || !canAffordCart}
+                    className="px-8 py-3 text-sm font-semibold arena-heading uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-[0.97]"
+                    style={cartPacks > 0 && canAffordCart
+                      ? {
+                          background: `linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)`,
+                          border: `1px solid rgba(228,200,100,0.6)`,
+                          borderRadius: '6px',
+                          color: '#1a1408',
+                          boxShadow: `0 0 20px ${GOLD} 0.2), inset 0 1px 0 rgba(255,255,255,0.2)`,
+                          textShadow: '0 1px 0 rgba(255,255,255,0.2)',
+                        }
+                      : {
+                          background: 'rgba(166,160,155,0.08)',
+                          border: '1px solid rgba(166,160,155,0.15)',
+                          borderRadius: '6px',
+                          color: 'rgba(166,160,155,0.25)',
+                        }
+                    }
+                    onClick={() => this.setState({ showConfirm: true })}
+                  >
+                    {cartPacks === 0 ? 'Purchase' : canAffordCart ? 'Purchase' : 'Not enough gold'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
           ) : null}
 
           {tab === 'decks' ? (
             <div className="w-full max-w-4xl">
-              <div className="text-center mb-10">
-                <h1 className="text-3xl font-bold text-white mb-2">Pre-constructed Decks</h1>
-                <p className="text-muted-foreground">Ready-to-play decks with a curated selection of cards</p>
-              </div>
-              <div className="flex items-center justify-center py-16">
-                <div className="text-center">
-                  <div className="text-6xl mb-4 opacity-20">🃏</div>
-                  <div className="text-lg font-semibold text-white/40">Coming Soon</div>
-                  <p className="text-sm text-muted-foreground/50 mt-2 max-w-sm">Pre-constructed decks will be available for purchase in a future update.</p>
-                </div>
+              <div className="text-center py-20">
+                <div className="text-5xl mb-4 opacity-20">🃏</div>
+                <div className="text-lg font-semibold arena-heading" style={{ color: 'rgba(166,160,155,0.4)' }}>Coming Soon</div>
+                <p className="text-sm mt-2 max-w-sm mx-auto" style={{ color: 'rgba(166,160,155,0.25)' }}>Pre-constructed decks will be available in a future update.</p>
               </div>
             </div>
           ) : null}
         </div>
 
-        {/* Confirmation dialog */}
+        {/* ─── CONFIRMATION DIALOG ─────────────────── */}
         {showConfirm ? (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => this.setState({ showConfirm: false })}>
-            <div className="w-96 rounded-2xl border border-border/70 bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-lg font-bold text-white mb-4">Confirm Purchase</h2>
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm" onClick={() => this.setState({ showConfirm: false })}>
+            <div
+              className="relative w-96 p-6"
+              style={{ background: PANEL_BG, border: `1px solid ${PANEL_BORDER}`, borderRadius: '8px', boxShadow: `0 0 40px rgba(0,0,0,0.5), 0 0 20px ${GOLD} 0.05)` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CornerPlating position="top-left" />
+              <CornerPlating position="top-right" />
+              <CornerPlating position="bottom-left" />
+              <CornerPlating position="bottom-right" />
+
+              <h2 className="text-lg font-bold arena-heading mb-4" style={{ color: '#e8d5a0' }}>Confirm Purchase</h2>
               <div className="flex flex-col gap-2 mb-4">
                 {SET_ORDER.filter((k) => cart[k] > 0).map((k) => (
-                  <div key={k} className="flex items-center justify-between text-sm">
+                  <div key={k} className="flex items-center justify-between text-sm py-1" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
                     <div className="flex items-center gap-3">
                       <img src={getBoosterImage(k)} alt="" className="w-8 h-auto" draggable={false} />
-                      <span className="text-white">{cart[k]}x {BOOSTER_SETS[k].label}</span>
+                      <span style={{ color: '#A6A09B' }}>{cart[k]}× {BOOSTER_SETS[k].label}</span>
                     </div>
-                    <span className="text-yellow-300 tabular-nums">{cart[k] * CURRENCY.PACK_PRICE}</span>
+                    <span className="tabular-nums font-semibold" style={{ color: '#f0d060' }}>{cart[k] * CURRENCY.PACK_PRICE}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between py-3 border-t border-white/10 mb-5">
-                <span className="text-sm font-semibold text-white">Total</span>
-                <span className="text-lg font-bold text-yellow-300 tabular-nums">{cartCost} coins</span>
+              <div className="flex items-center justify-between py-3 mb-5" style={{ borderTop: `1px solid ${GOLD} 0.15)` }}>
+                <span className="text-sm font-semibold" style={{ color: '#e8d5a0' }}>Total</span>
+                <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060' }}>{cartCost} gold</span>
               </div>
               <div className="flex gap-3">
                 <button
                   type="button"
-                  className="flex-1 rounded-xl border border-white/20 py-2.5 text-sm font-medium text-white/70 hover:bg-white/10"
+                  className="flex-1 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  style={{ background: 'transparent', border: `1px solid ${GOLD} 0.2)`, borderRadius: '4px', color: '#A6A09B' }}
                   onClick={() => this.setState({ showConfirm: false })}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-black hover:bg-amber-400 shadow-lg"
+                  className="flex-1 py-2.5 text-sm font-semibold arena-heading uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-[0.97]"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)',
+                    border: '1px solid rgba(228,200,100,0.6)',
+                    borderRadius: '4px',
+                    color: '#1a1408',
+                    boxShadow: `0 0 15px ${GOLD} 0.15), inset 0 1px 0 rgba(255,255,255,0.2)`,
+                  }}
                   onClick={this.handlePurchase}
                 >
                   Buy {cartPacks} Pack{cartPacks !== 1 ? 's' : ''}
