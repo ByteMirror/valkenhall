@@ -1,5 +1,5 @@
 import { Component } from 'preact';
-import { Mail } from 'lucide-react';
+import { Mail, Users } from 'lucide-react';
 import RuneSpinner from './RuneSpinner';
 import { xpProgressInLevel } from '../utils/arena/profileDefaults';
 import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievements';
@@ -157,13 +157,14 @@ export default class ArenaHub extends Component {
             <div className="relative">
               <button
                 type="button"
-                className="relative px-3 py-1.5 text-xs font-semibold transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
                 style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
                 onClick={onToggleMailbox}
               >
-                <Mail size={16} style={{ color: ACCENT_GOLD }} />
+                <Mail size={14} />
+                Mailbox
                 {(mailboxUnreadCount || 0) > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
                     {mailboxUnreadCount}
@@ -176,30 +177,19 @@ export default class ArenaHub extends Component {
             {/* Friends button */}
             <button
               type="button"
-              className="relative px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
               style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
               onClick={onToggleFriends}
             >
+              <Users size={14} />
               Friends
               {(friendListData?.pendingCount || 0) > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
                   {friendListData.pendingCount}
                 </span>
               )}
-            </button>
-
-            {/* Settings button */}
-            <button
-              type="button"
-              className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
-              onClick={onOpenSettings}
-            >
-              Settings
             </button>
           </div>
         </div>
