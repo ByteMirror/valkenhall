@@ -1,0 +1,138 @@
+import { Component } from 'preact';
+import { cn } from '../lib/utils';
+
+export default class TradeWindow extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      myOffer: [],
+      theirOffer: [],
+      myLocked: false,
+      theirLocked: false,
+      searchQuery: '',
+    };
+  }
+
+  addToOffer = (card) => {
+    this.setState((s) => {
+      const existing = s.myOffer.find((c) => c.cardId === card.cardId);
+      const ownedQty = this.getOwnedQuantity(card.cardId);
+      const offeredQty = existing ? existing.quantity : 0;
+      if (offeredQty >= ownedQty) return null;
+      if (existing) {
+        return { myOffer: s.myOffer.map((c) => c.cardId === card.cardId ? { ...c, quantity: c.quantity + 1 } : c), myLocked: false };
+      }
+      return { myOffer: [...s.myOffer, { cardId: card.cardId, quantity: 1, name: card.name, imageUrl: card.imageUrl }], myLocked: false };
+    }, () => this.props.onOfferChanged?.(this.state.myOffer));
+  };
+
+  removeFromOffer = (cardId) => {
+    this.setState((s) => {
+      const existing = s.myOffer.find((c) => c.cardId === cardId);
+      if (!existing) return null;
+      if (existing.quantity > 1) {
+        return { myOffer: s.myOffer.map((c) => c.cardId === cardId ? { ...c, quantity: c.quantity - 1 } : c), myLocked: false };
+      }
+      return { myOffer: s.myOffer.filter((c) => c.cardId !== cardId), myLocked: false };
+    }, () => this.props.onOfferChanged?.(this.state.myOffer));
+  };
+
+  getOwnedQuantity(cardId) {
+    const entry = this.props.collection?.find((c) => c.cardId === cardId);
+    return entry?.quantity || 0;
+  }
+
+  handleLockIn = () => {
+    this.setState({ myLocked: true });
+    this.props.onLockIn?.();
+  };
+
+  handleConfirm = () => {
+    this.props.onConfirm?.(this.state.myOffer, this.state.theirOffer);
+  };
+
+  render() {
+    const { collection, sorceryCards, partnerName, onCancel } = this.props;
+    const { myOffer, theirOffer, myLocked, theirLocked, searchQuery } = this.state;
+    const bothLocked = myLocked && theirLocked;
+    const q = searchQuery.toLowerCase().trim();
+    const filteredCollection = (collection || []).filter((entry) => {
+      if (!q) return true;
+      const card = sorceryCards?.find((c) => c.unique_id === entry.cardId);
+      return card?.name?.toLowerCase().includes(q);
+    });
+
+    return (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="w-full max-w-5xl h-[80vh] rounded-2xl border border-border/70 bg-card shadow-2xl flex flex-col">
+          <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white">Trading with {partnerName}</h2>
+            <button type="button" className="text-xs text-white/40 hover:text-white/70" onClick={onCancel}>Cancel</button>
+          </div>
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left: collection */}
+            <div className="w-1/3 border-r border-white/5 flex flex-col">
+              <div className="px-3 py-2 border-b border-white/5">
+                <input type="text" placeholder="Search your cards..." className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none" value={searchQuery} onInput={(e) => this.setState({ searchQuery: e.target.value })} />
+              </div>
+              <div className="flex-1 overflow-y-auto p-2">
+                <div className="grid grid-cols-3 gap-1">
+                  {filteredCollection.map((entry) => {
+                    const card = sorceryCards?.find((c) => c.unique_id === entry.cardId);
+                    if (!card) return null;
+                    const imageUrl = card.printings?.[0]?.image_url || '';
+                    return (
+                      <button key={entry.cardId} type="button" className="rounded-md overflow-hidden border border-transparent hover:border-amber-500/50 transition-colors relative" onClick={() => this.addToOffer({ cardId: entry.cardId, name: card.name, imageUrl })} disabled={myLocked}>
+                        <img src={imageUrl} alt={card.name} className="w-full aspect-[63/88] object-cover" draggable={false} />
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[8px] text-white text-center py-0.5 truncate">{card.name} x{entry.quantity}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            {/* Center: offers */}
+            <div className="flex-1 flex flex-col">
+              <div className="flex-1 flex">
+                <div className="flex-1 p-4 border-r border-white/5">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Your Offer {myLocked ? '(Locked)' : ''}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {myOffer.map((item) => (
+                      <div key={item.cardId} className="relative">
+                        <img src={item.imageUrl} alt={item.name} className="w-16 aspect-[63/88] rounded-md object-cover" />
+                        {item.quantity > 1 ? <div className="absolute -top-1 -right-1 bg-amber-500 text-black text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{item.quantity}</div> : null}
+                        {!myLocked ? <button type="button" className="absolute top-0 left-0 w-full h-full bg-black/0 hover:bg-black/50 flex items-center justify-center text-white/0 hover:text-white text-xs rounded-md transition-all" onClick={() => this.removeFromOffer(item.cardId)}>Remove</button> : null}
+                      </div>
+                    ))}
+                    {myOffer.length === 0 ? <div className="text-xs text-white/20 py-8 text-center w-full">Click cards to add</div> : null}
+                  </div>
+                </div>
+                <div className="flex-1 p-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">{partnerName}'s Offer {theirLocked ? '(Locked)' : ''}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {theirOffer.map((item) => (
+                      <div key={item.cardId} className="relative">
+                        <img src={item.imageUrl} alt={item.name} className="w-16 aspect-[63/88] rounded-md object-cover" />
+                        {item.quantity > 1 ? <div className="absolute -top-1 -right-1 bg-white/80 text-black text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{item.quantity}</div> : null}
+                      </div>
+                    ))}
+                    {theirOffer.length === 0 ? <div className="text-xs text-white/20 py-8 text-center w-full">Waiting for offer...</div> : null}
+                  </div>
+                </div>
+              </div>
+              <div className="px-4 py-3 border-t border-white/10 flex items-center justify-end gap-3">
+                {!myLocked ? (
+                  <button type="button" disabled={myOffer.length === 0} className={cn('rounded-xl px-6 py-2 text-sm font-semibold transition-all', myOffer.length > 0 ? 'bg-amber-500 text-black hover:bg-amber-400' : 'bg-white/5 text-white/20 cursor-not-allowed')} onClick={this.handleLockIn}>Lock In</button>
+                ) : bothLocked ? (
+                  <button type="button" className="rounded-xl px-6 py-2 text-sm font-semibold bg-green-500 text-black hover:bg-green-400 transition-all" onClick={this.handleConfirm}>Confirm Trade</button>
+                ) : (
+                  <div className="text-xs text-amber-400/70">Waiting for {partnerName} to lock in...</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}

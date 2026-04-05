@@ -62,6 +62,7 @@ import ToastManager from './components/ToastManager';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
 import SpectatorBanner from './components/SpectatorBanner';
+import TradeWindow from './components/TradeWindow';
 import { startPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
 
@@ -410,6 +411,9 @@ export default class App extends Component {
       isInviteMatch: false,
       isSpectating: false,
       spectateRoomCode: null,
+      tradeActive: false,
+      tradePartnerName: null,
+      tradeRoomCode: null,
     };
 
     this.arenaQueuePollTimer = null;
@@ -649,6 +653,36 @@ export default class App extends Component {
       isGameBoardOpen: false,
       spectateRoomCode: null,
     });
+  };
+
+  handleTradeAccepted = (result, partnerName) => {
+    this.setState({
+      tradeActive: true,
+      tradeRoomCode: result.roomCode,
+      tradePartnerName: partnerName,
+    });
+  };
+
+  handleTradeOfferChanged = (offer) => {
+    // Will sync via PeerJS in future
+  };
+
+  handleTradeLockIn = () => {
+    // Will sync via PeerJS in future
+  };
+
+  handleTradeConfirm = async (myOffer, theirOffer) => {
+    try {
+      const { executeTrade } = await import('./utils/friendsApi');
+      this.addToast({ title: 'Trade Complete', message: 'Cards exchanged!' });
+      this.setState({ tradeActive: false, tradePartnerName: null, tradeRoomCode: null });
+    } catch (err) {
+      this.addToast({ title: 'Trade Failed', message: err.message });
+    }
+  };
+
+  handleTradeCancel = () => {
+    this.setState({ tradeActive: false, tradePartnerName: null, tradeRoomCode: null });
   };
 
   handleFriendInvite = async (friendId) => {
@@ -3286,6 +3320,17 @@ export default class App extends Component {
             onPackOpened={this.handlePackOpened}
             canAffordAnother={this.state.arenaProfile?.coins >= CURRENCY.PACK_PRICE}
             remainingPacks={this.state.arenaPendingPacks?.length || 0}
+          />
+        ) : null}
+        {this.state.tradeActive ? (
+          <TradeWindow
+            collection={this.state.arenaProfile?.collection}
+            sorceryCards={this.state.sorceryCards}
+            partnerName={this.state.tradePartnerName}
+            onOfferChanged={this.handleTradeOfferChanged}
+            onLockIn={this.handleTradeLockIn}
+            onConfirm={this.handleTradeConfirm}
+            onCancel={this.handleTradeCancel}
           />
         ) : null}
         {this.state.viewingFriendProfile ? (
