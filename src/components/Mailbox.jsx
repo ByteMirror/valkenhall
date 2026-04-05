@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { ScrollText } from 'lucide-react';
 import { fetchInbox, sendMail, claimMail, deleteMail } from '../utils/arena/mailApi';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
@@ -282,15 +283,13 @@ export default class Mailbox extends Component {
       return (
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div
-            className="w-14 h-14 rounded-xl flex items-center justify-center mb-3"
+            className="relative w-16 h-16 rounded-xl flex items-center justify-center mb-3"
             style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.1)` }}
           >
-            {/* Parchment scroll with strikethrough */}
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: `${GOLD} 0.2)` }}>
-              <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
-              <path d="M19 17V5a2 2 0 0 0-2-2H4" />
-              <line x1="2" y1="22" x2="22" y2="2" strokeWidth="2" />
-            </svg>
+            <ScrollText size={28} style={{ color: `${GOLD} 0.15)` }} />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div style={{ width: 36, height: 2, background: `${GOLD} 0.2)`, transform: 'rotate(-45deg)', borderRadius: 1 }} />
+            </div>
           </div>
           <div className="text-xs font-medium" style={{ color: TEXT_MUTED }}>No messages</div>
         </div>
@@ -740,7 +739,7 @@ export default class Mailbox extends Component {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
             {view === 'list' && this.renderListView()}
             {view === 'detail' && this.renderDetailView()}
             {view === 'compose' && this.renderComposeView()}
