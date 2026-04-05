@@ -624,6 +624,56 @@ app.get('/sorcery-images/:filename', async (req, res) => {
   }
 });
 
+// --- Auto-update endpoints ---
+
+let updateApi = null;
+
+export function registerUpdateApi(api) {
+  updateApi = api;
+}
+
+app.get('/api/update/status', (_req, res) => {
+  if (!updateApi) {
+    return res.json({
+      state: 'UP_TO_DATE',
+      currentVersion: null,
+      newVersion: null,
+      releaseNotes: null,
+      downloadProgress: null,
+      error: 'Updater not available',
+    });
+  }
+
+  res.json(updateApi.getStatus());
+});
+
+app.post('/api/update/check', async (_req, res) => {
+  if (!updateApi) {
+    return res.status(503).json({ error: 'Updater not available' });
+  }
+
+  const status = await updateApi.manualCheck();
+  res.json(status);
+});
+
+app.post('/api/update/retry', async (_req, res) => {
+  if (!updateApi) {
+    return res.status(503).json({ error: 'Updater not available' });
+  }
+
+  const status = await updateApi.retryDownload();
+  res.json(status);
+});
+
+app.post('/api/update/apply', async (_req, res) => {
+  if (!updateApi) {
+    return res.status(503).json({ error: 'Updater not available' });
+  }
+
+  res.json({ applying: true });
+  setTimeout(() => updateApi.applyUpdate(), 500);
+});
+
 export function createProxyApp() {
   return app;
 }
