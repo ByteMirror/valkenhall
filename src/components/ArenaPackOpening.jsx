@@ -75,6 +75,8 @@ export default class ArenaPackOpening extends Component {
 
   handleKeyDown = (e) => {
     if (e.repeat) return; // prevent key repeat flicker
+    const tag = e.target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
     if (e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
       if (this.state.inspectedEntry) {
@@ -255,14 +257,13 @@ export default class ArenaPackOpening extends Component {
                             onClick={() => this.setState({ inspectedEntry: inspectedEntry === entry ? null : entry })}
                           >
                             <motion.div
-                              className={cn(entryFoil && FOIL_OVERLAY_CLASSES)}
+                              className={cn('card-mask', entryFoil && FOIL_OVERLAY_CLASSES)}
                               data-foil={entryFoil ? entry.printing?.foiling : undefined}
                               style={{
                                 width: cardWidth,
                                 height: cardHeight,
                                 borderRadius: 10,
                                 overflow: 'hidden',
-                                background: '#000',
                                 border: `2px solid ${RARITY_BORDER_COLOR[rarity]}`,
                               }}
                               animate={rarity !== 'Ordinary' && !isHovered ? {
