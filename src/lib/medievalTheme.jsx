@@ -47,7 +47,7 @@ export const CONTENT_BG_HOVER = `${NOISE_SVG}, linear-gradient(180deg, rgba(255,
 export const CONTENT_BG_ACTIVE = `${NOISE_SVG}, linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(255,255,255,0.02) 100%)`;
 
 /* ── Corner plating tokens ─────────────────────────────── */
-export const CORNER_SIZE = 10;
+export const CORNER_SIZE = 14;
 export const CORNER_THICKNESS = 2;
 export const BTN_BORDER = 'rgba(166,160,155,0.3)';
 export const BTN_BORDER_HOVER = 'rgba(166,160,155,0.55)';
@@ -171,7 +171,7 @@ export function adjustAlpha(rgba, alpha) {
 }
 
 /* ── Corner plating ornament ───────────────────────────── */
-export function CornerPlating({ position, color = GOLD_CORNER, radius = 6 }) {
+export function CornerPlating({ position, color = GOLD_CORNER, radius = 8 }) {
   const s = CORNER_SIZE;
   const t = CORNER_THICKNESS;
   const r = radius;
@@ -185,7 +185,7 @@ export function CornerPlating({ position, color = GOLD_CORNER, radius = 6 }) {
 }
 
 /* ── Four corners shorthand ────────────────────────────── */
-export function FourCorners({ color = GOLD_CORNER, radius = 6 }) {
+export function FourCorners({ color = GOLD_CORNER, radius = 8 }) {
   return (
     <>
       <CornerPlating position="top-left" color={color} radius={radius} />

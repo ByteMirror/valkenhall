@@ -80,7 +80,7 @@ export default class FriendProfileOverlay extends Component {
       <div className="fixed inset-0 z-[80] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
         <div
-          className="relative w-full max-w-2xl flex flex-col overflow-hidden"
+          className="relative w-full max-w-2xl flex flex-col"
           style={{ ...DIALOG_STYLE, zoom: this.state.viewScale, maxHeight: `${75 / this.state.viewScale}vh` }}
           onClick={(e) => e.stopPropagation()}
         >

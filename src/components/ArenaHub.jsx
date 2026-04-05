@@ -343,7 +343,7 @@ export default class ArenaHub extends Component {
               {/* ── CENTER COLUMN: LEADERBOARD ──────────────── */}
               <div className="flex-1 min-w-0 flex flex-col">
                 <div
-                  className="relative overflow-hidden flex-1 flex flex-col"
+                  className="relative flex-1 flex flex-col"
                   style={{
                     background: 'rgba(12, 10, 8, 0.94)',
                     backdropFilter: 'blur(8px)',
@@ -437,9 +437,9 @@ export default class ArenaHub extends Component {
               </div>
 
               {/* ── RIGHT COLUMN: ACHIEVEMENTS ─────────────── */}
-              <div className="w-[320px] shrink-0 flex flex-col overflow-hidden">
+              <div className="w-[320px] shrink-0 flex flex-col">
                 <div
-                  className="relative flex-1 flex flex-col overflow-hidden"
+                  className="relative flex-1 flex flex-col"
                   style={{
                     background: 'rgba(12, 10, 8, 0.94)',
                     backdropFilter: 'blur(8px)',

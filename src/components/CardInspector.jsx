@@ -137,7 +137,7 @@ export default function CardInspector({ card, imageUrl, rarity, foiling, onClose
         <div className="flex flex-col gap-3 min-w-[340px] max-w-[480px]">
           {/* Main card info */}
           <div className="relative p-5" style={{ ...DIALOG_STYLE }}>
-            <FourCorners />
+            <FourCorners radius={12} />
 
             {isFoil ? (
               <div
