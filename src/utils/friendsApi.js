@@ -12,7 +12,7 @@ function authHeaders() {
 }
 
 export async function searchPlayers(query) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/friends/search?q=${encodeURIComponent(query)}`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-search?q=${encodeURIComponent(query)}`, {
     headers: authHeaders(),
   });
   if (!res.ok) return [];
@@ -20,7 +20,7 @@ export async function searchPlayers(query) {
 }
 
 export async function getFriendList() {
-  const res = await fetch(`${MATCHMAKING_URL}/api/friends/list`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-list`, {
     headers: authHeaders(),
   });
   if (!res.ok) return { friends: [], pendingRequests: [], pendingCount: 0, pendingInvites: [], pendingSpectate: [], acceptedNotifications: [] };
@@ -28,7 +28,7 @@ export async function getFriendList() {
 }
 
 export async function sendFriendRequest(targetId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/friends/request`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-request`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ targetId }),
   });
@@ -37,7 +37,7 @@ export async function sendFriendRequest(targetId) {
 }
 
 export async function acceptFriendRequest(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/friends/accept`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-accept`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -46,7 +46,7 @@ export async function acceptFriendRequest(senderId) {
 }
 
 export async function declineFriendRequest(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/friends/decline`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-decline`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -55,7 +55,7 @@ export async function declineFriendRequest(senderId) {
 }
 
 export async function removeFriend(friendId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/friends/remove`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-remove`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ friendId }),
   });
@@ -72,7 +72,7 @@ export async function sendPresence(activity) {
 }
 
 export async function sendMatchInvite(targetId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/invite/send`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-send`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ targetId }),
   });
@@ -81,7 +81,7 @@ export async function sendMatchInvite(targetId) {
 }
 
 export async function acceptMatchInvite(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/invite/accept`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-accept`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -90,7 +90,7 @@ export async function acceptMatchInvite(senderId) {
 }
 
 export async function declineMatchInvite(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/invite/decline`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-decline`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -99,7 +99,7 @@ export async function declineMatchInvite(senderId) {
 }
 
 export async function requestSpectate(playerId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/spectate/request`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-request`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ playerId }),
   });
@@ -108,7 +108,7 @@ export async function requestSpectate(playerId) {
 }
 
 export async function allowSpectator(spectatorId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/spectate/allow`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-allow`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ spectatorId }),
   });
@@ -117,7 +117,7 @@ export async function allowSpectator(spectatorId) {
 }
 
 export async function denySpectator(spectatorId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/spectate/deny`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-deny`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ spectatorId }),
   });
@@ -126,7 +126,7 @@ export async function denySpectator(spectatorId) {
 }
 
 export async function requestTrade(targetId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/trade/request`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-request`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ targetId }),
   });
@@ -135,7 +135,7 @@ export async function requestTrade(targetId) {
 }
 
 export async function acceptTrade(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/trade/accept`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-accept`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -144,7 +144,7 @@ export async function acceptTrade(senderId) {
 }
 
 export async function declineTrade(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/trade/decline`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-decline`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -153,7 +153,7 @@ export async function declineTrade(senderId) {
 }
 
 export async function executeTrade(partnerId, myOffer, theirOffer) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/trade/execute`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-execute`, {
     method: 'POST', headers: authHeaders(),
     body: JSON.stringify({ partnerId, myOffer, theirOffer }),
   });

@@ -21,7 +21,7 @@ export async function registerPlayer(profileId, username) {
 }
 
 export async function clearQueueState(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/queue/clear`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-clear`, {
     method: 'POST',
     headers: authHeaders(token),
   });
@@ -30,7 +30,7 @@ export async function clearQueueState(token) {
 }
 
 export async function joinQueue(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/queue/join`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-join`, {
     method: 'POST',
     headers: authHeaders(token),
   });
@@ -39,7 +39,7 @@ export async function joinQueue(token) {
 }
 
 export async function leaveQueue(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/queue/leave`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-leave`, {
     method: 'POST',
     headers: authHeaders(token),
   });
@@ -48,7 +48,7 @@ export async function leaveQueue(token) {
 }
 
 export async function pollQueueStatus(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/queue/status`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-status`, {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error('Failed to check queue status');
@@ -56,7 +56,7 @@ export async function pollQueueStatus(token) {
 }
 
 export async function reportMatchResult(token, matchId, winner) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/match/report`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/game/match-report`, {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify({ matchId, winner }),
@@ -72,7 +72,7 @@ export async function getLeaderboard() {
 }
 
 export async function deleteAccount(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/account/delete`, {
+  const res = await fetch(`${MATCHMAKING_URL}/api/game/account-delete`, {
     method: 'POST',
     headers: authHeaders(token),
   });
