@@ -125,7 +125,7 @@ export default class ArenaHub extends Component {
         <AmbientParticles />
 
         {/* ─── TOP BAR ─────────────────────────────────────── */}
-        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', zoom: this.state.hubScale }}>
+        <div className="relative z-20 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', zoom: this.state.hubScale }}>
           <img src="/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
 
           {this.props.isAdmin && (
