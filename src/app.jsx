@@ -444,9 +444,6 @@ export default class App extends Component {
       this.themeMediaQuery.addEventListener('change', this.handleThemeMediaQueryChange);
     }
     applyThemePreference(this.state.themePreference);
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    }
     this.refreshSavedDecks();
 
     // Load sorcery cards
@@ -487,7 +484,7 @@ export default class App extends Component {
   }
 
   checkAuth = async () => {
-    const token = getStoredToken();
+    const token = await getStoredToken();
     if (token) {
       try {
         const result = await validateToken(token);
@@ -495,7 +492,7 @@ export default class App extends Component {
           this.setState({
             authChecking: false,
             loggedIn: true,
-            arenaProfile: this.seedFoilCards(this.profileFromServer(result.profile)),
+            arenaProfile: this.seedFoilCards(this.profileFromServer(result.profile, token)),
             arenaLoading: false,
           });
           this.postLoginInit();
@@ -571,7 +568,7 @@ export default class App extends Component {
     }
   };
 
-  profileFromServer = (serverProfile) => {
+  profileFromServer = (serverProfile, token) => {
     return {
       id: serverProfile.id,
       email: serverProfile.email,
@@ -580,7 +577,7 @@ export default class App extends Component {
       xp: serverProfile.xp || 0,
       starterDeck: serverProfile.starterDeck || null,
       profileAvatar: serverProfile.profileAvatar || null,
-      serverToken: getStoredToken(),
+      serverToken: token,
       serverRegistered: true,
       rank: serverProfile.rank || { tier: 'apprentice', division: 4, lp: 0 },
       collection: serverProfile.collection || [],
@@ -594,23 +591,33 @@ export default class App extends Component {
   seedFoilCards = (profile) => {
     if (!profile || profile.name !== 'Clutterfox') return profile;
     const foilEntries = [
-      { cardId: 'sorcery-angel_ascendant', printingId: 'got-angel_ascendant-b-f', quantity: 1 },
-      { cardId: 'sorcery-abaddon_succubus', printingId: 'got-abaddon_succubus-b-f', quantity: 1 },
-      { cardId: 'sorcery-day_of_judgment', printingId: 'got-day_of_judgment-b-f', quantity: 1 },
-      { cardId: 'sorcery-river_of_blood', printingId: 'got-river_of_blood-b-f', quantity: 1 },
-      { cardId: 'sorcery-bladedancer', printingId: 'got-bladedancer-b-f', quantity: 1 },
-      { cardId: 'sorcery-excalibur', printingId: 'art-excalibur-b-f', quantity: 1 },
-      { cardId: 'sorcery-black_knight', printingId: 'art-black_knight-b-f', quantity: 1 },
-      { cardId: 'sorcery-dragonlord', printingId: 'pro-dragonlord-op-rf', quantity: 1 },
-      { cardId: 'sorcery-witch', printingId: 'pro-witch-op-rf', quantity: 1 },
+      { cardId: 'sorcery-angel_ascendant', printingId: 'got-angel_ascendant-b-f', quantity: 4 },
+      { cardId: 'sorcery-abaddon_succubus', printingId: 'got-abaddon_succubus-b-f', quantity: 4 },
+      { cardId: 'sorcery-day_of_judgment', printingId: 'got-day_of_judgment-b-f', quantity: 4 },
+      { cardId: 'sorcery-river_of_blood', printingId: 'got-river_of_blood-b-f', quantity: 4 },
+      { cardId: 'sorcery-bladedancer', printingId: 'got-bladedancer-b-f', quantity: 4 },
+      { cardId: 'sorcery-excalibur', printingId: 'art-excalibur-b-f', quantity: 4 },
+      { cardId: 'sorcery-black_knight', printingId: 'art-black_knight-b-f', quantity: 4 },
+      { cardId: 'sorcery-dragonlord', printingId: 'pro-dragonlord-op-rf', quantity: 4 },
+      { cardId: 'sorcery-witch', printingId: 'pro-witch-op-rf', quantity: 4 },
+      { cardId: 'sorcery-avatar_of_fire', printingId: 'pro-avatar_of_fire-op-rf', quantity: 4 },
+      { cardId: 'sorcery-elementalist', printingId: 'pro-elementalist-op-rf', quantity: 4 },
     ];
     const collection = [...(profile.collection || [])];
+    let changed = false;
     for (const entry of foilEntries) {
-      if (!collection.some((c) => c.printingId === entry.printingId)) {
+      const existing = collection.find((c) => c.printingId === entry.printingId);
+      if (existing) {
+        if (existing.quantity < entry.quantity) {
+          existing.quantity = entry.quantity;
+          changed = true;
+        }
+      } else {
         collection.push(entry);
+        changed = true;
       }
     }
-    if (collection.length !== profile.collection?.length) {
+    if (changed) {
       const updated = { ...profile, collection };
       saveArenaProfile(updated).catch(() => {});
       return updated;
@@ -619,7 +626,7 @@ export default class App extends Component {
   };
 
   handleLogin = (result) => {
-    const profile = this.seedFoilCards(this.profileFromServer(result.profile));
+    const profile = this.seedFoilCards(this.profileFromServer(result.profile, result.token));
     this.setState({
       loggedIn: true,
       authChecking: false,
@@ -631,9 +638,6 @@ export default class App extends Component {
 
   postLoginInit = () => {
     playMusic('arena-hub', { fadeInDuration: 3000 });
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    }
     startPresence('hub', {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
       onNewNotifications: this.handleNewNotifications,
@@ -1533,7 +1537,7 @@ export default class App extends Component {
   handleGameMenuQuit = () => window.close();
 
   handleDocumentKeyDown = (event) => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && !isEditableTarget(event.target)) {
       event.preventDefault();
       this.setState((s) => ({ gameMenuOpen: !s.gameMenuOpen }));
       return;
@@ -1543,7 +1547,7 @@ export default class App extends Component {
       return;
     }
 
-    if (event.key === 'Tab') {
+    if (event.key === 'Tab' && !isEditableTarget(event.target)) {
       event.preventDefault();
       if (this.state.isGameBoardOpen) {
         this.gameBoardRef?.passTurn();
@@ -3409,6 +3413,7 @@ export default class App extends Component {
             friendListData={this.state.friendListData}
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
             onOpenSettings={this.handleOpenSettings}
+            onViewProfile={this.handleViewFriendProfile}
             updateStatus={this.state.updateStatus}
           />
         ) : null}
@@ -3423,6 +3428,7 @@ export default class App extends Component {
         {showArena && this.state.arenaView === 'deck-select' ? (
           <ArenaDeckSelect
             decks={this.state.arenaProfile?.decks || []}
+            sorceryCards={this.state.sorceryCards}
             onConfirm={this.confirmDeckAndQueue}
             onCancel={() => this.setState({ arenaView: 'hub' })}
           />
@@ -3478,7 +3484,7 @@ export default class App extends Component {
         {this.state.viewingFriendProfile ? (
           <FriendProfileOverlay
             profileId={this.state.viewingFriendProfile}
-            isFriend={true}
+            isFriend={this.state.friendListData?.friends?.some((f) => f.id === this.state.viewingFriendProfile) ?? false}
             sorceryCards={this.state.sorceryCards}
             onClose={() => this.setState({ viewingFriendProfile: null })}
             onInvite={this.handleFriendInvite}

@@ -11,6 +11,7 @@ import {
   BTN_BORDER, BTN_BORDER_HOVER, BTN_CORNER, BTN_CORNER_HOVER,
   DIALOG_STYLE, DIALOG_BORDER, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners,
+  getViewportScale,
 } from '../lib/medievalTheme';
 import AmbientParticles from './AmbientParticles';
 
@@ -26,11 +27,21 @@ export default class ArenaHub extends Component {
       leaderboardLoading: false,
       leaderboardFilter: 'all',
       leaderboardSearch: '',
+      hubScale: getViewportScale(),
     };
   }
 
+  handleHubResize = () => {
+    this.setState({ hubScale: getViewportScale() });
+  };
+
   componentDidMount() {
+    window.addEventListener('resize', this.handleHubResize);
     this.loadLeaderboard();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this.handleHubResize);
   }
 
   loadLeaderboard = async () => {
@@ -73,7 +84,7 @@ export default class ArenaHub extends Component {
   }
 
   render() {
-    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
+    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
     const { showAvatarPicker, showSettings, showResetConfirm, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
@@ -115,11 +126,11 @@ export default class ArenaHub extends Component {
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0.4) 70%, rgba(0,0,0,0.7) 100%)' }} />
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.6) 100%)' }} />
 
-        {/* Ambient particle effects */}
+        {/* Ambient particle effects (embers, dust, sparks) */}
         <AmbientParticles />
 
         {/* ─── TOP BAR ─────────────────────────────────────── */}
-        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)' }}>
+        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', zoom: this.state.hubScale }}>
           <img src="/flesh-and-blood-proxies/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
 
           <div className="ml-auto flex items-center gap-5">
@@ -162,11 +173,11 @@ export default class ArenaHub extends Component {
         </div>
 
         {/* ─── MAIN CONTENT ────────────────────────────────── */}
-        <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
-          <div className="max-w-[1400px] mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
+        <div className="relative z-10 flex-1 flex flex-col overflow-hidden" style={{ zoom: this.state.hubScale }}>
+          <div className="mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
 
             {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2" style={{ background: 'rgba(12, 10, 8, 0.92)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2 w-[60%] mx-auto" style={{ background: 'rgba(12, 10, 8, 0.92)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
               <CornerPlating position="top-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
@@ -407,12 +418,15 @@ export default class ArenaHub extends Component {
                           const isTop3 = i < 3;
                           return (
                             <div
-                              key={i}
-                              className="flex items-center gap-3 px-3 py-2 transition-all"
+                              key={player.id || i}
+                              className="flex items-center gap-3 px-3 py-2 transition-all cursor-pointer"
                               style={{
                                 borderBottom: `1px solid ${GOLD} 0.06)`,
                                 background: isMe ? `linear-gradient(90deg, ${GOLD} 0.08), transparent)` : 'transparent',
                               }}
+                              onMouseEnter={(e) => { if (!isMe) e.currentTarget.style.background = `${GOLD} 0.06)`; }}
+                              onMouseLeave={(e) => { if (!isMe) e.currentTarget.style.background = 'transparent'; }}
+                              onClick={() => player.id && onViewProfile(player.id)}
                             >
                               <span className="w-5 text-right font-mono text-[11px] font-bold" style={{ color: isTop3 ? '#d4a843' : 'rgba(166,160,155,0.3)' }}>{i + 1}</span>
                               <span className="flex-1 font-medium truncate text-[13px]" style={{ color: isMe ? '#d4a843' : '#A6A09B' }}>
@@ -507,7 +521,7 @@ export default class ArenaHub extends Component {
             updateMusicVolume();
           };
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}>
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" style={{ zoom: this.state.hubScale }} onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}>
               <div
                 className="w-full max-w-md p-6 shadow-2xl"
                 style={{
@@ -614,7 +628,7 @@ export default class ArenaHub extends Component {
 
         {/* ─── AVATAR PICKER OVERLAY ────────────────────────── */}
         {showAvatarPicker && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => this.setState({ showAvatarPicker: false })}>
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" style={{ zoom: this.state.hubScale }} onClick={() => this.setState({ showAvatarPicker: false })}>
             <div
               className="w-full max-w-lg p-5 shadow-2xl"
               style={{
