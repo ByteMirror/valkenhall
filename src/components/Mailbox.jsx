@@ -5,6 +5,7 @@ import {
   PANEL_BG, DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, INPUT_STYLE,
   TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR,
   FourCorners, OrnamentalDivider,
+  getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
 function resolveCardImage(cardId, sorceryCards) {
@@ -54,11 +55,17 @@ export default class Mailbox extends Component {
       composeCoins: 0,
       showCardPicker: false,
       error: null,
+      viewScale: getViewportScale(),
     };
   }
 
   componentDidMount() {
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
     this.loadInbox();
+  }
+
+  componentWillUnmount() {
+    this.unsubScale?.();
   }
 
   componentDidUpdate(prevProps) {
@@ -790,11 +797,13 @@ export default class Mailbox extends Component {
     return (
       <div className="fixed inset-0 z-[60]" onClick={onClose}>
         <div
-          className="absolute right-4 flex flex-col"
+          className="absolute flex flex-col"
           style={{
-            top: 52,
+            top: `${48 * this.state.viewScale}px`,
+            right: `${24 * this.state.viewScale}px`,
             width: 380,
-            maxHeight: 500,
+            maxHeight: `min(500px, ${75 / this.state.viewScale}vh)`,
+            zoom: this.state.viewScale,
             ...DIALOG_STYLE,
             overflow: 'hidden',
           }}
