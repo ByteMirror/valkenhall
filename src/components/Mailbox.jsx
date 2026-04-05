@@ -283,13 +283,10 @@ export default class Mailbox extends Component {
       return (
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div
-            className="relative w-16 h-16 rounded-xl flex items-center justify-center mb-3"
+            className="w-16 h-16 rounded-xl flex items-center justify-center mb-3"
             style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.1)` }}
           >
             <ScrollText size={28} style={{ color: `${GOLD} 0.15)` }} />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div style={{ width: 36, height: 2, background: `${GOLD} 0.2)`, transform: 'rotate(-45deg)', borderRadius: 1 }} />
-            </div>
           </div>
           <div className="text-xs font-medium" style={{ color: TEXT_MUTED }}>No messages</div>
         </div>
@@ -532,7 +529,7 @@ export default class Mailbox extends Component {
 
         <OrnamentalDivider className="px-3 my-1" />
 
-        <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2.5">
+        <div className="flex-1 overflow-hidden px-3 py-2 flex flex-col gap-2.5">
           {/* Recipient */}
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-widest block mb-1" style={{ color: `${GOLD} 0.55)` }}>
@@ -605,7 +602,7 @@ export default class Mailbox extends Component {
               Message
             </label>
             <textarea
-              maxLength={2000}
+              maxLength={256}
               rows={3}
               value={composeBody}
               placeholder="Write your message..."
@@ -614,7 +611,7 @@ export default class Mailbox extends Component {
               onInput={e => this.setState({ composeBody: e.target.value })}
             />
             <div className="text-[9px] text-right mt-0.5" style={{ color: TEXT_MUTED }}>
-              {composeBody.length}/2000
+              {composeBody.length}/256
             </div>
           </div>
 
