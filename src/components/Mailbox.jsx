@@ -626,7 +626,7 @@ export default class Mailbox extends Component {
             </label>
             <textarea
               maxLength={2000}
-              rows={4}
+              rows={3}
               value={composeBody}
               placeholder="Write your message..."
               className="w-full px-2.5 py-1.5 text-xs outline-none resize-none"
@@ -679,7 +679,7 @@ export default class Mailbox extends Component {
             )}
             {showCardPicker && (
               <div
-                className="grid grid-cols-5 gap-1 max-h-[160px] overflow-y-auto p-1.5 rounded-lg"
+                className="grid grid-cols-5 gap-1 max-h-[120px] overflow-y-auto p-1.5 rounded-lg"
                 style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${GOLD} 0.08)` }}
               >
                 {collection.map(entry => {
@@ -801,8 +801,8 @@ export default class Mailbox extends Component {
           style={{
             top: `${48 * this.state.viewScale}px`,
             right: `${24 * this.state.viewScale}px`,
-            width: 380,
-            maxHeight: `min(500px, ${75 / this.state.viewScale}vh)`,
+            width: 400,
+            height: 580,
             zoom: this.state.viewScale,
             ...DIALOG_STYLE,
             overflow: 'hidden',
