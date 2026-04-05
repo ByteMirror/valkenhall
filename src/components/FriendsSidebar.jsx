@@ -4,6 +4,12 @@ import { searchPlayers, sendFriendRequest, acceptFriendRequest, declineFriendReq
 import { formatRank, TIER_COLORS } from '../utils/arena/rankUtils';
 import { levelFromXp } from '../utils/arena/profileDefaults';
 
+function resolveAvatarUrl(cardId, sorceryCards) {
+  if (!cardId || !sorceryCards) return null;
+  const card = sorceryCards.find((c) => c.unique_id === cardId);
+  return card?.printings?.[0]?.image_url || null;
+}
+
 const ACTIVITY_LABELS = {
   hub: 'In Hub',
   store: 'In Store',
@@ -88,7 +94,7 @@ export default class FriendsSidebar extends Component {
   };
 
   render() {
-    const { open, onClose, friendListData, onViewProfile } = this.props;
+    const { open, onClose, friendListData, onViewProfile, sorceryCards } = this.props;
     const { searchQuery, searchResults, searchLoading, activeTab } = this.state;
 
     if (!open) return null;
@@ -236,11 +242,13 @@ export default class FriendsSidebar extends Component {
                         <div className="text-xs text-white/15 mt-1">Try a different username</div>
                       </div>
                     ) : (
-                      searchResults.map((r) => (
+                      searchResults.map((r) => {
+                        const avatarUrl = resolveAvatarUrl(r.avatar, sorceryCards);
+                        return (
                         <div key={r.id} className="flex items-center gap-3 rounded-xl bg-white/[0.03] border border-white/[0.05] px-3 py-2.5 hover:bg-white/[0.05] transition-colors">
                           <div className="relative shrink-0">
-                            {r.avatar ? (
-                              <img src={r.avatar} alt="" className="w-9 h-9 rounded-lg object-cover object-top" />
+                            {avatarUrl ? (
+                              <img src={avatarUrl} alt="" className="w-9 h-9 rounded-lg object-cover object-top" />
                             ) : (
                               <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center text-sm text-white/30 font-medium">{(r.name || '?')[0].toUpperCase()}</div>
                             )}
@@ -266,7 +274,7 @@ export default class FriendsSidebar extends Component {
                             </button>
                           )}
                         </div>
-                      ))
+                      );})
                     )}
                   </div>
                 ) : (
@@ -344,10 +352,11 @@ export default class FriendsSidebar extends Component {
   }
 
   renderFriendCard(friend, isOffline = false) {
-    const { onViewProfile } = this.props;
+    const { onViewProfile, sorceryCards } = this.props;
     const lastSeenText = friend.lastSeen ? getRelativeTime(friend.lastSeen) : '';
     const level = levelFromXp(friend.xp || 0);
     const activityStyle = ACTIVITY_COLORS[friend.activity] || 'text-green-400/70 bg-green-500/10 border-green-500/20';
+    const avatarUrl = resolveAvatarUrl(friend.avatar, sorceryCards);
 
     return (
       <div
@@ -360,8 +369,8 @@ export default class FriendsSidebar extends Component {
       >
         {/* Avatar */}
         <div className="relative shrink-0">
-          {friend.avatar ? (
-            <img src={friend.avatar} alt="" className="w-10 h-10 rounded-lg object-cover object-top border border-white/[0.08]" />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="w-10 h-10 rounded-lg object-cover object-top border border-white/[0.08]" />
           ) : (
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-white/[0.08] flex items-center justify-center text-sm text-white/30 font-medium">
               {(friend.name || '?')[0].toUpperCase()}

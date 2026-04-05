@@ -4,6 +4,12 @@ import { getPublicProfile } from '../utils/friendsApi';
 import { xpProgressInLevel, levelFromXp } from '../utils/arena/profileDefaults';
 import { formatRank, TIER_COLORS, TIER_LABELS } from '../utils/arena/rankUtils';
 
+function resolveAvatarUrl(cardId, sorceryCards) {
+  if (!cardId || !sorceryCards) return null;
+  const card = sorceryCards.find((c) => c.unique_id === cardId);
+  return card?.printings?.[0]?.image_url || null;
+}
+
 const ACTIVITY_LABELS = {
   hub: 'In Hub', store: 'In Store', deckbuilder: 'Deck Builder',
   'in-match': 'In Match', 'pack-opening': 'Opening Packs',
@@ -57,8 +63,9 @@ export default class FriendProfileOverlay extends Component {
   }
 
   renderProfile(profile) {
-    const { onClose, onInvite, onSpectate, onTrade, onRemoveFriend, profileId, isFriend } = this.props;
+    const { onClose, onInvite, onSpectate, onTrade, onRemoveFriend, profileId, isFriend, sorceryCards } = this.props;
     const { showUnfriendConfirm } = this.state;
+    const avatarUrl = resolveAvatarUrl(profile.avatar, sorceryCards);
 
     const progress = xpProgressInLevel(profile.xp || 0);
     const level = progress.level;
@@ -99,8 +106,8 @@ export default class FriendProfileOverlay extends Component {
           <div className="flex items-center gap-5">
             {/* Avatar */}
             <div className="relative shrink-0">
-              {profile.avatar ? (
-                <img src={profile.avatar} alt="" className="w-20 h-20 rounded-xl object-cover object-top border-2 border-white/[0.08] shadow-lg" />
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="w-20 h-20 rounded-xl object-cover object-top border-2 border-white/[0.08] shadow-lg" />
               ) : (
                 <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border-2 border-amber-500/20 flex items-center justify-center text-3xl text-amber-400/60 font-bold">
                   {(profile.name || '?')[0].toUpperCase()}

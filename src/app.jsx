@@ -3353,6 +3353,7 @@ export default class App extends Component {
           <FriendProfileOverlay
             profileId={this.state.viewingFriendProfile}
             isFriend={true}
+            sorceryCards={this.state.sorceryCards}
             onClose={() => this.setState({ viewingFriendProfile: null })}
             onInvite={this.handleFriendInvite}
             onSpectate={this.handleFriendSpectate}
@@ -3367,10 +3368,8 @@ export default class App extends Component {
           open={this.state.friendsSidebarOpen}
           onClose={() => this.setState({ friendsSidebarOpen: false })}
           friendListData={this.state.friendListData}
-          onInvite={this.handleFriendInvite}
-          onSpectate={this.handleFriendSpectate}
+          sorceryCards={this.state.sorceryCards}
           onViewProfile={this.handleViewFriendProfile}
-          onTrade={this.handleFriendTrade}
         />
         <Toaster />
         <ToastManager
