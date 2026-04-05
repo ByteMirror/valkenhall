@@ -7,6 +7,47 @@ import { cn } from '../lib/utils';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { formatRank, TIER_COLORS, TIER_LABELS, TIERS } from '../utils/arena/rankUtils';
 
+const GOLD = 'rgba(180, 140, 60,';
+const GOLD_TEXT = 'rgba(201, 168, 76,';
+const PARCHMENT = 'rgba(228, 213, 160,';
+
+/* ── Atmospheric background layers ─────────────────────── */
+const BG_ATMOSPHERE = [
+  'radial-gradient(ellipse 80% 50% at 50% 30%, rgba(180,140,60,0.05) 0%, transparent 70%)',
+  'radial-gradient(ellipse 60% 40% at 50% 80%, rgba(120,80,30,0.06) 0%, transparent 60%)',
+  'radial-gradient(ellipse 100% 100% at 50% 50%, rgba(30,20,8,0.4) 0%, transparent 80%)',
+  'radial-gradient(circle at 20% 20%, rgba(100,60,20,0.03) 0%, transparent 40%)',
+  'radial-gradient(circle at 80% 70%, rgba(100,60,20,0.03) 0%, transparent 40%)',
+  '#08080a',
+].join(', ');
+
+/* ── Shared style fragments ─────────────────────────────── */
+const BEVELED_BTN = {
+  background: `linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)`,
+  border: `1px solid ${GOLD} 0.3)`,
+  boxShadow: `inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.4)`,
+  borderRadius: '8px',
+  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+};
+
+const HERO_BTN_GREEN = {
+  background: `linear-gradient(180deg, rgba(34,197,94,0.22) 0%, rgba(16,120,50,0.14) 100%)`,
+  border: '2px solid rgba(34,197,94,0.4)',
+  boxShadow: '0 0 30px rgba(34,197,94,0.12), 0 0 60px rgba(34,197,94,0.06), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.2)',
+  borderRadius: '14px',
+  textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+};
+
+function OrnamentalDivider({ className }) {
+  return (
+    <div className={cn('flex items-center gap-4 select-none', className)}>
+      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, transparent 0%, ${GOLD} 0.25) 50%, transparent 100%)` }} />
+      <span style={{ color: `${GOLD} 0.35)`, fontSize: '8px', lineHeight: 1 }}>◆</span>
+      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, transparent 0%, ${GOLD} 0.25) 50%, transparent 100%)` }} />
+    </div>
+  );
+}
+
 export default class ArenaHub extends Component {
   constructor(props) {
     super(props);
@@ -14,6 +55,7 @@ export default class ArenaHub extends Component {
       showAvatarPicker: false,
       showSettings: false,
       showResetConfirm: false,
+      showAchievements: false,
       soundSettings: getSoundSettings(),
       leaderboard: null,
       leaderboardLoading: false,
@@ -67,7 +109,7 @@ export default class ArenaHub extends Component {
 
   render() {
     const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends } = this.props;
-    const { showAvatarPicker, showSettings, showResetConfirm, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
+    const { showAvatarPicker, showSettings, showResetConfirm, showAchievements, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
     const collectionSize = profile.collection.reduce((sum, c) => sum + c.quantity, 0);
@@ -75,6 +117,9 @@ export default class ArenaHub extends Component {
     const avatarUrl = this.getAvatarImageUrl(profile.profileAvatar);
     const rankColor = TIER_COLORS[rank?.tier] || 'text-white';
     const filteredLeaderboard = this.getFilteredLeaderboard();
+    const winCount = profile.matchHistory.filter((m) => m.won).length;
+    const totalMatches = profile.matchHistory.length;
+    const winRate = totalMatches > 0 ? Math.round((winCount / totalMatches) * 100) : 0;
 
     const { sorceryCards } = this.props;
     const ownedCardIds = new Set((profile.collection || []).map((c) => c.cardId));
@@ -93,31 +138,50 @@ export default class ArenaHub extends Component {
       }
     }
 
+    const unlockedCount = (profile.achievements || []).length;
+
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col">
-        {/* Minimal top nav */}
-        <div className="flex items-center px-6 py-2.5 border-b border-white/10">
-          <span className="text-sm font-semibold text-white/70">Valkenhall</span>
-          <div className="ml-auto flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-bold text-yellow-300">{profile.coins}</span>
-              <span className="text-[10px] text-muted-foreground">coins</span>
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden select-none" style={{ background: BG_ATMOSPHERE }}>
+
+        {/* Vignette overlay */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(0,0,0,0.5) 100%)' }} />
+
+        {/* ─── TOP BAR ─────────────────────────────────────── */}
+        <div className="relative z-10 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'linear-gradient(180deg, rgba(20,16,8,0.6) 0%, transparent 100%)' }}>
+          <span className="text-lg font-bold arena-heading tracking-wide" style={{ color: '#c9a84c', textShadow: '0 0 20px rgba(200,160,60,0.2)' }}>Valkenhall</span>
+
+          <div className="ml-auto flex items-center gap-5">
+            {/* Gold display */}
+            <div className="flex items-center gap-1.5">
+              <span style={{ color: '#f0d060', fontSize: '14px', textShadow: '0 0 8px rgba(240,208,96,0.3)' }}>●</span>
+              <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
+              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
             </div>
+
+            {/* Friends button */}
             <button
               type="button"
-              className="relative rounded-lg border border-white/10 px-2.5 py-1 text-[10px] text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
+              className="relative px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
               onClick={onToggleFriends}
             >
               Friends
-              {(friendListData?.pendingCount || 0) > 0 ? (
-                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1">
+              {(friendListData?.pendingCount || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
                   {friendListData.pendingCount}
                 </span>
-              ) : null}
+              )}
             </button>
+
+            {/* Settings button */}
             <button
               type="button"
-              className="rounded-lg border border-white/10 px-2.5 py-1 text-[10px] text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
+              className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
               onClick={() => this.setState({ showSettings: true })}
             >
               Settings
@@ -125,212 +189,301 @@ export default class ArenaHub extends Component {
           </div>
         </div>
 
-        {/* Main content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-[1400px] mx-auto px-8 py-8">
+        {/* ─── MAIN CONTENT ────────────────────────────────── */}
+        <div className="relative z-10 flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-[1400px] mx-auto px-8">
 
-            {/* Profile card — prominent display */}
-            <div className="rounded-3xl border border-border/50 bg-card/40 p-8 mb-8">
-              <div className="flex items-center gap-8">
-                {/* Avatar — large */}
+              {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
+              <div className="flex items-center gap-8 py-6">
+                {/* Avatar with ornate frame */}
                 <button
                   type="button"
                   className="relative group shrink-0"
                   onClick={() => this.setState({ showAvatarPicker: true })}
                   title="Click to change avatar"
                 >
+                  {/* Outer ornate glow ring */}
+                  <div className="absolute -inset-2 rounded-2xl" style={{ border: `2px solid ${GOLD} 0.35)`, boxShadow: `0 0 25px ${GOLD} 0.12), 0 0 50px ${GOLD} 0.06)` }} />
+                  {/* Inner frame */}
+                  <div className="absolute -inset-0.5 rounded-xl" style={{ border: `1px solid ${GOLD} 0.6)` }} />
+
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="w-24 h-24 rounded-2xl object-cover object-top border-2 border-amber-500/40 shadow-[0_0_30px_rgba(245,158,11,0.15)] group-hover:border-amber-400 transition-all" />
+                    <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-xl object-cover object-top relative z-10" style={{ boxShadow: `0 4px 20px rgba(0,0,0,0.6)` }} />
                   ) : (
-                    <div className="w-24 h-24 rounded-2xl bg-white/10 border-2 border-white/20 flex items-center justify-center text-3xl text-white/30">?</div>
+                    <div className="w-20 h-20 rounded-xl flex items-center justify-center text-2xl relative z-10" style={{ background: `${GOLD} 0.1)`, color: `${GOLD} 0.4)` }}>?</div>
                   )}
-                  <div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all">
-                    <span className="text-white/0 group-hover:text-white/80 text-xs font-medium transition-all">Change</span>
+
+                  {/* Level badge — overlapping bottom-right */}
+                  <div
+                    className="absolute -bottom-2 -right-2 z-20 flex items-center justify-center"
+                    style={{
+                      width: '32px', height: '32px',
+                      background: `linear-gradient(135deg, rgba(200,160,50,0.3) 0%, rgba(120,90,30,0.2) 100%)`,
+                      border: `2px solid ${GOLD} 0.6)`,
+                      borderRadius: '8px',
+                      boxShadow: `0 2px 10px rgba(0,0,0,0.5), 0 0 12px ${GOLD} 0.15)`,
+                    }}
+                  >
+                    <span className="text-sm font-bold" style={{ color: '#d4a843', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{level}</span>
+                  </div>
+
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all z-20">
+                    <span className="text-white/0 group-hover:text-white/80 text-xs font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
                   </div>
                 </button>
 
-                {/* Name + stats */}
+                {/* Name, Rank, XP */}
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-white mb-3 arena-heading">{profile.name}</h1>
-                  <div className="flex items-center gap-6">
-                    {/* Level */}
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Level</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl font-bold text-amber-400">{level}</span>
-                        <div className="w-20 h-2 rounded-full bg-white/10 overflow-hidden">
-                          <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.round(progress.fraction * 100)}%` }} />
-                        </div>
-                      </div>
+                  <div className="flex items-center gap-4 mb-2">
+                    <h1 className="text-2xl font-bold arena-heading" style={{ color: '#e8d5a0', textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,160,60,0.1)' }}>{profile.name}</h1>
+                    {rank && (
+                      <span
+                        className={cn('text-sm font-bold px-3 py-0.5', rankColor)}
+                        style={{
+                          background: `linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(0,0,0,0.1) 100%)`,
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: '6px',
+                          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                        }}
+                      >
+                        {formatRank(rank.tier, rank.division)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* XP Progress bar — full width */}
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest arena-heading shrink-0" style={{ color: `${GOLD} 0.45)` }}>Lvl {level}</span>
+                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.08)`, border: `1px solid ${GOLD} 0.12)`, boxShadow: `inset 0 1px 3px rgba(0,0,0,0.3)` }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.round(progress.fraction * 100)}%`,
+                          background: 'linear-gradient(90deg, #8b6914, #d4a843, #c49a38)',
+                          boxShadow: '0 0 8px rgba(212,168,67,0.3)',
+                        }}
+                      />
                     </div>
-                    {/* Rank */}
-                    {rank ? (
+                    <span className="text-[10px] tabular-nums shrink-0" style={{ color: `${GOLD} 0.4)` }}>{Math.round(progress.fraction * 100)}%</span>
+                  </div>
+
+                  {/* Rank LP bar */}
+                  {rank && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest arena-heading shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>LP</span>
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${rank.lp}%`, background: 'rgba(255,255,255,0.2)' }} />
+                      </div>
+                      <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>{rank.lp} LP</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Stats */}
+                <div className="shrink-0 flex gap-6">
+                  <div className="text-center">
+                    <div className="text-xl font-bold tabular-nums" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{totalMatches}</div>
+                    <div className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: `${GOLD} 0.35)` }}>Matches</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold tabular-nums" style={{ color: winRate >= 50 ? '#6ee7a0' : '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{winRate}%</div>
+                    <div className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: `${GOLD} 0.35)` }}>Win Rate</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold tabular-nums" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{uniqueCards}</div>
+                    <div className="text-[9px] uppercase tracking-widest font-semibold" style={{ color: `${GOLD} 0.35)` }}>Cards</div>
+                  </div>
+                </div>
+              </div>
+
+              <OrnamentalDivider />
+
+              {/* ─── MAIN FOCAL AREA ─────────────────────────── */}
+              <div className="flex gap-6 py-6 flex-1">
+
+                {/* Left column: Actions */}
+                <div className="flex-1 min-w-0 flex flex-col">
+
+                  {/* ── PRIMARY PLAY BUTTONS ─────────────────── */}
+                  <div className="flex gap-4 mb-6">
+                    {/* FIND MATCH — THE hero button */}
+                    <button
+                      type="button"
+                      className="flex-1 relative group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                      style={HERO_BTN_GREEN}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = '0 0 40px rgba(34,197,94,0.2), 0 0 80px rgba(34,197,94,0.1), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2)';
+                        e.currentTarget.style.borderColor = 'rgba(34,197,94,0.6)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = HERO_BTN_GREEN.boxShadow;
+                        e.currentTarget.style.borderColor = 'rgba(34,197,94,0.4)';
+                      }}
+                      onClick={onFindMatch}
+                    >
+                      <div className="py-6 px-6 text-center">
+                        <div className="text-2xl font-bold arena-heading mb-1" style={{ color: '#6ee7a0', textShadow: '0 0 20px rgba(110,231,160,0.3), 0 2px 4px rgba(0,0,0,0.5)' }}>
+                          Find Match
+                        </div>
+                        <div className="text-xs font-medium" style={{ color: 'rgba(110,231,160,0.5)' }}>Ranked matchmaking — earn LP</div>
+                      </div>
+                      {/* Decorative sword icon */}
+                      <div className="absolute top-3 right-4 text-3xl opacity-[0.07]" style={{ color: '#6ee7a0' }}>⚔</div>
+                    </button>
+
+                    {/* Casual Play */}
+                    <button
+                      type="button"
+                      className="flex-[0.6] relative group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                      style={{
+                        ...BEVELED_BTN,
+                        borderRadius: '14px',
+                        border: `1px solid ${GOLD} 0.25)`,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px ${GOLD} 0.08)`;
+                        e.currentTarget.style.borderColor = `${GOLD} 0.45)`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow;
+                        e.currentTarget.style.borderColor = `${GOLD} 0.25)`;
+                      }}
+                      onClick={onPlayMatch}
+                    >
+                      <div className="py-6 px-5 text-center">
+                        <div className="text-lg font-bold arena-heading mb-1" style={{ color: '#e8d5a0', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+                          Casual Play
+                        </div>
+                        <div className="text-xs" style={{ color: `${PARCHMENT} 0.35)` }}>Play with a friend</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* ── COLLECTION TILES ──────────────────────── */}
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    {[
+                      { label: 'Store', sub: 'Buy packs', onClick: onOpenStore, accent: [212, 168, 67] },
+                      { label: 'Deck Builder', sub: 'Build decks', onClick: onOpenDeckBuilder, accent: [168, 85, 247] },
+                      { label: 'Auction House', sub: 'Buy & sell cards', onClick: onOpenAuctionHouse, accent: [212, 168, 67] },
+                    ].map(({ label, sub, onClick, accent }) => {
+                      const [r, g, b] = accent;
+                      const accentColor = `rgba(${r},${g},${b},`;
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          className="relative group text-center transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                          style={{
+                            background: `linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.1) 100%)`,
+                            border: `1px solid ${accentColor} 0.2)`,
+                            borderRadius: '12px',
+                            padding: '18px 12px',
+                            boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)`,
+                            textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = `${accentColor} 0.45)`;
+                            e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.08), 0 0 20px ${accentColor} 0.1)`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = `${accentColor} 0.2)`;
+                            e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)`;
+                          }}
+                          onClick={onClick}
+                        >
+                          <div className="text-base font-bold arena-heading mb-0.5" style={{ color: `${accentColor} 0.85)` }}>{label}</div>
+                          <div className="text-[11px]" style={{ color: `${accentColor} 0.4)` }}>{sub}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* ── RECENT MATCHES ────────────────────────── */}
+                  {totalMatches > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>Recent Matches</span>
+                        <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
+                      </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Rank</span>
-                        <div className="flex items-center gap-2">
-                          <span className={cn('text-xl font-bold', rankColor)}>{formatRank(rank.tier, rank.division)}</span>
-                          <div className="w-20 h-2 rounded-full bg-white/10 overflow-hidden">
-                            <div className="h-full rounded-full bg-white/30 transition-all" style={{ width: `${rank.lp}%` }} />
+                        {profile.matchHistory.slice(0, 5).map((m, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-3 px-3 py-2 text-sm"
+                            style={{
+                              background: `linear-gradient(90deg, ${m.won ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.03)'} 0%, transparent 100%)`,
+                              borderRadius: '8px',
+                              border: `1px solid ${m.won ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)'}`,
+                            }}
+                          >
+                            <span className={cn('font-bold w-5 text-center', m.won ? 'text-green-400' : 'text-red-400')} style={{ textShadow: m.won ? '0 0 8px rgba(34,197,94,0.3)' : '0 0 8px rgba(239,68,68,0.3)' }}>
+                              {m.won ? 'W' : 'L'}
+                            </span>
+                            <span className="flex-1 truncate" style={{ color: `${PARCHMENT} 0.55)` }}>{m.opponentName || 'Opponent'}</span>
+                            <span className="text-xs font-medium" style={{ color: 'rgba(240,208,96,0.6)' }}>+{m.coinsEarned}</span>
                           </div>
-                          <span className="text-xs text-muted-foreground">{rank.lp} LP</span>
-                        </div>
-                      </div>
-                    ) : null}
-                    {/* Collection — per-set progress */}
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Collection</span>
-                      <span className="text-sm text-white/70 mb-0.5">{uniqueCards} unique &middot; {collectionSize} total</span>
-                      <div className="flex flex-col gap-1">
-                        {[
-                          { key: 'gothic', label: 'Gothic', color: 'bg-purple-500/70' },
-                          { key: 'arthurian', label: 'Arthurian', color: 'bg-blue-500/70' },
-                          { key: 'beta', label: 'Beta', color: 'bg-emerald-500/70' },
-                        ].map((set) => {
-                          const s = setStats[set.key];
-                          const pct = s.total > 0 ? Math.round((s.owned / s.total) * 100) : 0;
-                          return (
-                            <div key={set.key} className="flex items-center gap-1.5">
-                              <span className="text-[9px] text-white/40 w-14 truncate">{set.label}</span>
-                              <div className="w-16 h-1 rounded-full bg-white/10 overflow-hidden">
-                                <div className={cn('h-full rounded-full transition-all', set.color)} style={{ width: `${pct}%` }} />
-                              </div>
-                              <span className="text-[9px] text-white/30 tabular-nums">{s.owned}/{s.total}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Matches</span>
-                      <span className="text-sm text-white/70">{profile.matchHistory.length} played</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions + Leaderboard side by side */}
-            <div className="flex gap-6">
-              {/* Left — actions */}
-              <div className="flex-1 min-w-0">
-                {/* Play */}
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3 arena-heading">Play</div>
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <button
-                    type="button"
-                    className="rounded-2xl border border-green-500/30 bg-green-500/5 p-5 text-left transition-all hover:border-green-500/60 hover:bg-green-500/10 hover:shadow-[0_0_30px_rgba(34,197,94,0.1)]"
-                    onClick={onFindMatch}
-                  >
-                    <div className="text-base font-bold text-white mb-1 arena-heading">Find Match</div>
-                    <p className="text-xs text-muted-foreground">Ranked matchmaking — earn LP</p>
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-2xl border border-border/40 bg-card/40 p-5 text-left transition-all hover:border-white/30 hover:bg-white/5"
-                    onClick={onPlayMatch}
-                  >
-                    <div className="text-base font-bold text-white mb-1 arena-heading">Casual Play</div>
-                    <p className="text-xs text-muted-foreground">Play with a friend</p>
-                  </button>
-                </div>
-
-                {/* Collection */}
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3 arena-heading">Collection</div>
-                <div className="grid grid-cols-3 gap-3 mb-6">
-                  <button
-                    type="button"
-                    className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 text-left transition-all hover:border-amber-500/60 hover:bg-amber-500/10"
-                    onClick={onOpenStore}
-                  >
-                    <div className="text-base font-bold text-white mb-1 arena-heading">Store</div>
-                    <p className="text-xs text-muted-foreground">Buy packs</p>
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-2xl border border-purple-500/30 bg-purple-500/5 p-5 text-left transition-all hover:border-purple-500/60 hover:bg-purple-500/10"
-                    onClick={onOpenDeckBuilder}
-                  >
-                    <div className="text-base font-bold text-white mb-1 arena-heading">Deck Builder</div>
-                    <p className="text-xs text-muted-foreground">Build decks</p>
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 text-left transition-all hover:border-amber-500/60 hover:bg-amber-500/10"
-                    onClick={onOpenAuctionHouse}
-                  >
-                    <div className="text-base font-bold text-white mb-1 arena-heading">Auction House</div>
-                    <p className="text-xs text-muted-foreground">Buy &amp; sell cards</p>
-                  </button>
-                </div>
-
-                {/* Recent matches */}
-                {profile.matchHistory.length > 0 ? (
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3 arena-heading">Recent Matches</div>
-                    <div className="flex flex-col gap-1">
-                      {profile.matchHistory.slice(0, 5).map((m, i) => (
-                        <div key={i} className="flex items-center gap-3 rounded-lg bg-white/[0.03] px-3 py-2 text-sm">
-                          <span className={cn('font-semibold w-4', m.won ? 'text-green-400' : 'text-red-400')}>
-                            {m.won ? 'W' : 'L'}
-                          </span>
-                          <span className="text-white/70 flex-1">{m.opponentName || 'Opponent'}</span>
-                          <span className="text-yellow-300/80 text-xs">+{m.coinsEarned}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-              </div>
-
-              {/* Right — leaderboard */}
-              <div className="w-[420px] shrink-0">
-                <div className="rounded-2xl border border-border/50 bg-card/30 backdrop-blur-sm">
-                  <div className="px-5 pt-5 pb-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3 arena-heading">Leaderboard</div>
-                    <Tabs value={leaderboardFilter} onValueChange={(v) => this.setState({ leaderboardFilter: v })} className="mb-3">
-                      <TabsList className="w-full gap-0.5 rounded-xl p-0.5 flex-wrap h-auto">
-                        <TabsTrigger value="all" className="px-2.5 py-1 text-[10px] h-6">All</TabsTrigger>
-                        {TIERS.map((tier) => (
-                          <TabsTrigger key={tier} value={tier} className="px-2.5 py-1 text-[10px] h-6">
-                            {TIER_LABELS[tier]}
-                          </TabsTrigger>
                         ))}
-                      </TabsList>
-                    </Tabs>
-                    <input
-                      type="text"
-                      value={leaderboardSearch}
-                      placeholder="Search players..."
-                      className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-white/30"
-                      onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
-                    />
-                  </div>
-                  <div className="max-h-[60vh] overflow-y-auto px-3 pb-4">
-                    {leaderboardLoading ? (
-                      <div className="text-xs text-muted-foreground/40 py-8 text-center">Loading...</div>
-                    ) : filteredLeaderboard.length === 0 ? (
-                      <div className="text-xs text-muted-foreground/40 py-8 text-center">No players in this tier yet</div>
-                    ) : (
-                      <div className="flex flex-col gap-0.5">
-                        {filteredLeaderboard.map((player, i) => {
-                          const isMe = player.name === profile.name;
-                          const color = TIER_COLORS[player.tier] || 'text-white/60';
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── ACHIEVEMENTS (collapsed) ─────────────── */}
+                  <div className="mt-auto pt-4">
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-3 py-2 transition-all group cursor-pointer"
+                      onClick={() => this.setState({ showAchievements: !showAchievements })}
+                    >
+                      <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>
+                        Achievements ({unlockedCount}/{ACHIEVEMENTS.length})
+                      </span>
+                      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
+                      <span className="text-[10px] transition-transform" style={{ color: `${GOLD} 0.3)`, transform: showAchievements ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                    </button>
+
+                    {showAchievements && (
+                      <div className="grid grid-cols-2 gap-1.5 mt-2 max-h-[300px] overflow-y-auto pr-1">
+                        {ACHIEVEMENTS.map((a) => {
+                          const unlocked = (profile.achievements || []).includes(a.id);
+                          const prog = !unlocked ? getAchievementProgress(a.id, profile, sorceryCards) : null;
+                          const hasProgress = prog && prog.target > 1 && prog.current > 0;
+                          const pct = prog && prog.target > 0 ? Math.min(100, Math.round((prog.current / prog.target) * 100)) : 0;
                           return (
                             <div
-                              key={i}
-                              className={cn(
-                                'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs',
-                                isMe ? 'bg-amber-500/10 border border-amber-500/20' : ''
-                              )}
+                              key={a.id}
+                              className="flex items-center gap-2.5 px-3 py-2 text-xs transition-all"
+                              style={unlocked
+                                ? {
+                                    background: 'linear-gradient(135deg, rgba(40,30,10,0.5) 0%, rgba(25,20,8,0.3) 100%)',
+                                    border: `1px solid ${GOLD} 0.25)`,
+                                    borderRadius: '8px',
+                                    boxShadow: `0 0 10px ${GOLD} 0.04)`,
+                                    color: '#e8d5a0',
+                                  }
+                                : {
+                                    background: 'rgba(255,255,255,0.01)',
+                                    border: '1px solid rgba(255,255,255,0.04)',
+                                    borderRadius: '8px',
+                                    color: 'rgba(255,255,255,0.2)',
+                                  }
+                              }
                             >
-                              <span className="text-muted-foreground/60 w-4 text-right font-mono text-[10px]">{i + 1}</span>
-                              <span className={cn('flex-1 font-medium truncate', isMe ? 'text-amber-300' : 'text-white/70')}>
-                                {player.name}
-                              </span>
-                              <span className={cn('text-[10px] font-semibold shrink-0', color)}>
-                                {formatRank(player.tier, player.division)}
-                              </span>
+                              <span className="text-base shrink-0">{unlocked ? a.icon : '🔒'}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate">{a.name}</div>
+                                <div className="text-[10px] truncate" style={{ color: unlocked ? `${PARCHMENT} 0.4)` : 'rgba(255,255,255,0.12)' }}>{a.description}</div>
+                                {hasProgress && (
+                                  <div className="mt-1 flex items-center gap-1.5">
+                                    <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: `${GOLD} 0.1)` }}>
+                                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: `${GOLD} 0.5)` }} />
+                                    </div>
+                                    <span className="text-[9px] shrink-0 tabular-nums" style={{ color: `${GOLD} 0.3)` }}>{prog.current}/{prog.target}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {unlocked && <span className="text-[9px] shrink-0 font-medium" style={{ color: '#d4a843' }}>+{a.coins}</span>}
                             </div>
                           );
                         })}
@@ -338,54 +491,99 @@ export default class ArenaHub extends Component {
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Achievements — full width */}
-            <div className="mt-6">
-              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3 arena-heading">
-                Achievements ({(profile.achievements || []).length}/{ACHIEVEMENTS.length})
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {ACHIEVEMENTS.map((a) => {
-                  const unlocked = (profile.achievements || []).includes(a.id);
-                  const prog = !unlocked ? getAchievementProgress(a.id, profile, sorceryCards) : null;
-                  const hasProgress = prog && prog.target > 1 && prog.current > 0;
-                  const pct = prog && prog.target > 0 ? Math.min(100, Math.round((prog.current / prog.target) * 100)) : 0;
-                  return (
-                    <div
-                      key={a.id}
-                      className={cn(
-                        'flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs border transition-colors',
-                        unlocked
-                          ? 'border-amber-500/30 bg-amber-500/5 text-white'
-                          : 'border-white/5 bg-white/[0.02] text-white/30'
-                      )}
-                    >
-                      <span className="text-base shrink-0">{unlocked ? a.icon : '🔒'}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium truncate">{a.name}</div>
-                        <div className={cn('text-[10px] truncate', unlocked ? 'text-white/50' : 'text-white/20')}>{a.description}</div>
-                        {hasProgress ? (
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                              <div className="h-full rounded-full bg-amber-500/60 transition-all" style={{ width: `${pct}%` }} />
-                            </div>
-                            <span className="text-[9px] text-white/30 shrink-0 tabular-nums">{prog.current}/{prog.target}</span>
-                          </div>
-                        ) : null}
+                {/* ─── RIGHT COLUMN: LEADERBOARD ─────────────── */}
+                <div className="w-[380px] shrink-0">
+                  <div
+                    className="overflow-hidden h-full flex flex-col"
+                    style={{
+                      background: 'linear-gradient(180deg, rgba(20,16,8,0.7) 0%, rgba(10,8,4,0.5) 100%)',
+                      border: `1px solid ${GOLD} 0.18)`,
+                      borderRadius: '14px',
+                      boxShadow: `inset 0 1px 0 ${GOLD} 0.06), 0 4px 20px rgba(0,0,0,0.3)`,
+                    }}
+                  >
+                    {/* Leaderboard header */}
+                    <div className="px-4 pt-4 pb-2">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="arena-heading text-xs font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.5)`, textShadow: '0 0 10px rgba(180,140,60,0.1)' }}>Leaderboard</span>
+                        <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.25), transparent)` }} />
                       </div>
-                      {unlocked ? <span className="text-[9px] text-amber-400 shrink-0">+{a.coins}</span> : null}
+
+                      <Tabs value={leaderboardFilter} onValueChange={(v) => this.setState({ leaderboardFilter: v })} className="mb-2">
+                        <TabsList className="w-full gap-0.5 rounded-xl p-0.5 flex-wrap h-auto">
+                          <TabsTrigger value="all" className="px-2.5 py-1 text-[10px] h-6">All</TabsTrigger>
+                          {TIERS.map((tier) => (
+                            <TabsTrigger key={tier} value={tier} className="px-2.5 py-1 text-[10px] h-6">
+                              {TIER_LABELS[tier]}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
+
+                      <input
+                        type="text"
+                        value={leaderboardSearch}
+                        placeholder="Search players..."
+                        className="w-full px-3 py-1.5 text-xs outline-none placeholder:text-amber-800/30"
+                        style={{
+                          background: `${GOLD} 0.04)`,
+                          border: `1px solid ${GOLD} 0.12)`,
+                          borderRadius: '8px',
+                          color: '#e8d5a0',
+                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)',
+                        }}
+                        onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
+                      />
                     </div>
-                  );
-                })}
+
+                    {/* Leaderboard list */}
+                    <div className="flex-1 overflow-y-auto px-3 pb-3">
+                      {leaderboardLoading ? (
+                        <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>Loading...</div>
+                      ) : filteredLeaderboard.length === 0 ? (
+                        <div className="text-xs py-8 text-center" style={{ color: `${GOLD} 0.3)` }}>No players in this tier yet</div>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {filteredLeaderboard.map((player, i) => {
+                            const isMe = player.name === profile.name;
+                            const color = TIER_COLORS[player.tier] || 'text-white/60';
+                            return (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs transition-all"
+                                style={isMe
+                                  ? {
+                                      background: `linear-gradient(90deg, ${GOLD} 0.1), ${GOLD} 0.05))`,
+                                      border: `1px solid ${GOLD} 0.25)`,
+                                      borderRadius: '8px',
+                                      boxShadow: `0 0 12px ${GOLD} 0.06)`,
+                                    }
+                                  : { borderRadius: '8px' }
+                                }
+                              >
+                                <span className="w-5 text-right font-mono text-[10px]" style={{ color: i < 3 ? '#d4a843' : `${GOLD} 0.3)` }}>{i + 1}</span>
+                                <span className="flex-1 font-medium truncate" style={{ color: isMe ? '#d4a843' : `${PARCHMENT} 0.55)` }}>
+                                  {player.name}
+                                </span>
+                                <span className={cn('text-[10px] font-semibold shrink-0', color)}>
+                                  {formatRank(player.tier, player.division)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Settings overlay */}
-        {showSettings ? (() => {
+        {/* ─── SETTINGS OVERLAY ──────────────────────────────── */}
+        {showSettings && (() => {
           const ss = this.state.soundSettings;
           const updateSound = (key, value) => {
             const next = { ...ss, [key]: value };
@@ -395,65 +593,81 @@ export default class ArenaHub extends Component {
           };
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}>
-              <div className="w-full max-w-md rounded-2xl border border-border/70 bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-lg font-semibold text-white mb-5">Settings</h2>
+              <div
+                className="w-full max-w-md p-6 shadow-2xl"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(25,20,10,0.98) 0%, rgba(15,12,6,0.98) 100%)',
+                  border: `1px solid ${GOLD} 0.3)`,
+                  borderRadius: '16px',
+                  boxShadow: `0 0 60px rgba(0,0,0,0.5), 0 0 30px ${GOLD} 0.05)`,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 className="text-lg font-bold arena-heading mb-5" style={{ color: '#e8d5a0', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Settings</h2>
 
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Profile</div>
-                <div className="flex flex-col mb-5 rounded-xl border border-white/10 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+                <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.4)` }}>Profile</div>
+                <div className="flex flex-col mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${GOLD} 0.15)` }}>
+                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
                     <div>
-                      <div className="text-sm text-white">Username</div>
-                      <div className="text-xs text-muted-foreground">{profile.name}</div>
+                      <div className="text-sm" style={{ color: '#e8d5a0' }}>Username</div>
+                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.4)` }}>{profile.name}</div>
                     </div>
-                    <span className="text-[10px] text-muted-foreground/40">Set at registration</span>
+                    <span className="text-[10px]" style={{ color: `${GOLD} 0.25)` }}>Set at registration</span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
                     <div>
-                      <div className="text-sm text-white">Avatar</div>
-                      <div className="text-xs text-muted-foreground">Change your profile picture</div>
+                      <div className="text-sm" style={{ color: '#e8d5a0' }}>Avatar</div>
+                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.4)` }}>Change your profile picture</div>
                     </div>
-                    <button type="button" className="rounded-lg border border-white/20 px-3 py-1 text-xs text-white/60 hover:bg-white/10" onClick={() => this.setState({ showSettings: false, showAvatarPicker: true })}>Change</button>
+                    <button
+                      type="button"
+                      className="px-3 py-1 text-xs font-medium transition-all"
+                      style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)` }}
+                      onClick={() => this.setState({ showSettings: false, showAvatarPicker: true })}
+                    >
+                      Change
+                    </button>
                   </div>
                 </div>
 
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Sound</div>
-                <div className="flex flex-col mb-5 rounded-xl border border-white/10 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-                    <span className="text-sm text-white">Master Volume</span>
+                <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.4)` }}>Sound</div>
+                <div className="flex flex-col mb-5 rounded-xl overflow-hidden" style={{ border: `1px solid ${GOLD} 0.15)` }}>
+                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
+                    <span className="text-sm" style={{ color: '#e8d5a0' }}>Master Volume</span>
                     <div className="flex items-center gap-3">
                       <input type="range" min="0" max="100" value={Math.round(ss.masterVolume * 100)} className="w-24 h-1 accent-amber-500 cursor-pointer" onInput={(e) => updateSound('masterVolume', parseInt(e.target.value, 10) / 100)} />
-                      <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{Math.round(ss.masterVolume * 100)}%</span>
+                      <span className="text-xs w-8 text-right tabular-nums" style={{ color: `${PARCHMENT} 0.4)` }}>{Math.round(ss.masterVolume * 100)}%</span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-                    <span className="text-sm text-white">Music</span>
+                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
+                    <span className="text-sm" style={{ color: '#e8d5a0' }}>Music</span>
                     <div className="flex items-center gap-3">
                       <button type="button" className={cn('rounded-md px-2 py-0.5 text-[10px] font-medium border transition-colors', ss.musicEnabled ? 'border-green-500/40 bg-green-500/15 text-green-400' : 'border-white/15 text-white/30')} onClick={() => updateSound('musicEnabled', !ss.musicEnabled)}>{ss.musicEnabled ? 'On' : 'Off'}</button>
                       <input type="range" min="0" max="100" value={Math.round(ss.musicVolume * 100)} className="w-20 h-1 accent-amber-500 cursor-pointer" disabled={!ss.musicEnabled} onInput={(e) => updateSound('musicVolume', parseInt(e.target.value, 10) / 100)} />
-                      <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{Math.round(ss.musicVolume * 100)}%</span>
+                      <span className="text-xs w-8 text-right tabular-nums" style={{ color: `${PARCHMENT} 0.4)` }}>{Math.round(ss.musicVolume * 100)}%</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-white">Sound Effects</span>
+                    <span className="text-sm" style={{ color: '#e8d5a0' }}>Sound Effects</span>
                     <div className="flex items-center gap-3">
                       <button type="button" className={cn('rounded-md px-2 py-0.5 text-[10px] font-medium border transition-colors', ss.sfxEnabled ? 'border-green-500/40 bg-green-500/15 text-green-400' : 'border-white/15 text-white/30')} onClick={() => updateSound('sfxEnabled', !ss.sfxEnabled)}>{ss.sfxEnabled ? 'On' : 'Off'}</button>
                       <input type="range" min="0" max="100" value={Math.round(ss.sfxVolume * 100)} className="w-20 h-1 accent-amber-500 cursor-pointer" disabled={!ss.sfxEnabled} onInput={(e) => updateSound('sfxVolume', parseInt(e.target.value, 10) / 100)} />
-                      <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{Math.round(ss.sfxVolume * 100)}%</span>
+                      <span className="text-xs w-8 text-right tabular-nums" style={{ color: `${PARCHMENT} 0.4)` }}>{Math.round(ss.sfxVolume * 100)}%</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Danger Zone</div>
-                <div className="flex flex-col rounded-xl border border-red-500/20 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-red-500/10">
+                <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'rgba(239,68,68,0.4)' }}>Danger Zone</div>
+                <div className="flex flex-col rounded-xl overflow-hidden" style={{ border: '1px solid rgba(239,68,68,0.15)' }}>
+                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(239,68,68,0.08)' }}>
                     <div>
                       <div className="text-sm text-red-400">Reset Profile</div>
-                      <div className="text-xs text-muted-foreground">Delete all progress and start over</div>
+                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.3)` }}>Delete all progress and start over</div>
                     </div>
                     {showResetConfirm ? (
                       <div className="flex items-center gap-2">
                         <button type="button" className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700" onClick={() => { this.setState({ showSettings: false, showResetConfirm: false }); if (onResetProfile) onResetProfile(); }}>Confirm</button>
-                        <button type="button" className="rounded-lg border border-white/20 px-3 py-1 text-xs text-white/60 hover:bg-white/10" onClick={() => this.setState({ showResetConfirm: false })}>Cancel</button>
+                        <button type="button" className="rounded-lg px-3 py-1 text-xs transition-colors" style={{ ...BEVELED_BTN, color: `${PARCHMENT} 0.5)` }} onClick={() => this.setState({ showResetConfirm: false })}>Cancel</button>
                       </div>
                     ) : (
                       <button type="button" className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors" onClick={() => this.setState({ showResetConfirm: true })}>Reset</button>
@@ -462,26 +676,42 @@ export default class ArenaHub extends Component {
                   <div className="flex items-center justify-between px-4 py-3">
                     <div>
                       <div className="text-sm text-red-400">Quit Game</div>
-                      <div className="text-xs text-muted-foreground">Close Valkenhall</div>
+                      <div className="text-xs" style={{ color: `${PARCHMENT} 0.3)` }}>Close Valkenhall</div>
                     </div>
                     <button type="button" className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-400/70 hover:bg-red-500/10 hover:text-red-400 transition-colors" onClick={() => { this.setState({ showSettings: false }); onExit(); }}>Quit</button>
                   </div>
                 </div>
 
                 <div className="mt-5 text-right">
-                  <button type="button" className="rounded-lg border border-white/20 px-4 py-1.5 text-xs text-white/60 hover:bg-white/10" onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}>Close</button>
+                  <button
+                    type="button"
+                    className="px-5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all"
+                    style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)` }}
+                    onClick={() => this.setState({ showSettings: false, showResetConfirm: false })}
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>
           );
-        })() : null}
+        })()}
 
-        {/* Avatar picker overlay */}
-        {showAvatarPicker ? (
+        {/* ─── AVATAR PICKER OVERLAY ────────────────────────── */}
+        {showAvatarPicker && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => this.setState({ showAvatarPicker: false })}>
-            <div className="w-full max-w-lg rounded-2xl border border-border/70 bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-lg font-semibold text-white mb-1">Choose Avatar</h2>
-              <p className="text-xs text-muted-foreground mb-4">Select from avatars in your collection</p>
+            <div
+              className="w-full max-w-lg p-5 shadow-2xl"
+              style={{
+                background: 'linear-gradient(180deg, rgba(25,20,10,0.98) 0%, rgba(15,12,6,0.98) 100%)',
+                border: `1px solid ${GOLD} 0.3)`,
+                borderRadius: '16px',
+                boxShadow: `0 0 60px rgba(0,0,0,0.5), 0 0 30px ${GOLD} 0.05)`,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-lg font-bold arena-heading mb-1" style={{ color: '#e8d5a0' }}>Choose Avatar</h2>
+              <p className="text-xs mb-4" style={{ color: `${PARCHMENT} 0.4)` }}>Select from avatars in your collection</p>
               <div className="grid grid-cols-5 gap-2 max-h-80 overflow-y-auto">
                 {this.getOwnedAvatars().map((card) => {
                   const isSelected = profile.profileAvatar === card.unique_id;
@@ -501,7 +731,7 @@ export default class ArenaHub extends Component {
                       }}
                     >
                       <img src={card.printings?.[0]?.image_url || ''} alt={card.name} className="w-full aspect-[63/88] object-cover" draggable={false} />
-                      <div className="px-1 py-0.5 bg-black/80 text-[9px] text-white/70 truncate text-center">{card.name}</div>
+                      <div className="px-1 py-0.5 text-[9px] truncate text-center" style={{ background: 'rgba(0,0,0,0.8)', color: 'rgba(255,255,255,0.6)' }}>{card.name}</div>
                     </button>
                   );
                 })}
@@ -509,7 +739,8 @@ export default class ArenaHub extends Component {
               <div className="mt-4 text-right">
                 <button
                   type="button"
-                  className="rounded-lg border border-white/20 px-4 py-1.5 text-xs text-white/60 hover:bg-white/10"
+                  className="px-5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all"
+                  style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)` }}
                   onClick={() => this.setState({ showAvatarPicker: false })}
                 >
                   Cancel
@@ -517,7 +748,7 @@ export default class ArenaHub extends Component {
               </div>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     );
   }
