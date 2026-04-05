@@ -280,30 +280,19 @@ export default class Mailbox extends Component {
 
     if (filtered.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 px-4">
+        <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+            className="w-14 h-14 rounded-xl flex items-center justify-center mb-3"
             style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.1)` }}
           >
-            {tab === 'friend' && (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: `${GOLD} 0.2)` }}>
-                <rect x="2" y="4" width="20" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-            {tab === 'auction' && (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: `${GOLD} 0.2)` }}>
-                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-            {tab === 'news' && (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: `${GOLD} 0.2)` }}>
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinecap="round" strokeLinejoin="round"/>
-                <polyline points="14 2 14 8 20 8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
+            {/* Parchment scroll with strikethrough */}
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: `${GOLD} 0.2)` }}>
+              <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
+              <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+              <line x1="2" y1="22" x2="22" y2="2" strokeWidth="2" />
+            </svg>
           </div>
-          <div className="text-xs" style={{ color: TEXT_MUTED }}>No messages</div>
+          <div className="text-xs font-medium" style={{ color: TEXT_MUTED }}>No messages</div>
         </div>
       );
     }
