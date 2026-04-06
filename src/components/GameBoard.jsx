@@ -4,7 +4,7 @@ import { createTableScene } from '../utils/game/tableScene';
 import { createCardMesh, createPileMesh, updatePileMesh, setCardBackUrls, disposeTextureCache, CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, createTokenMesh, TOKEN_REST_Y, TOKEN_DRAG_Y, createLifeHUD, updateLifeHUD } from '../utils/game/cardMesh';
 import { createGameState, createTrackerState, spawnDeck, drawFromPile, shufflePile, createTokenInstance, createDiceInstance } from '../utils/game/gameState';
 import { createDiceMesh, animateDiceRoll, setDieFaceUp, DICE_REST_Y, DICE_DRAG_Y, DICE_CONFIGS } from '../utils/game/diceMesh';
-import { loadSpawnConfig, saveSpawnConfig, getSpawnPoint, SPAWN_LABELS, SPAWN_COLORS, getTrackerPositions, setTrackerPosition, isTrackerConfigured, getTrackerTokenPosition, getGameGrid, setGameGrid } from '../utils/game/spawnConfig';
+import { loadSpawnConfig, getSpawnPoint, SPAWN_LABELS, SPAWN_COLORS, getTrackerPositions, setTrackerPosition, isTrackerConfigured, getTrackerTokenPosition, getGameGrid, setGameGrid } from '../utils/game/spawnConfig';
 import { TRACKER_DEFS, PLAYERS, PLAYER_LABELS, getTrackerSpawnEntries, getTotalPositions, indexToRowPosition, getTrackerProgressLabel, trackerSpawnKey, valueToPositions } from '../utils/game/trackerConfig';
 import CardInspector from './CardInspector';
 import { addTween, animateCardFlip, animateCardTap, animateShufflePile, animateCardToPile, animateCardFromPile } from '../utils/game/animations';
@@ -868,7 +868,7 @@ export default class GameBoard extends Component {
         const key = this.state.activeSpawnKey;
         const newConfig = { ...this.state.spawnConfig, [key]: { x: Math.round(point.x * 10) / 10, z: Math.round(point.z * 10) / 10 } };
         this.setState({ spawnConfig: newConfig, activeSpawnKey: null });
-        saveSpawnConfig(newConfig);
+        // spawn config is hardcoded — no persistence
         this.updateSpawnMarkers(newConfig);
       }
       return;
@@ -898,7 +898,7 @@ export default class GameBoard extends Component {
       } else {
         this.setState({ spawnConfig: newConfig, trackerEditing: { trackerKey, player, flatIndex: nextIndex } });
       }
-      saveSpawnConfig(newConfig);
+      // spawn config is hardcoded — no persistence
       return;
     }
 
@@ -2761,7 +2761,7 @@ export default class GameBoard extends Component {
     const newConfig = { ...this.state.spawnConfig };
     setGameGrid(newConfig, grid);
     this.setState({ spawnConfig: newConfig, gridEditMode: null, gridDragStart: null, gridDragEnd: null, gridAdjustHandle: null });
-    saveSpawnConfig(newConfig);
+    // spawn config is hardcoded — no persistence
     this.updateGridVisualization(grid, false);
     this.currentEditGrid = null;
   };
@@ -2778,7 +2778,7 @@ export default class GameBoard extends Component {
     const newConfig = { ...this.state.spawnConfig };
     setGameGrid(newConfig, null);
     this.setState({ spawnConfig: newConfig, gridEditMode: null, gridDragStart: null, gridDragEnd: null, gridAdjustHandle: null });
-    saveSpawnConfig(newConfig);
+    // spawn config is hardcoded — no persistence
     this.clearGridVisualization();
     this.currentEditGrid = null;
   };
@@ -4994,10 +4994,12 @@ export default class GameBoard extends Component {
                 </>
               ) : null}
 
-              {/* Spawn config */}
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.toggleSpawnEditor(); this.setState({ showGameMenu: false }); }}>
-                {this.state.isPlacingSpawns ? 'Done Placing' : 'Set Spawn Points'}
-              </button>
+              {/* Spawn config — dev only */}
+              {this.props.devMode ? (
+                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.toggleSpawnEditor(); this.setState({ showGameMenu: false }); }}>
+                  {this.state.isPlacingSpawns ? 'Done Placing' : 'Set Spawn Points'}
+                </button>
+              ) : null}
 
               {this.props.isRankedMatch && this.state.connectionStatus === 'connected' ? (
                 <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: ACCENT_GOLD }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => this.setState({ showMatchResult: true, showGameMenu: false })}>

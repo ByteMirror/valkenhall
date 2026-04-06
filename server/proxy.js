@@ -566,27 +566,6 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
   }
 });
 
-const SPAWN_CONFIG_PATH = path.resolve(__dirname, '..', 'public', 'spawn-config.json');
-
-app.get('/api/game/spawn-config', async (_req, res) => {
-  try {
-    const raw = await fs.readFile(SPAWN_CONFIG_PATH, 'utf8');
-    res.json(JSON.parse(raw));
-  } catch (error) {
-    if (error?.code === 'ENOENT') return res.json({});
-    res.status(500).json({ error: 'Failed to read spawn config' });
-  }
-});
-
-app.post('/api/game/spawn-config', async (req, res) => {
-  try {
-    await fs.writeFile(SPAWN_CONFIG_PATH, JSON.stringify(req.body, null, 2), 'utf8');
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to save spawn config' });
-  }
-});
-
 app.get('/game-assets/:filename', (req, res) => {
   const filename = req.params.filename;
   if (!/^[a-z0-9_-]+\.(webp|png|jpg|ogg|mp3|wav)$/i.test(filename)) {
