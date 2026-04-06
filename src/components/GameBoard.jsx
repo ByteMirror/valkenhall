@@ -4,9 +4,9 @@ import { createTableScene } from '../utils/game/tableScene';
 import { createCardMesh, createPileMesh, updatePileMesh, setCardBackUrls, disposeTextureCache, CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, createTokenMesh, TOKEN_REST_Y, TOKEN_DRAG_Y, createLifeHUD, updateLifeHUD } from '../utils/game/cardMesh';
 import { createGameState, createTrackerState, spawnDeck, drawFromPile, shufflePile, createTokenInstance, createDiceInstance } from '../utils/game/gameState';
 import { createDiceMesh, animateDiceRoll, setDieFaceUp, DICE_REST_Y, DICE_DRAG_Y, DICE_CONFIGS } from '../utils/game/diceMesh';
-import { loadSpawnConfig, saveSpawnConfig, getSpawnPoint, SPAWN_LABELS, SPAWN_COLORS, getTrackerPositions, setTrackerPosition, isTrackerConfigured, getTrackerTokenPosition } from '../utils/game/spawnConfig';
+import { loadSpawnConfig, saveSpawnConfig, getSpawnPoint, SPAWN_LABELS, SPAWN_COLORS, getTrackerPositions, setTrackerPosition, isTrackerConfigured, getTrackerTokenPosition, getGameGrid, setGameGrid } from '../utils/game/spawnConfig';
 import { TRACKER_DEFS, PLAYERS, PLAYER_LABELS, getTrackerSpawnEntries, getTotalPositions, indexToRowPosition, getTrackerProgressLabel, trackerSpawnKey, valueToPositions } from '../utils/game/trackerConfig';
-import { extractKeywordAbilities, findGlossaryTermsInText, getGlossaryEntry } from '../utils/game/sorceryKeywords';
+import CardInspector from './CardInspector';
 import { addTween, animateCardFlip, animateCardTap, animateShufflePile, animateCardToPile, animateCardFromPile } from '../utils/game/animations';
 import { saveGameSession, loadGameSession, listGameSessions } from '../utils/game/sessionStorage';
 import { createRoom, createRoomWithCode, joinRoom, emitGameAction, onGameAction, offGameAction, disconnectSocket, onPlayerJoined, onPlayerLeft, onStateSyncRequest, sendStateSync, requestStateSync, onStateSync } from '../utils/game/socketClient';
@@ -15,48 +15,17 @@ import { playSound, preloadSounds } from '../utils/game/sounds';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
 import { cn } from '../lib/utils';
+import RuneSpinner from './RuneSpinner';
+import { playUI, UI } from '../utils/arena/uiSounds';
+import {
+  GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
+  BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
+  POPOVER_STYLE, SECTION_HEADER_STYLE, FourCorners, COIN_COLOR,
+} from '../lib/medievalTheme';
 import * as THREE from 'three';
 import ArenaMatchResult from './ArenaMatchResult';
+import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 
-class GlossaryTerm extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { open: false };
-    this.timer = null;
-  }
-
-  componentWillUnmount() {
-    clearTimeout(this.timer);
-  }
-
-  render() {
-    const { entry, renderNested, depth } = this.props;
-    const { open } = this.state;
-
-    return (
-      <span
-        className="relative inline"
-        onMouseEnter={() => { clearTimeout(this.timer); this.setState({ open: true }); }}
-        onMouseLeave={() => { this.timer = setTimeout(() => this.setState({ open: false }), 200); }}
-      >
-        <span className="cursor-help text-amber-300/90">{entry.keyword}</span>
-        {open ? (
-          <span
-            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 rounded-lg bg-popover border border-border/70 p-3 text-xs text-popover-foreground shadow-xl backdrop-blur-xl"
-            style={{ zIndex: 100 + depth * 10 }}
-            onMouseEnter={() => { clearTimeout(this.timer); }}
-            onMouseLeave={() => { this.timer = setTimeout(() => this.setState({ open: false }), 200); }}
-          >
-            <span className="font-semibold block mb-1">{entry.keyword}</span>
-            <span className="text-muted-foreground leading-relaxed">
-              {renderNested(entry.description)}
-            </span>
-          </span>
-        ) : null}
-      </span>
-    );
-  }
-}
 
 export default class GameBoard extends Component {
   constructor(props) {
@@ -78,6 +47,10 @@ export default class GameBoard extends Component {
     this.trackerCursorPreview = null;
     this.trackerTokenMeshes = new Map();
     this.trackerButtonMeshes = new Map();
+    this.gridLinesMesh = null;
+    this.gridBorderMesh = null;
+    this.gridHandles = [];
+    this.gridDraggingHandle = null;
     this.handRetractTimer = null;
     this.autoSaveTimer = null;
     this._socketListenersActive = false;
@@ -119,6 +92,10 @@ export default class GameBoard extends Component {
       matchStartTime: null,
       showSoundSettings: false,
       soundSettings: getSoundSettings(),
+      gridEditMode: null,
+      gridDragStart: null,
+      gridDragEnd: null,
+      gridAdjustHandle: null,
     };
   }
 
@@ -193,6 +170,7 @@ export default class GameBoard extends Component {
     }
     this.trackerButtonMeshes.clear();
     this.trackerPreviewMarkers = [];
+    this.clearGridVisualization();
     disposeTextureCache();
     this.scene?.dispose();
     this.scene = null;
@@ -803,6 +781,29 @@ export default class GameBoard extends Component {
     if (event.button !== 0) return;
     this.setState({ contextMenu: null });
 
+    // Grid editor: drag-start — begin rectangle definition
+    if (this.state.gridEditMode === 'drag-start') {
+      const point = this.scene.raycastTablePoint(event);
+      if (point) {
+        this.setState({ gridEditMode: 'drag-end', gridDragStart: { x: point.x, z: point.z }, gridDragEnd: { x: point.x, z: point.z } });
+      }
+      return;
+    }
+
+    // Grid editor: adjust mode — check if a handle was clicked
+    if (this.state.gridEditMode === 'adjust') {
+      if (this.gridHandles.length > 0) {
+        const handleHits = this.scene.raycastObjects(event, this.gridHandles);
+        if (handleHits.length > 0) {
+          const handle = handleHits[0].object;
+          this.gridDraggingHandle = handle;
+          event.preventDefault();
+          return;
+        }
+      }
+      return;
+    }
+
     if (this.state.isPlacingSpawns && this.state.activeSpawnKey) {
       const point = this.scene.raycastTablePoint(event);
       if (point) {
@@ -955,6 +956,35 @@ export default class GameBoard extends Component {
     if (this.props.isSpectating) return;
     this.lastMouseEvent = event;
 
+    // Grid editor: dragging to define rectangle
+    if (this.state.gridEditMode === 'drag-start' || this.state.gridEditMode === 'drag-end') {
+      if (this.canvasRef.current) this.canvasRef.current.style.cursor = 'crosshair';
+      if (this.state.gridEditMode === 'drag-end') {
+        const point = this.scene.raycastTablePoint(event);
+        if (point) {
+          this.setState({ gridDragEnd: { x: point.x, z: point.z } });
+          this.updateGridPreviewRect(this.state.gridDragStart, { x: point.x, z: point.z });
+        }
+      }
+      return;
+    }
+
+    // Grid editor: dragging a handle
+    if (this.state.gridEditMode === 'adjust' && this.gridDraggingHandle) {
+      const point = this.scene.raycastTablePoint(event);
+      if (point && this.currentEditGrid) {
+        const { colIndex, rowIndex } = this.gridDraggingHandle.userData;
+        const newGrid = this.handleGridAdjust(this.gridDraggingHandle.userData, point, this.currentEditGrid);
+        this.currentEditGrid = newGrid;
+        this.updateGridVisualization(newGrid, true);
+        // Re-find the handle after recreation
+        this.gridDraggingHandle = this.gridHandles.find((h) =>
+          h.userData.colIndex === colIndex && h.userData.rowIndex === rowIndex
+        ) || null;
+      }
+      return;
+    }
+
     if (this.dragging) {
       const point = this.scene.raycastTablePoint(event);
       if (!point) return;
@@ -1001,14 +1031,40 @@ export default class GameBoard extends Component {
       }
       this.hoveredMesh = newHovered;
       this.canvasRef.current.style.cursor = newHovered
-        ? "url('/flesh-and-blood-proxies/cursors/pointer.png') 20 4, pointer"
-        : "url('/flesh-and-blood-proxies/cursors/default.png') 4 2, auto";
+        ? "url('/cursors/pointer.png') 20 4, pointer"
+        : "url('/cursors/default.png') 4 2, auto";
     }
 
   };
 
   handleMouseUp = (event) => {
     if (this.props.isSpectating) return;
+
+    // Grid editor: finish rectangle drag
+    if (this.state.gridEditMode === 'drag-end') {
+      const { gridDragStart, gridDragEnd } = this.state;
+      if (gridDragStart && gridDragEnd) {
+        const dx = Math.abs(gridDragEnd.x - gridDragStart.x);
+        const dz = Math.abs(gridDragEnd.z - gridDragStart.z);
+        if (dx > 3 && dz > 3) {
+          const grid = this.gridFromDragRect(gridDragStart, gridDragEnd);
+          this.currentEditGrid = grid;
+          this.updateGridVisualization(grid, true);
+          this.setState({ gridEditMode: 'adjust', gridDragStart: null, gridDragEnd: null });
+        } else {
+          this.clearGridVisualization();
+          this.setState({ gridEditMode: 'drag-start', gridDragStart: null, gridDragEnd: null });
+        }
+      }
+      return;
+    }
+
+    // Grid editor: release handle
+    if (this.state.gridEditMode === 'adjust' && this.gridDraggingHandle) {
+      this.gridDraggingHandle = null;
+      return;
+    }
+
     if (!this.dragging) return;
 
     const droppedMesh = this.dragging.mesh;
@@ -1374,11 +1430,283 @@ export default class GameBoard extends Component {
     this.trackerCursorPreview = null;
   };
 
+  // --- Grid Editor ---
+
+  computeGridPositions = (grid) => {
+    const { topLeft, topRight, bottomLeft, bottomRight, cols, rows, colDividers, rowDividers } = grid;
+    // Compute actual column X positions (normalized across top/bottom edges)
+    const cDivs = colDividers || Array.from({ length: cols - 1 }, (_, i) => (i + 1) / cols);
+    const rDivs = rowDividers || Array.from({ length: rows - 1 }, (_, i) => (i + 1) / rows);
+    // All normalized positions including 0 and 1
+    const colPositions = [0, ...cDivs, 1];
+    const rowPositions = [0, ...rDivs, 1];
+    return { colPositions, rowPositions };
+  };
+
+  getGridPoint = (grid, colT, rowT) => {
+    // Bilinear interpolation of four corners
+    const { topLeft, topRight, bottomLeft, bottomRight } = grid;
+    const topX = topLeft.x + (topRight.x - topLeft.x) * colT;
+    const topZ = topLeft.z + (topRight.z - topLeft.z) * colT;
+    const botX = bottomLeft.x + (bottomRight.x - bottomLeft.x) * colT;
+    const botZ = bottomLeft.z + (bottomRight.z - bottomLeft.z) * colT;
+    return {
+      x: topX + (botX - topX) * rowT,
+      z: topZ + (botZ - topZ) * rowT,
+    };
+  };
+
+  clearGridVisualization = () => {
+    if (this.gridLinesMesh) {
+      this.scene?.scene.remove(this.gridLinesMesh);
+      this.gridLinesMesh.geometry.dispose();
+      this.gridLinesMesh.material.dispose();
+      this.gridLinesMesh = null;
+    }
+    if (this.gridBorderMesh) {
+      this.scene?.scene.remove(this.gridBorderMesh);
+      this.gridBorderMesh.geometry.dispose();
+      this.gridBorderMesh.material.dispose();
+      this.gridBorderMesh = null;
+    }
+    for (const handle of this.gridHandles) {
+      this.scene?.scene.remove(handle);
+      handle.geometry.dispose();
+      handle.material.dispose();
+    }
+    this.gridHandles = [];
+  };
+
+  updateGridVisualization = (grid, showHandles = true) => {
+    this.clearGridVisualization();
+    if (!grid || !this.scene) return;
+
+    const { colPositions, rowPositions } = this.computeGridPositions(grid);
+    const Y = 0.15;
+
+    // Inner grid lines
+    const innerVerts = [];
+    // Vertical lines (columns) — skip first and last (those are the border)
+    for (let c = 1; c < colPositions.length - 1; c++) {
+      const t = colPositions[c];
+      const top = this.getGridPoint(grid, t, 0);
+      const bot = this.getGridPoint(grid, t, 1);
+      innerVerts.push(top.x, Y, top.z, bot.x, Y, bot.z);
+    }
+    // Horizontal lines (rows)
+    for (let r = 1; r < rowPositions.length - 1; r++) {
+      const t = rowPositions[r];
+      const left = this.getGridPoint(grid, 0, t);
+      const right = this.getGridPoint(grid, 1, t);
+      innerVerts.push(left.x, Y, left.z, right.x, Y, right.z);
+    }
+
+    if (innerVerts.length > 0) {
+      const innerGeo = new THREE.BufferGeometry();
+      innerGeo.setAttribute('position', new THREE.Float32BufferAttribute(innerVerts, 3));
+      const innerMat = new THREE.LineBasicMaterial({ color: 0xd4a843, transparent: true, opacity: 0.35 });
+      this.gridLinesMesh = new THREE.LineSegments(innerGeo, innerMat);
+      this.scene.scene.add(this.gridLinesMesh);
+    }
+
+    // Outer border
+    const tl = this.getGridPoint(grid, 0, 0);
+    const tr = this.getGridPoint(grid, 1, 0);
+    const bl = this.getGridPoint(grid, 0, 1);
+    const br = this.getGridPoint(grid, 1, 1);
+    const borderVerts = [
+      tl.x, Y, tl.z, tr.x, Y, tr.z,
+      tr.x, Y, tr.z, br.x, Y, br.z,
+      br.x, Y, br.z, bl.x, Y, bl.z,
+      bl.x, Y, bl.z, tl.x, Y, tl.z,
+    ];
+    const borderGeo = new THREE.BufferGeometry();
+    borderGeo.setAttribute('position', new THREE.Float32BufferAttribute(borderVerts, 3));
+    const borderMat = new THREE.LineBasicMaterial({ color: 0xd4a843, transparent: true, opacity: 0.7 });
+    this.gridBorderMesh = new THREE.LineSegments(borderGeo, borderMat);
+    this.scene.scene.add(this.gridBorderMesh);
+
+    // Handles at intersections
+    if (showHandles) {
+      this.createGridHandles(grid);
+    }
+  };
+
+  createGridHandles = (grid) => {
+    for (const handle of this.gridHandles) {
+      this.scene.scene.remove(handle);
+      handle.geometry.dispose();
+      handle.material.dispose();
+    }
+    this.gridHandles = [];
+
+    const { colPositions, rowPositions } = this.computeGridPositions(grid);
+    const Y = 0.2;
+
+    for (let r = 0; r < rowPositions.length; r++) {
+      for (let c = 0; c < colPositions.length; c++) {
+        const pt = this.getGridPoint(grid, colPositions[c], rowPositions[r]);
+        const isCorner = (r === 0 || r === rowPositions.length - 1) && (c === 0 || c === colPositions.length - 1);
+        const isEdge = !isCorner && (r === 0 || r === rowPositions.length - 1 || c === 0 || c === colPositions.length - 1);
+
+        const color = isCorner ? 0xf0c050 : isEdge ? 0xc0a040 : 0x908060;
+        const radius = isCorner ? 0.6 : 0.45;
+
+        const geo = new THREE.SphereGeometry(radius, 12, 12);
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(pt.x, Y, pt.z);
+        mesh.userData = {
+          type: 'gridHandle',
+          colIndex: c,
+          rowIndex: r,
+          isCorner,
+          isEdge,
+          colPositions,
+          rowPositions,
+        };
+        this.scene.scene.add(mesh);
+        this.gridHandles.push(mesh);
+      }
+    }
+  };
+
+  gridFromDragRect = (start, end) => {
+    const minX = Math.min(start.x, end.x);
+    const maxX = Math.max(start.x, end.x);
+    const minZ = Math.min(start.z, end.z);
+    const maxZ = Math.max(start.z, end.z);
+    return {
+      topLeft: { x: minX, z: minZ },
+      topRight: { x: maxX, z: minZ },
+      bottomLeft: { x: minX, z: maxZ },
+      bottomRight: { x: maxX, z: maxZ },
+      cols: 4,
+      rows: 5,
+      colDividers: [0.25, 0.5, 0.75],
+      rowDividers: [0.2, 0.4, 0.6, 0.8],
+    };
+  };
+
+  updateGridPreviewRect = (start, end) => {
+    this.clearGridVisualization();
+    if (!start || !end || !this.scene) return;
+    const Y = 0.15;
+    const minX = Math.min(start.x, end.x);
+    const maxX = Math.max(start.x, end.x);
+    const minZ = Math.min(start.z, end.z);
+    const maxZ = Math.max(start.z, end.z);
+    const verts = [
+      minX, Y, minZ, maxX, Y, minZ,
+      maxX, Y, minZ, maxX, Y, maxZ,
+      maxX, Y, maxZ, minX, Y, maxZ,
+      minX, Y, maxZ, minX, Y, minZ,
+    ];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0xd4a843, transparent: true, opacity: 0.6 });
+    this.gridBorderMesh = new THREE.LineSegments(geo, mat);
+    this.scene.scene.add(this.gridBorderMesh);
+  };
+
+  handleGridAdjust = (handleData, point, grid) => {
+    const { colIndex, rowIndex, isCorner, colPositions, rowPositions } = handleData;
+    const newGrid = { ...grid };
+
+    if (isCorner) {
+      // Move the corner
+      const isTop = rowIndex === 0;
+      const isLeft = colIndex === 0;
+      if (isTop && isLeft) newGrid.topLeft = { x: point.x, z: point.z };
+      else if (isTop && !isLeft) newGrid.topRight = { x: point.x, z: point.z };
+      else if (!isTop && isLeft) newGrid.bottomLeft = { x: point.x, z: point.z };
+      else newGrid.bottomRight = { x: point.x, z: point.z };
+    } else {
+      // Adjust divider position(s)
+      // Find normalized position of the dragged point within the grid rectangle
+      // We project onto the col/row axes
+      const tl = newGrid.topLeft;
+      const tr = newGrid.topRight;
+      const bl = newGrid.bottomLeft;
+      const br = newGrid.bottomRight;
+
+      // Approximate: compute normalized column position
+      if (colIndex > 0 && colIndex < colPositions.length - 1) {
+        // Adjust column divider
+        const topSpanX = tr.x - tl.x;
+        const topSpanZ = tr.z - tl.z;
+        const botSpanX = br.x - bl.x;
+        const botSpanZ = br.z - bl.z;
+        // Average the normalized position from top and bottom edges
+        let colT;
+        if (Math.abs(topSpanX) > Math.abs(topSpanZ)) {
+          colT = topSpanX !== 0 ? (point.x - tl.x) / topSpanX : 0.5;
+        } else {
+          colT = topSpanZ !== 0 ? (point.z - tl.z) / topSpanZ : 0.5;
+        }
+        colT = Math.max(0.02, Math.min(0.98, colT));
+        const dividers = [...(newGrid.colDividers || Array.from({ length: newGrid.cols - 1 }, (_, i) => (i + 1) / newGrid.cols))];
+        dividers[colIndex - 1] = Math.round(colT * 1000) / 1000;
+        // Keep sorted
+        dividers.sort((a, b) => a - b);
+        newGrid.colDividers = dividers;
+      }
+      if (rowIndex > 0 && rowIndex < rowPositions.length - 1) {
+        // Adjust row divider
+        const leftSpanX = bl.x - tl.x;
+        const leftSpanZ = bl.z - tl.z;
+        let rowT;
+        if (Math.abs(leftSpanZ) > Math.abs(leftSpanX)) {
+          rowT = leftSpanZ !== 0 ? (point.z - tl.z) / leftSpanZ : 0.5;
+        } else {
+          rowT = leftSpanX !== 0 ? (point.x - tl.x) / leftSpanX : 0.5;
+        }
+        rowT = Math.max(0.02, Math.min(0.98, rowT));
+        const dividers = [...(newGrid.rowDividers || Array.from({ length: newGrid.rows - 1 }, (_, i) => (i + 1) / newGrid.rows))];
+        dividers[rowIndex - 1] = Math.round(rowT * 1000) / 1000;
+        dividers.sort((a, b) => a - b);
+        newGrid.rowDividers = dividers;
+      }
+    }
+
+    return newGrid;
+  };
+
+  acceptGrid = () => {
+    const grid = this.currentEditGrid || getGameGrid(this.state.spawnConfig);
+    if (!grid) return;
+    const newConfig = { ...this.state.spawnConfig };
+    setGameGrid(newConfig, grid);
+    this.setState({ spawnConfig: newConfig, gridEditMode: null, gridDragStart: null, gridDragEnd: null, gridAdjustHandle: null });
+    saveSpawnConfig(newConfig);
+    this.updateGridVisualization(grid, false);
+    this.currentEditGrid = null;
+  };
+
+  cancelGrid = () => {
+    this.clearGridVisualization();
+    this.currentEditGrid = null;
+    const existingGrid = getGameGrid(this.state.spawnConfig);
+    if (existingGrid) this.updateGridVisualization(existingGrid, false);
+    this.setState({ gridEditMode: null, gridDragStart: null, gridDragEnd: null, gridAdjustHandle: null });
+  };
+
+  clearGrid = () => {
+    const newConfig = { ...this.state.spawnConfig };
+    setGameGrid(newConfig, null);
+    this.setState({ spawnConfig: newConfig, gridEditMode: null, gridDragStart: null, gridDragEnd: null, gridAdjustHandle: null });
+    saveSpawnConfig(newConfig);
+    this.clearGridVisualization();
+    this.currentEditGrid = null;
+  };
+
   toggleSpawnEditor = () => {
     this.setState((state) => {
       const next = !state.isPlacingSpawns;
       if (next) {
         this.updateSpawnMarkers(state.spawnConfig);
+        const existingGrid = getGameGrid(state.spawnConfig);
+        if (existingGrid) this.updateGridVisualization(existingGrid, false);
       } else {
         for (const [, mesh] of this.spawnMarkers) {
           this.scene.scene.remove(mesh);
@@ -1388,8 +1716,9 @@ export default class GameBoard extends Component {
         this.spawnMarkers.clear();
         this.clearTrackerPreviews();
         this.hideTrackerCursorPreview();
+        this.clearGridVisualization();
       }
-      return { isPlacingSpawns: next, activeSpawnKey: null, trackerEditing: null };
+      return { isPlacingSpawns: next, activeSpawnKey: null, trackerEditing: null, gridEditMode: null, gridDragStart: null, gridDragEnd: null, gridAdjustHandle: null };
     });
   };
 
@@ -1753,6 +2082,7 @@ export default class GameBoard extends Component {
 
   startHandCardDrag = (event, cardInstance) => {
     event.preventDefault();
+    playUI('snd-card-hand-click.wav', { volume: 0.6 });
 
     // Remove from hand immediately
     this.removeFromHand(cardInstance);
@@ -1792,40 +2122,45 @@ export default class GameBoard extends Component {
       zIndex: 100,
     };
 
+    const menuCls = 'flex w-full items-center rounded-lg px-3 py-1.5 cursor-pointer transition-colors';
+    const menuHover = (e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; };
+    const menuLeave = (e) => { e.currentTarget.style.background = 'transparent'; };
+    const divider = <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />;
+
     if (contextMenu.type === 'card') {
       const { cardInstance, mesh } = contextMenu;
       return (
-        <div style={menuStyle} className="min-w-48 overflow-hidden rounded-xl border border-border/70 bg-popover/96 p-1 text-sm text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-          <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground truncate">{cardInstance.name}</div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.tapCard(cardInstance, mesh)}>
+        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+          <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.tapCard(cardInstance, mesh)}>
             {cardInstance.tapped ? 'Untap' : 'Tap'}
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.flipCard(cardInstance, mesh)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.flipCard(cardInstance, mesh)}>
             Flip {cardInstance.faceDown ? '(face up)' : '(face down)'}
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendToHand(cardInstance)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendToHand(cardInstance)}>
             Send to hand
           </button>
-          <div className="mx-2 my-1 h-px bg-border/60" />
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendCardToPile(cardInstance, 'Cemetery')}>
+          {divider}
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Cemetery')}>
             Send to Cemetery
           </button>
-          <div className="mx-2 my-1 h-px bg-border/60" />
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Put into pile</div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendCardToPile(cardInstance, 'Spellbook', true)}>
+          {divider}
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Put into pile</div>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Spellbook', true)}>
             Spellbook (shuffle)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendCardToPile(cardInstance, 'Spellbook', false)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Spellbook', false)}>
             Spellbook (bottom)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendCardToPile(cardInstance, 'Atlas', true)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Atlas', true)}>
             Atlas (shuffle)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendCardToPile(cardInstance, 'Atlas', false)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Atlas', false)}>
             Atlas (bottom)
           </button>
-          <div className="mx-2 my-1 h-px bg-border/60" />
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 text-red-400 hover:bg-muted" onClick={() => this.deleteCard(cardInstance)}>
+          {divider}
+          <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteCard(cardInstance)}>
             Delete
           </button>
         </div>
@@ -1835,19 +2170,19 @@ export default class GameBoard extends Component {
     if (contextMenu.type === 'pile') {
       const { pile } = contextMenu;
       return (
-        <div style={menuStyle} className="min-w-48 overflow-hidden rounded-xl border border-border/70 bg-popover/96 p-1 text-sm text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-          <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">{pile.name} ({pile.cards.length} cards)</div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => { this.drawCard(pile.id); this.setState({ contextMenu: null }); }}>
+        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+          <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>{pile.name} ({pile.cards.length} cards)</div>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.drawCard(pile.id); this.setState({ contextMenu: null }); }}>
             Draw card
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => { this.shufflePileAction(pile); }}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.shufflePileAction(pile); }}>
             Shuffle
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => { this.setState({ searchPile: pile, searchQuery: '', contextMenu: null }); }}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.setState({ searchPile: pile, searchQuery: '', contextMenu: null }); }}>
             Search
           </button>
-          <div className="mx-2 my-1 h-px bg-border/60" />
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => {
+          {divider}
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => {
             if (pile.cards.length > 0) {
               const card = pile.cards[pile.cards.length - 1];
               pile.cards.pop();
@@ -1873,22 +2208,22 @@ export default class GameBoard extends Component {
         zIndex: 1100,
       };
       return (
-        <div style={handMenuStyle} className="min-w-48 overflow-hidden rounded-xl border border-border/70 bg-popover/96 p-1 text-sm text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-          <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground truncate">{cardInstance.name}</div>
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Put into pile</div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendHandCardToPile(cardInstance, 'Spellbook', true)}>
+        <div style={{ ...handMenuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+          <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
+          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Put into pile</div>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Spellbook', true)}>
             Spellbook (shuffle)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendHandCardToPile(cardInstance, 'Spellbook', false)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Spellbook', false)}>
             Spellbook (bottom)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendHandCardToPile(cardInstance, 'Atlas', true)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Atlas', true)}>
             Atlas (shuffle)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendHandCardToPile(cardInstance, 'Atlas', false)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Atlas', false)}>
             Atlas (bottom)
           </button>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => this.sendHandCardToPile(cardInstance, 'Cemetery', false)}>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Cemetery', false)}>
             Send to Cemetery
           </button>
         </div>
@@ -1897,9 +2232,9 @@ export default class GameBoard extends Component {
 
     if (contextMenu.type === 'token') {
       return (
-        <div style={menuStyle} className="min-w-48 overflow-hidden rounded-xl border border-border/70 bg-popover/96 p-1 text-sm text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-          <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">Token</div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 text-red-400 hover:bg-muted" onClick={() => this.deleteToken(contextMenu.tokenInstance)}>
+        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+          <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>Token</div>
+          <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteToken(contextMenu.tokenInstance)}>
             Delete
           </button>
         </div>
@@ -1910,28 +2245,31 @@ export default class GameBoard extends Component {
       const di = contextMenu.diceInstance;
       const maxVal = DICE_CONFIGS[di.dieType]?.faces || 6;
       return (
-        <div style={menuStyle} className="min-w-48 overflow-hidden rounded-xl border border-border/70 bg-popover/96 p-1 text-sm text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-          <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">{di.dieType.toUpperCase()} — showing {di.value}</div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 hover:bg-muted" onClick={() => { this.rollDice(di); this.setState({ contextMenu: null }); }}>
+        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+          <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>{di.dieType.toUpperCase()} — showing {di.value}</div>
+          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.rollDice(di); this.setState({ contextMenu: null }); }}>
             Roll
           </button>
-          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground mt-1">Set Value</div>
+          <div className="px-3 py-1 text-[10px] font-semibold mt-1" style={SECTION_HEADER_STYLE}>Set Value</div>
           <div className="flex flex-wrap gap-1 px-2 pb-1.5">
             {Array.from({ length: maxVal }, (_, i) => i + 1).map((v) => (
               <button
                 key={v}
                 type="button"
-                className={cn(
-                  'size-7 rounded-md text-xs font-semibold flex items-center justify-center',
-                  v === di.value ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                )}
+                className="size-7 rounded-md text-xs font-semibold flex items-center justify-center cursor-pointer transition-colors"
+                style={v === di.value
+                  ? { background: `${GOLD} 0.25)`, color: TEXT_PRIMARY, border: `1px solid ${GOLD} 0.4)` }
+                  : { color: TEXT_BODY }
+                }
+                onMouseEnter={(e) => { if (v !== di.value) e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                onMouseLeave={(e) => { if (v !== di.value) e.currentTarget.style.background = 'transparent'; }}
                 onClick={() => this.setDiceValue(di, v)}
               >
                 {v}
               </button>
             ))}
           </div>
-          <button type="button" className="flex w-full items-center rounded-lg px-3 py-1.5 text-red-400 hover:bg-muted" onClick={() => this.deleteDice(di)}>
+          <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteDice(di)}>
             Delete
           </button>
         </div>
@@ -1951,103 +2289,20 @@ export default class GameBoard extends Component {
     this.updatePileMeshes();
   };
 
-  renderTextWithTooltips(text, depth = 0) {
-    if (!text || depth > 2) return text;
-
-    const terms = findGlossaryTermsInText(text);
-    const patterns = terms.map((t) => t.keyword).sort((a, b) => b.length - a.length);
-
-    if (patterns.length === 0) {
-      return <span className={depth === 0 ? 'whitespace-pre-line' : ''}>{text}</span>;
-    }
-
-    const regex = new RegExp(
-      `(${patterns.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
-      'gi'
-    );
-
-    const parts = text.split(regex);
-
-    return (
-      <span className={depth === 0 ? 'whitespace-pre-line' : ''}>
-        {parts.map((part, i) => {
-          const entry = getGlossaryEntry(part);
-          if (entry) {
-            return <GlossaryTerm key={i} entry={entry} renderNested={(t) => this.renderTextWithTooltips(t, depth + 1)} depth={depth} />;
-          }
-          return <span key={i}>{part}</span>;
-        })}
-      </span>
-    );
-  }
-
   renderCardInspector() {
     const { inspectedCard } = this.state;
     if (!inspectedCard) return null;
 
     const { sorceryCards } = this.props;
     const fullCard = sorceryCards?.find((c) => c.unique_id === inspectedCard.cardId) || {};
-    const rulesText = fullCard.functional_text_plain || fullCard.functional_text || '';
-    const keywordAbilities = extractKeywordAbilities(rulesText);
 
     return (
-      <div
-        className="fixed inset-0 z-[1200] flex items-center justify-center backdrop-blur-md bg-black/20"
-        onClick={() => this.setState({ inspectedCard: null })}
-      >
-        <div className="flex items-start gap-8 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-          {/* Large card image */}
-          <div className="flex-shrink-0" style={inspectedCard.isSite ? { width: 'calc(40vh * 88.9 / 63.5)', height: '40vh' } : {}}>
-            <img
-              src={inspectedCard.imageUrl}
-              alt={inspectedCard.name}
-              className="rounded-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
-              style={inspectedCard.isSite
-                ? { height: 'calc(40vh * 88.9 / 63.5)', width: '40vh', transform: 'rotate(90deg) translateX(0%) translateY(-100%)', transformOrigin: 'top left' }
-                : { height: '40vh' }
-              }
-            />
-          </div>
-
-          {/* Card info + keyword abilities */}
-          <div className="flex flex-col gap-3 min-w-[340px] max-w-[480px]">
-            <div className="rounded-xl bg-card/95 border border-border/60 p-4 shadow-xl backdrop-blur-xl">
-              <h2 className="text-lg font-bold text-white">{inspectedCard.name}</h2>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {fullCard.type_text || fullCard.type || ''}
-              </div>
-              {rulesText ? (
-                <div className="mt-3 text-sm leading-relaxed text-white/80">
-                  {this.renderTextWithTooltips(rulesText)}
-                </div>
-              ) : null}
-              {(fullCard.power || fullCard.defense) ? (
-                <div className="mt-3 flex gap-3 text-sm">
-                  {fullCard.power ? <span className="text-red-400">ATK {fullCard.power}</span> : null}
-                  {fullCard.defense ? <span className="text-blue-400">DEF {fullCard.defense}</span> : null}
-                  {fullCard.health ? <span className="text-green-400">HP {fullCard.health}</span> : null}
-                  {fullCard.cost ? <span className="text-yellow-400">Cost {fullCard.cost}</span> : null}
-                </div>
-              ) : null}
-            </div>
-
-            {keywordAbilities.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {keywordAbilities.map(({ keyword, description }) => (
-                  <div key={keyword} className="rounded-xl bg-card border border-border/60 p-3 shadow-lg">
-                    <div className="text-sm font-semibold text-white">{keyword}</div>
-                    <div className="mt-1 text-xs leading-relaxed text-white/70">{this.renderTextWithTooltips(description, 1)}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="text-center text-[10px] text-white/30 mt-1">
-              Hover highlighted words for explanations · Space to close
-            </div>
-          </div>
-        </div>
-      </div>
+      <CardInspector
+        card={fullCard}
+        imageUrl={inspectedCard.imageUrl}
+        foiling={inspectedCard.foiling}
+        onClose={() => this.setState({ inspectedCard: null })}
+      />
     );
   }
 
@@ -2061,23 +2316,26 @@ export default class GameBoard extends Component {
       : searchPile.cards;
 
     return (
-      <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => this.setState({ searchPile: null, searchQuery: '' })}>
-        <div className="w-[600px] max-h-[80vh] flex flex-col rounded-2xl border border-border/70 bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-3 border-b border-border/60 p-4">
-            <h2 className="text-lg font-semibold">{searchPile.name}</h2>
-            <span className="text-sm text-muted-foreground">{searchPile.cards.length} cards</span>
+      <div className="fixed inset-0 z-[1100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => this.setState({ searchPile: null, searchQuery: '' })}>
+        <div className="relative w-[600px] max-h-[80vh] flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+          <FourCorners radius={12} />
+          <div className="flex items-center gap-3 p-4" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
+            <h2 className="text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>{searchPile.name}</h2>
+            <span className="text-sm" style={{ color: TEXT_MUTED }}>{searchPile.cards.length} cards</span>
             <div className="ml-auto flex items-center gap-2">
               <input
                 type="search"
                 placeholder="Search cards..."
                 value={searchQuery}
                 onInput={(e) => this.setState({ searchQuery: e.target.value })}
-                className="rounded-lg border border-border/60 bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+                className="px-3 py-1.5 text-sm outline-none"
+                style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
                 autoFocus
               />
               <button
                 type="button"
-                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
+                className="px-3 py-1.5 text-sm cursor-pointer transition-all"
+                style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                 onClick={() => this.setState({ searchPile: null, searchQuery: '' })}
               >
                 Close
@@ -2086,26 +2344,31 @@ export default class GameBoard extends Component {
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             {filtered.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">
+              <div className="py-8 text-center text-sm" style={{ color: TEXT_MUTED }}>
                 {query ? 'No cards match your search' : 'Pile is empty'}
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-3">
                 {filtered.map((card) => (
-                  <div key={card.id} className="group relative cursor-pointer rounded-lg overflow-hidden border border-border/40 hover:border-primary/60 transition-colors">
+                  <div key={card.id} className="group relative cursor-pointer rounded-lg overflow-hidden transition-colors" style={{ border: `1px solid ${GOLD} 0.12)` }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.4)`; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.12)`; }}
+                  >
                     <img src={card.imageUrl} alt={card.name} className={cn('w-full object-cover', card.isSite ? 'aspect-[88.9/63.5]' : 'aspect-[63.5/88.9]')} />
                     <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="w-full p-2 flex gap-1">
                         <button
                           type="button"
-                          className="flex-1 rounded bg-white/20 px-2 py-1 text-[10px] font-medium text-white backdrop-blur hover:bg-white/30"
+                          className="flex-1 rounded px-2 py-1 text-[10px] font-medium cursor-pointer transition-colors"
+                          style={{ background: `${GOLD} 0.2)`, color: TEXT_PRIMARY }}
                           onClick={() => this.takeCardFromPile(searchPile, card)}
                         >
                           To hand
                         </button>
                         <button
                           type="button"
-                          className="flex-1 rounded bg-white/20 px-2 py-1 text-[10px] font-medium text-white backdrop-blur hover:bg-white/30"
+                          className="flex-1 rounded px-2 py-1 text-[10px] font-medium cursor-pointer transition-colors"
+                          style={{ background: `${GOLD} 0.2)`, color: TEXT_PRIMARY }}
                           onClick={() => {
                             const idx = searchPile.cards.indexOf(card);
                             if (idx !== -1) searchPile.cards.splice(idx, 1);
@@ -2119,7 +2382,7 @@ export default class GameBoard extends Component {
                         </button>
                       </div>
                     </div>
-                    <div className="absolute top-1 left-1 right-1 truncate text-[9px] font-medium text-white drop-shadow-md">{card.name}</div>
+                    <div className="absolute top-1 left-1 right-1 truncate text-[9px] font-medium drop-shadow-md" style={{ color: TEXT_PRIMARY }}>{card.name}</div>
                   </div>
                 ))}
               </div>
@@ -2137,21 +2400,22 @@ export default class GameBoard extends Component {
     const sorceryDecks = savedDecks || [];
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => this.setState({ showDeckPicker: false })}>
-        <div className="w-[480px] max-h-[70vh] overflow-y-auto rounded-2xl border border-border/70 bg-card p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          <h2 className="mb-3 text-lg font-semibold">Spawn Deck</h2>
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => this.setState({ showDeckPicker: false })}>
+        <div className="relative w-[480px] max-h-[70vh] overflow-y-auto p-4" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+          <FourCorners radius={12} />
+          <h2 className="mb-3 text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Spawn Deck</h2>
           {sorceryDecks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No saved Sorcery decks. Build and save a deck first.</p>
+            <p className="text-sm" style={{ color: TEXT_MUTED }}>No saved Sorcery decks. Build and save a deck first.</p>
           ) : (
             <div className="grid gap-2">
               {sorceryDecks.map((deck) => (
-                <div key={deck.id} className="flex items-center gap-2 rounded-xl border border-border/60 p-3">
+                <div key={deck.id} className="relative flex items-center gap-2 p-3" style={{ background: `${GOLD} 0.03)`, border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{deck.name}</div>
-                    <div className="text-xs text-muted-foreground">{deck.cardCount} cards</div>
+                    <div className="font-medium truncate" style={{ color: TEXT_PRIMARY }}>{deck.name}</div>
+                    <div className="text-xs" style={{ color: TEXT_MUTED }}>{deck.cardCount} cards</div>
                   </div>
-                  <button type="button" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium hover:bg-muted/80" onClick={() => this.loadAndSpawnDeck(deck.id, 1)}>P1</button>
-                  <button type="button" className="rounded-lg bg-muted px-2.5 py-1 text-xs font-medium hover:bg-muted/80" onClick={() => this.loadAndSpawnDeck(deck.id, 2)}>P2</button>
+                  <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 1)}>P1</button>
+                  <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 2)}>P2</button>
                 </div>
               ))}
             </div>
@@ -2241,8 +2505,8 @@ export default class GameBoard extends Component {
         {this.state.isLoading ? (
           <div className="fixed inset-0 z-[2000] bg-black flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-              <div className="size-10 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
-              <p className="text-sm text-white/60">{this.state.loadingMessage}</p>
+              <RuneSpinner size={64} />
+              <p className="text-sm" style={{ color: TEXT_BODY }}>{this.state.loadingMessage}</p>
             </div>
           </div>
         ) : null}
@@ -2252,7 +2516,7 @@ export default class GameBoard extends Component {
           {/* Burger menu */}
           <button
             type="button"
-            className="size-10 rounded-xl border border-white/20 bg-black/60 backdrop-blur-sm flex items-center justify-center text-white/80 hover:bg-white/10"
+            className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
             onClick={() => { playSound('uiClick'); this.setState((s) => ({ showGameMenu: !s.showGameMenu })); }}
             title="Menu"
           >
@@ -2263,7 +2527,7 @@ export default class GameBoard extends Component {
           {!this.props.arenaSelectedDeckId ? (
             <button
               type="button"
-              className="size-10 rounded-xl border border-white/20 bg-black/60 backdrop-blur-sm flex items-center justify-center text-white/80 hover:bg-white/10"
+              className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
               onClick={() => { playSound('uiClick'); this.setState({ showDeckPicker: true }); }}
               title="Spawn Deck"
             >
@@ -2275,20 +2539,23 @@ export default class GameBoard extends Component {
           <div className="relative">
             <button
               type="button"
-              className="size-10 rounded-xl border border-white/20 bg-black/60 backdrop-blur-sm flex items-center justify-center text-white/80 hover:bg-white/10"
+              className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
               onClick={() => { playSound('uiClick'); this.setState((s) => ({ showDiceMenu: !s.showDiceMenu })); }}
               title="Spawn Dice"
             >
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="2.5" width="13" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.5"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="12" cy="6" r="1" fill="currentColor"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>
             </button>
             {this.state.showDiceMenu ? (
-              <div className="absolute left-12 top-0 w-36 rounded-xl border border-white/15 bg-black/90 backdrop-blur-xl p-1.5 shadow-2xl">
-                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-white/30">Spawn Dice</div>
+              <div className="absolute left-12 top-0 w-36 p-1.5" style={POPOVER_STYLE}>
+                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Spawn Dice</div>
                 {Object.entries(DICE_CONFIGS).map(([type, config]) => (
                   <button
                     key={type}
                     type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-white/80 hover:bg-white/10"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs cursor-pointer transition-colors"
+                    style={{ color: TEXT_BODY }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                     onClick={() => { playSound('uiClick'); this.spawnDice(type); }}
                   >
                     <span className="size-2.5 rounded-full" style={{ backgroundColor: `#${config.color.toString(16).padStart(6, '0')}` }} />
@@ -2301,18 +2568,18 @@ export default class GameBoard extends Component {
 
           {/* Connection status indicator */}
           {this.state.connectionStatus !== 'offline' ? (
-            <div className="size-10 rounded-xl border border-white/10 bg-black/60 backdrop-blur-sm flex items-center justify-center" title={this.state.connectionStatus}>
+            <div className="size-10 rounded-xl flex items-center justify-center" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.15)` }} title={this.state.connectionStatus}>
               <div className={cn('size-2.5 rounded-full', this.state.connectionStatus === 'connected' ? 'bg-green-400' : this.state.connectionStatus === 'waiting' ? 'bg-blue-400 animate-pulse' : 'bg-red-400')} />
             </div>
           ) : null}
 
           {/* Burger menu dropdown */}
           {this.state.showGameMenu ? (
-            <div className="w-52 rounded-xl border border-white/15 bg-black/90 backdrop-blur-xl p-1.5 shadow-2xl">
+            <div className="w-52 p-1.5" style={POPOVER_STYLE}>
               {/* Multiplayer section */}
-              <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-white/30">Session</div>
+              <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Session</div>
               {this.state.connectionStatus === 'offline' ? (
-                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-green-400 hover:bg-white/10" onClick={() => { this.startMultiplayer(); this.setState({ showGameMenu: false }); }}>
+                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: '#6ab04c' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.startMultiplayer(); this.setState({ showGameMenu: false }); }}>
                   <div className="size-2 rounded-full bg-green-400" /> Go Online
                 </button>
               ) : (
@@ -2322,50 +2589,50 @@ export default class GameBoard extends Component {
                       Code: {this.state.roomCode}
                     </button>
                   ) : null}
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-white/10" onClick={() => { this.stopMultiplayer(); this.setState({ showGameMenu: false }); }}>
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: '#c45050' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.stopMultiplayer(); this.setState({ showGameMenu: false }); }}>
                     Stop Online
                   </button>
                 </>
               )}
 
-              <div className="mx-2 my-1 h-px bg-white/10" />
+              <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />
 
               {/* Save */}
               {!this.props.isRankedMatch && this.state.isHost ? (
                 <>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/80 hover:bg-white/10" onClick={() => { this.quickSave(); this.setState({ showGameMenu: false }); }}>
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.quickSave(); this.setState({ showGameMenu: false }); }}>
                     Quick Save{this.state.currentSessionName ? ` (${this.state.currentSessionName})` : ''}
                   </button>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/80 hover:bg-white/10" onClick={() => { this.openSaveDialog(); this.setState({ showGameMenu: false }); }}>
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.openSaveDialog(); this.setState({ showGameMenu: false }); }}>
                     Save As...
                   </button>
                 </>
               ) : null}
 
               {/* Spawn config */}
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/80 hover:bg-white/10" onClick={() => { this.toggleSpawnEditor(); this.setState({ showGameMenu: false }); }}>
+              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.toggleSpawnEditor(); this.setState({ showGameMenu: false }); }}>
                 {this.state.isPlacingSpawns ? 'Done Placing' : 'Set Spawn Points'}
               </button>
 
               {this.props.isRankedMatch && this.state.connectionStatus === 'connected' ? (
-                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-amber-400 hover:bg-white/10" onClick={() => this.setState({ showMatchResult: true, showGameMenu: false })}>
+                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: ACCENT_GOLD }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => this.setState({ showMatchResult: true, showGameMenu: false })}>
                   End Match
                 </button>
               ) : null}
               {this.props.isRankedMatch && this.state.connectionStatus !== 'connected' ? (
-                <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/30 cursor-not-allowed">
+                <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-not-allowed" style={{ color: TEXT_MUTED }}>
                   End Match (waiting for opponent)
                 </div>
               ) : null}
 
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/80 hover:bg-white/10" onClick={() => this.setState({ showSoundSettings: true, showGameMenu: false })}>
-                Sound Settings
+              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.setState({ showGameMenu: false }); if (this.props.onOpenSettings) this.props.onOpenSettings(); }}>
+                Settings
               </button>
 
-              <div className="mx-2 my-1 h-px bg-white/10" />
+              <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />
 
               {/* Exit */}
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-white/10" onClick={() => { this.requestExit(); this.setState({ showGameMenu: false }); }}>
+              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: '#c45050' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.requestExit(); this.setState({ showGameMenu: false }); }}>
                 Exit Game
               </button>
             </div>
@@ -2438,19 +2705,16 @@ export default class GameBoard extends Component {
             const localPlayer = this.state.isHost ? 'p1' : 'p2';
             const isMyTurn = this.state.currentTurn === localPlayer;
             return (
-              <div className="absolute top-3 right-3 z-10 rounded-2xl border border-border/70 bg-card/84 text-card-foreground shadow-[0_18px_48px_rgba(0,0,0,0.28)] backdrop-blur-xl px-5 py-4">
-                <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/40">
+              <div className="absolute top-3 right-3 z-10 px-5 py-4" style={{ ...POPOVER_STYLE, borderRadius: '12px', boxShadow: '0 18px 48px rgba(0,0,0,0.4), 0 0 20px rgba(180,140,60,0.04)' }}>
+                <FourCorners radius={12} />
+                <div className="flex items-center justify-between gap-4 mb-3 pb-2" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Turn {this.state.turnNumber}</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider" style={SECTION_HEADER_STYLE}>Turn {this.state.turnNumber}</span>
                   </div>
                   <button
                     type="button"
-                    className={cn(
-                      'rounded-lg px-3 py-1 text-xs font-semibold transition-colors',
-                      isMyTurn
-                        ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                        : 'bg-muted text-muted-foreground cursor-not-allowed'
-                    )}
+                    className="rounded-lg px-3 py-1 text-xs font-semibold transition-colors cursor-pointer"
+                    style={isMyTurn ? GOLD_BTN : { background: `${GOLD} 0.06)`, color: TEXT_MUTED, border: `1px solid ${GOLD} 0.1)`, borderRadius: '6px', cursor: 'not-allowed' }}
                     disabled={!isMyTurn}
                     onClick={this.passTurn}
                   >
@@ -2466,16 +2730,16 @@ export default class GameBoard extends Component {
                     const avatarUrl = info?.avatarUrl || null;
                     const isActive = this.state.currentTurn === player;
                     return (
-                      <div key={player} className={cn('flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 transition-colors', isActive && 'bg-primary/10')}>
+                      <div key={player} className="flex items-center gap-3 rounded-lg px-2 py-1 -mx-2 transition-colors" style={isActive ? { background: `${GOLD} 0.08)` } : undefined}>
                         {avatarUrl ? (
-                          <img src={avatarUrl} alt="" className={cn('w-7 h-7 rounded-full object-cover object-top shrink-0 border', isActive ? 'border-primary' : 'border-white/20')} />
+                          <img src={avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover object-top shrink-0" style={{ border: isActive ? `2px solid ${ACCENT_GOLD}` : `1px solid ${GOLD} 0.15)` }} />
                         ) : (
-                          <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0 border', isActive ? 'bg-primary/20 border-primary text-primary' : 'bg-white/10 border-white/20 text-white/30')}>
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0" style={isActive ? { background: `${GOLD} 0.15)`, border: `2px solid ${ACCENT_GOLD}`, color: ACCENT_GOLD } : { background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.15)`, color: TEXT_MUTED }}>
                             {isP1 ? '1' : '2'}
                           </div>
                         )}
-                        <span className={cn('text-xs font-semibold min-w-[4rem] truncate', isActive ? 'text-white' : 'text-white/80')}>{displayName}</span>
-                        {isActive ? <span className="text-[9px] font-bold uppercase tracking-wider text-primary">turn</span> : null}
+                        <span className="text-xs font-semibold min-w-[4rem] truncate" style={{ color: isActive ? TEXT_PRIMARY : TEXT_BODY }}>{displayName}</span>
+                        {isActive ? <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: ACCENT_GOLD }}>turn</span> : null}
                         <div className="flex items-center gap-1.5 ml-auto" title="Life Total">
                           <svg className="size-4 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
                           <span className="text-base font-bold tabular-nums min-w-[1.5rem] text-right">{t.life}</span>
@@ -2499,9 +2763,10 @@ export default class GameBoard extends Component {
                 <img
                   src={this.props.arenaPlayerInfo.avatarUrl}
                   alt={this.props.arenaPlayerInfo.name}
-                  className="w-14 h-14 rounded-full object-cover object-top border-2 border-amber-500/40 shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+                  className="w-14 h-14 rounded-full object-cover object-top shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+                  style={{ border: `2px solid ${GOLD} 0.4)` }}
                 />
-                <span className="text-[10px] font-semibold text-white/70 bg-black/60 rounded-full px-2 py-0.5 backdrop-blur-sm">{this.props.arenaPlayerInfo.name}</span>
+                <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ color: TEXT_BODY, background: PANEL_BG }}>{this.props.arenaPlayerInfo.name}</span>
               </div>
             </div>
           ) : null}
@@ -2511,16 +2776,17 @@ export default class GameBoard extends Component {
                 <img
                   src={this.props.arenaOpponentInfo.avatarUrl}
                   alt={this.props.arenaOpponentInfo.name}
-                  className="w-14 h-14 rounded-full object-cover object-top border-2 border-red-500/40 shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+                  className="w-14 h-14 rounded-full object-cover object-top shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+                  style={{ border: '2px solid rgba(180,60,60,0.4)' }}
                 />
-                <span className="text-[10px] font-semibold text-white/70 bg-black/60 rounded-full px-2 py-0.5 backdrop-blur-sm">{this.props.arenaOpponentInfo.name}</span>
+                <span className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ color: TEXT_BODY, background: PANEL_BG }}>{this.props.arenaOpponentInfo.name}</span>
               </div>
             </div>
           ) : null}
 
           {this.state.isPlacingSpawns ? (
-            <div className="absolute top-2 left-2 z-10 w-56 max-h-[80vh] overflow-y-auto rounded-xl border border-white/20 bg-black/80 p-2 backdrop-blur-sm">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">Pile Spawn Points</div>
+            <div className="absolute top-2 left-2 z-10 w-56 max-h-[80vh] overflow-y-auto p-2" style={POPOVER_STYLE}>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Pile Spawn Points</div>
               {Object.entries(SPAWN_LABELS).map(([key, label]) => {
                 const isActive = this.state.activeSpawnKey === key;
                 const hasPoint = this.state.spawnConfig[key];
@@ -2529,10 +2795,10 @@ export default class GameBoard extends Component {
                   <button
                     key={key}
                     type="button"
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors',
-                      isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10'
-                    )}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                    style={isActive ? { background: `${GOLD} 0.15)`, color: TEXT_PRIMARY } : { color: TEXT_BODY }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                     onClick={() => {
                       this.setState({ activeSpawnKey: isActive ? null : key, trackerEditing: null });
                       this.clearTrackerPreviews();
@@ -2541,15 +2807,15 @@ export default class GameBoard extends Component {
                   >
                     <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
                     <span className="flex-1 text-left">{label}</span>
-                    {hasPoint ? <span className="text-[9px] text-white/40">set</span> : null}
+                    {hasPoint ? <span className="text-[9px]" style={{ color: TEXT_MUTED }}>set</span> : null}
                   </button>
                 );
               })}
               {this.state.activeSpawnKey ? (
-                <div className="mt-2 text-[10px] text-yellow-300/80">Click on the table to place {SPAWN_LABELS[this.state.activeSpawnKey]}</div>
+                <div className="mt-2 text-[10px]" style={{ color: ACCENT_GOLD }}>Click on the table to place {SPAWN_LABELS[this.state.activeSpawnKey]}</div>
               ) : null}
 
-              <div className="mt-3 mb-2 border-t border-white/10 pt-2 text-[10px] font-semibold uppercase tracking-widest text-white/50">Tracker Spawn Points</div>
+              <div className="mt-3 mb-2 pt-2 text-[10px] font-semibold uppercase tracking-widest" style={{ borderTop: `1px solid ${GOLD} 0.1)`, ...SECTION_HEADER_STYLE }}>Tracker Spawn Points</div>
               {getTrackerSpawnEntries().map((entry) => {
                 const te = this.state.trackerEditing;
                 const isActive = te && te.trackerKey === entry.trackerKey && te.player === entry.player;
@@ -2558,10 +2824,10 @@ export default class GameBoard extends Component {
                   <button
                     key={entry.spawnKey}
                     type="button"
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors',
-                      isActive ? 'bg-orange-500/20 text-orange-300' : 'text-white/70 hover:bg-white/10'
-                    )}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                    style={isActive ? { background: `${GOLD} 0.15)`, color: ACCENT_GOLD } : { color: TEXT_BODY }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                     onClick={() => {
                       this.clearTrackerPreviews();
                       if (isActive) {
@@ -2578,14 +2844,107 @@ export default class GameBoard extends Component {
                   >
                     <span className="size-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
                     <span className="flex-1 text-left">{entry.label}</span>
-                    {configured ? <span className="text-[9px] text-white/40">set</span> : null}
+                    {configured ? <span className="text-[9px]" style={{ color: TEXT_MUTED }}>set</span> : null}
                   </button>
                 );
               })}
               {this.state.trackerEditing ? (
-                <div className="mt-2 text-[10px] text-orange-300/80">
+                <div className="mt-2 text-[10px]" style={{ color: ACCENT_GOLD }}>
                   {getTrackerProgressLabel(this.state.trackerEditing.trackerKey, this.state.trackerEditing.player, this.state.trackerEditing.flatIndex)}
                   <br />Click on the table to set this position.
+                </div>
+              ) : null}
+
+              <div className="mt-3 mb-2 pt-2 text-[10px] font-semibold uppercase tracking-widest" style={{ borderTop: `1px solid ${GOLD} 0.1)`, ...SECTION_HEADER_STYLE }}>Game Grid</div>
+
+              {!this.state.gridEditMode ? (
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                    style={{ color: TEXT_BODY }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    onClick={() => {
+                      this.setState({ gridEditMode: 'drag-start', activeSpawnKey: null, trackerEditing: null });
+                      this.clearTrackerPreviews();
+                      this.hideTrackerCursorPreview();
+                    }}
+                  >
+                    <span className="size-2.5 rounded-full" style={{ backgroundColor: '#d4a843' }} />
+                    <span className="flex-1 text-left">{getGameGrid(this.state.spawnConfig) ? 'Redefine Grid' : 'Define Grid'}</span>
+                  </button>
+                  {getGameGrid(this.state.spawnConfig) ? (
+                    <>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                        style={{ color: TEXT_BODY }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        onClick={() => {
+                          const grid = getGameGrid(this.state.spawnConfig);
+                          this.currentEditGrid = JSON.parse(JSON.stringify(grid));
+                          this.updateGridVisualization(grid, true);
+                          this.setState({ gridEditMode: 'adjust', activeSpawnKey: null, trackerEditing: null });
+                          this.clearTrackerPreviews();
+                          this.hideTrackerCursorPreview();
+                        }}
+                      >
+                        <span className="size-2.5 rounded-full" style={{ backgroundColor: '#c0a040' }} />
+                        <span className="flex-1 text-left">Adjust Grid</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                        style={{ color: '#c45050' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        onClick={() => this.clearGrid()}
+                      >
+                        <span className="size-2.5 rounded-full" style={{ backgroundColor: '#c45050' }} />
+                        <span className="flex-1 text-left">Clear Grid</span>
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {this.state.gridEditMode === 'drag-start' ? (
+                <div className="mt-2 text-[10px]" style={{ color: ACCENT_GOLD }}>
+                  Click and drag on the table to define the grid area.
+                </div>
+              ) : null}
+
+              {this.state.gridEditMode === 'drag-end' ? (
+                <div className="mt-2 text-[10px]" style={{ color: ACCENT_GOLD }}>
+                  Release to set the grid rectangle.
+                </div>
+              ) : null}
+
+              {this.state.gridEditMode === 'adjust' ? (
+                <div className="flex flex-col gap-1">
+                  <div className="mt-1 text-[10px]" style={{ color: ACCENT_GOLD }}>
+                    Drag handles to adjust the grid. Corners move the boundary, edge and interior handles adjust dividers.
+                  </div>
+                  <div className="flex gap-1 mt-2">
+                    <button
+                      type="button"
+                      className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold cursor-pointer transition-colors"
+                      style={GOLD_BTN}
+                      onClick={() => this.acceptGrid()}
+                    >
+                      Accept Grid
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold cursor-pointer transition-colors"
+                      style={BEVELED_BTN}
+                      onClick={() => this.cancelGrid()}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -2625,69 +2984,25 @@ export default class GameBoard extends Component {
               }}
             />
           ) : null}
-          {this.state.showSoundSettings ? (() => {
-            const ss = this.state.soundSettings;
-            const updateSound = (key, value) => {
-              const next = { ...ss, [key]: value };
-              saveSoundSettings(next);
-              this.setState({ soundSettings: next });
-              updateMusicVolume();
-            };
-            const toggleCls = (enabled) => enabled
-              ? 'rounded-md px-2 py-0.5 text-[10px] font-medium border border-green-500/40 bg-green-500/15 text-green-400'
-              : 'rounded-md px-2 py-0.5 text-[10px] font-medium border border-white/15 text-white/30';
-            return (
-              <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => this.setState({ showSoundSettings: false })}>
-                <div className="w-full max-w-sm rounded-2xl border border-border/70 bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                  <h2 className="text-base font-semibold text-white mb-4">Sound Settings</h2>
-                  <div className="flex flex-col rounded-xl border border-white/10 overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-                      <span className="text-sm text-white">Master</span>
-                      <div className="flex items-center gap-2">
-                        <input type="range" min="0" max="100" value={Math.round(ss.masterVolume * 100)} className="w-24 h-1 accent-amber-500 cursor-pointer" onInput={(e) => updateSound('masterVolume', parseInt(e.target.value, 10) / 100)} />
-                        <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{Math.round(ss.masterVolume * 100)}%</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-                      <span className="text-sm text-white">Music</span>
-                      <div className="flex items-center gap-2">
-                        <button type="button" className={toggleCls(ss.musicEnabled)} onClick={() => updateSound('musicEnabled', !ss.musicEnabled)}>{ss.musicEnabled ? 'On' : 'Off'}</button>
-                        <input type="range" min="0" max="100" value={Math.round(ss.musicVolume * 100)} className="w-20 h-1 accent-amber-500 cursor-pointer" disabled={!ss.musicEnabled} onInput={(e) => updateSound('musicVolume', parseInt(e.target.value, 10) / 100)} />
-                        <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{Math.round(ss.musicVolume * 100)}%</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <span className="text-sm text-white">SFX</span>
-                      <div className="flex items-center gap-2">
-                        <button type="button" className={toggleCls(ss.sfxEnabled)} onClick={() => updateSound('sfxEnabled', !ss.sfxEnabled)}>{ss.sfxEnabled ? 'On' : 'Off'}</button>
-                        <input type="range" min="0" max="100" value={Math.round(ss.sfxVolume * 100)} className="w-20 h-1 accent-amber-500 cursor-pointer" disabled={!ss.sfxEnabled} onInput={(e) => updateSound('sfxVolume', parseInt(e.target.value, 10) / 100)} />
-                        <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">{Math.round(ss.sfxVolume * 100)}%</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 text-right">
-                    <button type="button" className="rounded-lg border border-white/20 px-4 py-1.5 text-xs text-white/60 hover:bg-white/10" onClick={() => this.setState({ showSoundSettings: false })}>Close</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })() : null}
           {this.state.showExitConfirm ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-              <div className="w-80 rounded-2xl border border-border/70 bg-card p-5 shadow-2xl">
-                <h2 className="mb-2 text-lg font-semibold">Leave game?</h2>
-                <p className="mb-4 text-sm text-muted-foreground">Your game will be auto-saved. Are you sure you want to exit?</p>
+            <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+              <div className="relative w-80 p-5" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }}>
+                <FourCorners radius={12} />
+                <h2 className="mb-2 text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>Leave game?</h2>
+                <p className="mb-4 text-sm" style={{ color: TEXT_MUTED }}>Your game will be auto-saved. Are you sure you want to exit?</p>
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
-                    className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+                    className="px-4 py-2 text-sm font-medium cursor-pointer transition-all"
+                    style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                     onClick={() => this.setState({ showExitConfirm: false })}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                    className="px-4 py-2 text-sm font-medium cursor-pointer transition-all"
+                    style={{ ...DANGER_BTN, borderRadius: '6px' }}
                     onClick={this.props.onExit}
                   >
                     Leave game
@@ -2713,15 +3028,16 @@ export default class GameBoard extends Component {
             </div>
           ) : null}
           {this.state.showSaveDialog ? (
-            <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => this.setState({ showSaveDialog: false })}>
-              <div className="w-[420px] max-h-[70vh] flex flex-col rounded-2xl border border-border/70 bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="border-b border-border/50 p-5">
-                  <h2 className="text-lg font-semibold">Save Session</h2>
+            <div className="fixed inset-0 z-[1100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => this.setState({ showSaveDialog: false })}>
+              <div className="relative w-[420px] max-h-[70vh] flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+                <FourCorners radius={12} />
+                <div className="p-5" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
+                  <h2 className="text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>Save Session</h2>
                 </div>
 
                 {/* New save */}
-                <div className="border-b border-border/50 p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">New Save</div>
+                <div className="p-4" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
+                  <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={SECTION_HEADER_STYLE}>New Save</div>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -2729,12 +3045,14 @@ export default class GameBoard extends Component {
                       value={this.state.saveDialogName}
                       onInput={(e) => this.setState({ saveDialogName: e.target.value })}
                       onKeyDown={(e) => { if (e.key === 'Enter' && this.state.saveDialogName.trim()) this.manualSave(this.state.saveDialogName); }}
-                      className="flex-1 rounded-lg border border-border/60 bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                      className="flex-1 px-3 py-2 text-sm outline-none"
+                      style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
                       autoFocus
                     />
                     <button
                       type="button"
-                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      className="px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50 transition-all"
+                      style={GOLD_BTN}
                       disabled={!this.state.saveDialogName.trim()}
                       onClick={() => this.manualSave(this.state.saveDialogName)}
                     >
@@ -2745,29 +3063,32 @@ export default class GameBoard extends Component {
 
                 {/* Existing saves */}
                 <div className="flex-1 overflow-y-auto p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overwrite Existing</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={SECTION_HEADER_STYLE}>Overwrite Existing</div>
                   {this.state.savedSessions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2">No existing saves.</p>
+                    <p className="text-xs py-2" style={{ color: TEXT_MUTED }}>No existing saves.</p>
                   ) : (
                     <div className="flex flex-col gap-1.5">
                       {this.state.savedSessions.filter((s) => s.id !== 'autosave').map((session) => (
                         <button
                           key={session.id}
                           type="button"
-                          className={cn(
-                            'flex items-center justify-between rounded-lg border px-3 py-2.5 text-left text-xs hover:bg-muted/50',
-                            session.id === this.state.currentSessionId ? 'border-primary/50 bg-primary/5' : 'border-border/40'
-                          )}
+                          className="flex items-center justify-between px-3 py-2.5 text-left text-xs cursor-pointer transition-all"
+                          style={session.id === this.state.currentSessionId
+                            ? { border: `1px solid ${GOLD} 0.35)`, background: `${GOLD} 0.06)`, borderRadius: '6px' }
+                            : { border: `1px solid ${GOLD} 0.1)`, borderRadius: '6px' }
+                          }
+                          onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = session.id === this.state.currentSessionId ? `${GOLD} 0.06)` : 'transparent'; }}
                           onClick={() => this.manualSave(session.name, session.id)}
                         >
                           <div>
-                            <div className="font-medium">{session.name}</div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">{new Date(session.savedAt).toLocaleString()}</div>
+                            <div className="font-medium" style={{ color: TEXT_PRIMARY }}>{session.name}</div>
+                            <div className="text-[10px] mt-0.5" style={{ color: TEXT_MUTED }}>{new Date(session.savedAt).toLocaleString()}</div>
                           </div>
                           {session.id === this.state.currentSessionId ? (
-                            <span className="text-[9px] text-primary font-semibold">CURRENT</span>
+                            <span className="text-[9px] font-semibold" style={{ color: ACCENT_GOLD }}>CURRENT</span>
                           ) : (
-                            <span className="text-[9px] text-muted-foreground">Overwrite</span>
+                            <span className="text-[9px]" style={{ color: TEXT_MUTED }}>Overwrite</span>
                           )}
                         </button>
                       ))}
@@ -2775,8 +3096,8 @@ export default class GameBoard extends Component {
                   )}
                 </div>
 
-                <div className="border-t border-border/50 p-3 flex justify-end">
-                  <button type="button" className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:bg-muted" onClick={() => this.setState({ showSaveDialog: false })}>
+                <div className="p-3 flex justify-end" style={{ borderTop: `1px solid ${GOLD} 0.12)` }}>
+                  <button type="button" className="px-4 py-2 text-sm cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.setState({ showSaveDialog: false })}>
                     Cancel
                   </button>
                 </div>
@@ -2866,7 +3187,11 @@ export default class GameBoard extends Component {
               return (
                 <div
                   key={card.id}
-                  className="absolute pointer-events-auto cursor-grab active:cursor-grabbing"
+                  className={cn(
+                    'absolute pointer-events-auto cursor-grab active:cursor-grabbing card-mask',
+                    isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES
+                  )}
+                  data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
                   onMouseDown={(e) => { if (e.button === 0) this.startHandCardDrag(e, card); }}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -2885,6 +3210,7 @@ export default class GameBoard extends Component {
                     transformOrigin: 'bottom center',
                     transition: 'transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
                     transform: `translateX(calc(-50% + ${x}px)) translateY(${y - (card.isSite ? 30 : 0)}px) rotate(${rotation + (card.isSite ? 90 : 0)}deg) scale(${scale})`,
+                    borderRadius: '8px',
                   }}
                 >
                   <img
@@ -2953,7 +3279,10 @@ export default class GameBoard extends Component {
             const cardHeight = 70;
             const idx = Math.floor(mouseY / cardHeight);
             const clampedIdx = Math.max(-1, Math.min(idx, cards.length - 1));
-            if (clampedIdx !== hovered) this.setState({ [hoveredKey]: clampedIdx });
+            if (clampedIdx !== hovered) {
+              if (clampedIdx >= 0) try { playUI(UI.HOVER, { volume: 0.4 }); } catch {}
+              this.setState({ [hoveredKey]: clampedIdx });
+            }
           } else {
             // Arc for spellbook
             const rect = e.currentTarget.getBoundingClientRect();
@@ -2972,7 +3301,10 @@ export default class GameBoard extends Component {
               const dist = Math.abs(mouseX - cardX);
               if (dist < closestDist && dist < hoverDetectRadius) { closestDist = dist; closestIdx = i; }
             }
-            if (closestIdx !== hovered) this.setState({ [hoveredKey]: closestIdx });
+            if (closestIdx !== hovered) {
+              if (closestIdx >= 0) try { playUI(UI.HOVER, { volume: 0.4 }); } catch {}
+              this.setState({ [hoveredKey]: closestIdx });
+            }
           }
         }}
         onMouseLeave={() => {
