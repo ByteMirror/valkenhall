@@ -190,7 +190,7 @@ export default class ArcaneTrials extends Component {
                       <div
                         className="relative w-full transition-all duration-300"
                         style={{
-                          filter: locked ? 'saturate(0.3) brightness(0.5)' : 'none',
+                          filter: locked ? 'brightness(0.65)' : 'none',
                           opacity: isClaimed ? 0.7 : 1,
                           transform: claimable ? 'scale(1.04) translateY(-4px)' : 'scale(1)',
                         }}
