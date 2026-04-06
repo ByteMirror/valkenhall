@@ -1,6 +1,7 @@
 import { Component } from 'preact';
 import { Mail, Users } from 'lucide-react';
 import RuneSpinner from './RuneSpinner';
+import { UI } from '../utils/arena/uiSounds';
 import { xpProgressInLevel } from '../utils/arena/profileDefaults';
 import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievements';
 import { cn } from '../lib/utils';
@@ -433,7 +434,7 @@ export default class ArenaHub extends Component {
                   {/* Divider */}
                   <div className="mx-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD} 0.2), transparent)` }} />
                   {/* Player list */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3">
+                  <div className="flex-1 overflow-y-auto px-4 py-3" >
                     {leaderboardLoading ? (
                       <div className="flex justify-center py-8"><RuneSpinner size={50} useViewportUnits /></div>
                     ) : filteredLeaderboard.length === 0 ? (
@@ -445,9 +446,10 @@ export default class ArenaHub extends Component {
                           const color = TIER_COLORS[player.tier] || 'text-white/60';
                           const isTop3 = i < 3;
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={player.id || i}
-                              className="flex items-center gap-3 px-3 py-2 transition-all cursor-pointer"
+                              className="flex items-center gap-3 px-3 py-2 transition-all cursor-pointer w-full text-left"
                               style={{
                                 borderBottom: `1px solid ${GOLD} 0.06)`,
                                 background: isMe ? `linear-gradient(90deg, ${GOLD} 0.08), transparent)` : 'transparent',
@@ -463,7 +465,7 @@ export default class ArenaHub extends Component {
                               <span className={cn('text-[10px] font-semibold shrink-0', color)}>
                                 {formatRank(player.tier, player.division)}
                               </span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -473,9 +475,9 @@ export default class ArenaHub extends Component {
               </div>
 
               {/* ── RIGHT COLUMN: ACHIEVEMENTS ─────────────── */}
-              <div className="w-[320px] shrink-0 flex flex-col">
+              <div className="w-[320px] shrink-0 flex flex-col min-h-0">
                 <div
-                  className="relative flex-1 flex flex-col"
+                  className="relative flex-1 flex flex-col min-h-0 overflow-hidden"
                   style={{
                     background: 'rgba(12, 10, 8, 0.94)',
                     backdropFilter: 'blur(8px)',
@@ -498,7 +500,7 @@ export default class ArenaHub extends Component {
                   {/* Divider */}
                   <div className="mx-5 h-px" style={{ background: `linear-gradient(90deg, transparent, ${GOLD} 0.2), transparent)` }} />
                   {/* Achievement list */}
-                  <div className="flex-1 overflow-y-auto px-4 py-3">
+                  <div className="flex-1 overflow-y-auto px-4 py-3" >
                     <div className="flex flex-col">
                       {ACHIEVEMENTS.map((a) => {
                         const unlocked = (profile.achievements || []).includes(a.id);
@@ -596,6 +598,7 @@ export default class ArenaHub extends Component {
                   type="button"
                   className="px-5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all"
                   style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)` }}
+                  data-sound={UI.CANCEL}
                   onClick={() => this.setState({ showAvatarPicker: false })}
                 >
                   Cancel
