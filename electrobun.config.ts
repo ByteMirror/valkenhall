@@ -1,7 +1,7 @@
 export default {
   app: {
-    name: 'arsenal',
-    identifier: 'dev.fabianurbanek.arsenal',
+    name: 'valkenhall',
+    identifier: 'dev.fabianurbanek.valkenhall',
     version: '0.1.0',
   },
   release: {
