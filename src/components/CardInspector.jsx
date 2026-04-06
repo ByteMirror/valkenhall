@@ -1,4 +1,6 @@
 import { Component } from 'preact';
+import { useRef, useState, useCallback, useEffect } from 'preact/hooks';
+import { playUI, UI } from '../utils/arena/uiSounds';
 import { extractKeywordAbilities, findGlossaryTermsInText, getGlossaryEntry } from '../utils/game/sorceryKeywords';
 import { isFoilFinish, FOIL_LABEL, FOIL_LABEL_COLOR, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 import { Sparkles, Rainbow } from 'lucide-react';
@@ -6,6 +8,7 @@ import {
   GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   PANEL_BG, DIALOG_STYLE, POPOVER_STYLE, VIGNETTE,
   FourCorners, OrnamentalDivider,
+  getViewportScale,
 } from '../lib/medievalTheme';
 
 class GlossaryTerm extends Component {
@@ -101,8 +104,103 @@ const STAT_COLORS = {
   Cost: ACCENT_GOLD,
 };
 
+const TILT_MAX = 12;
+
+function InspectorCard({ imgSrc, cardName, isSite, isFoil, foiling }) {
+  const ref = useRef(null);
+  const [tilt, setTilt] = useState({ rx: 0, ry: 0, mx: 50, my: 50, active: false });
+
+  const handleMouseMove = useCallback((e) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setTilt({
+      rx: (0.5 - y) * 2 * TILT_MAX,
+      ry: (x - 0.5) * 2 * TILT_MAX,
+      mx: x * 100,
+      my: y * 100,
+      active: true,
+    });
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setTilt({ rx: 0, ry: 0, mx: 50, my: 50, active: false });
+  }, []);
+
+  const { rx, ry, mx, my, active } = tilt;
+  const dx = (mx / 100) - 0.5;
+  const dy = (my / 100) - 0.5;
+  const fromCenter = Math.min(1, Math.sqrt(dx * dx + dy * dy) / 0.5);
+  const bgX = 20 + (mx / 100) * 60;
+  const bgY = 20 + (my / 100) * 60;
+  const sheenAngle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+  const sheenOffset = (0.5 - (mx / 100)) * 100;
+
+  const foilVars = isFoil ? {
+    '--foil-bg-x': `${bgX}%`,
+    '--foil-bg-y': `${bgY}%`,
+    '--foil-d': fromCenter,
+    '--foil-angle': `${sheenAngle}deg`,
+    '--foil-offset': `${sheenOffset}%`,
+  } : {};
+
+  return (
+    <div
+      ref={ref}
+      className="flex-shrink-0"
+      style={{ perspective: '800px' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div
+        className={`overflow-hidden card-mask ${isSite ? 'card-mask--landscape' : ''} ${isFoil ? `${FOIL_OVERLAY_CLASSES} rounded-xl` : 'rounded-xl'} ${isFoil && active ? 'foil-overlay--active' : ''}`}
+        data-foil={isFoil ? foiling : undefined}
+        style={{
+          ...foilVars,
+          transform: `rotateX(${rx}deg) rotateY(${ry}deg)`,
+          transition: active ? 'transform 0.1s ease-out' : 'transform 0.4s ease-out',
+          transformStyle: 'preserve-3d',
+          ...(isSite ? { width: '40vh', height: 'calc(40vh * 63.5 / 88.9)' } : {}),
+        }}
+      >
+        <img
+          src={imgSrc}
+          alt={cardName || ''}
+          className="card-image rounded-xl"
+          style={isSite
+            ? { height: '40vh', width: 'calc(40vh * 63.5 / 88.9)', transform: 'rotate(90deg) translateX(0%) translateY(-100%)', transformOrigin: 'top left' }
+            : { height: '40vh' }
+          }
+        />
+        {active ? (
+          <div
+            className="card-sheen"
+            style={{
+              '--sheen-angle': `${sheenAngle}deg`,
+              '--sheen-offset': `${sheenOffset}%`,
+              '--sheen-d': fromCenter,
+            }}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function CardInspector({ card, imageUrl, rarity, foiling, onClose }) {
   if (!card) return null;
+
+  // Play open sound on mount, close sound on unmount
+  useEffect(() => {
+    playUI(UI.INSPECTOR_OPEN);
+    return () => playUI(UI.INSPECTOR_CLOSE);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    onClose?.();
+  }, [onClose]);
 
   const rulesText = card.functional_text_plain || card.functional_text || '';
   const keywordAbilities = extractKeywordAbilities(rulesText);
@@ -114,25 +212,17 @@ export default function CardInspector({ card, imageUrl, rarity, foiling, onClose
     <div
       className="fixed inset-0 z-[1200] flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-      <div className="relative flex items-start gap-8 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
-        <div
-          className={`flex-shrink-0 overflow-hidden card-mask ${isSite ? 'card-mask--landscape' : ''} ${isFoil ? `${FOIL_OVERLAY_CLASSES} rounded-xl` : 'rounded-xl'}`}
-          data-foil={isFoil ? foiling : undefined}
-          style={isSite ? { width: 'calc(40vh * 88.9 / 63.5)', height: '40vh' } : {}}
-        >
-          <img
-            src={imgSrc}
-            alt={card.name || ''}
-            className="card-image rounded-xl"
-            style={isSite
-              ? { height: 'calc(40vh * 88.9 / 63.5)', width: '40vh', transform: 'rotate(90deg) translateX(0%) translateY(-100%)', transformOrigin: 'top left' }
-              : { height: '40vh' }
-            }
-          />
-        </div>
+      <div className="relative flex items-start gap-8 max-w-[90vw]" style={{ zoom: getViewportScale() }} onClick={(e) => e.stopPropagation()}>
+        <InspectorCard
+          imgSrc={imgSrc}
+          cardName={card.name}
+          isSite={isSite}
+          isFoil={isFoil}
+          foiling={foiling}
+        />
 
         <div className="flex flex-col gap-3 min-w-[340px] max-w-[480px]">
           {/* Main card info */}
