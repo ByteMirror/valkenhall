@@ -291,6 +291,7 @@ export default class App extends Component {
     try {
       const savedDecks = await listSavedDecks('sorcery');
       this.setState({ savedDecks, isSavedDecksLoading: false });
+      this.syncArenaProfileDecks(savedDecks);
     } catch (error) {
       console.error('Failed to load saved decks:', error);
       this.setState({
