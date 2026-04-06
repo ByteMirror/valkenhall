@@ -40,6 +40,7 @@ import FriendProfileOverlay from './components/FriendProfileOverlay';
 import SpectatorBanner from './components/SpectatorBanner';
 import RuneSpinner from './components/RuneSpinner';
 import LoadingIndicator from './components/LoadingIndicator';
+import FirstRunDownload from './components/FirstRunDownload';
 import TradeWindow from './components/TradeWindow';
 import { startPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
@@ -94,6 +95,7 @@ export default class App extends Component {
     this.state = {
       authChecking: true,
       authFadeOut: false,
+      needsAssetDownload: false,
       loggedIn: false,
       isGameBoardOpen: false,
       arenaProfile: null,
@@ -345,6 +347,32 @@ export default class App extends Component {
       onNewNotifications: this.handleNewNotifications,
       onMailCountUpdate: (counts) => this.setState({ mailboxUnreadCount: counts.count }),
     });
+    this.checkAssetDownload();
+  };
+
+  checkAssetDownload = async () => {
+    try {
+      const api = getLocalApiOrigin();
+      const statusRes = await fetch(`${api}/api/assets/status`);
+      const status = await statusRes.json();
+
+      const cardsRes = await fetch(`${api}/api/sorcery/cards`);
+      const cards = await cardsRes.json();
+      let totalSlugs = 0;
+      for (const card of cards) {
+        for (const set of (card.sets || [])) {
+          totalSlugs += (set.variants || []).filter(v => v.slug).length;
+        }
+      }
+
+      if (status.cached < totalSlugs * 0.9) {
+        this.setState({ needsAssetDownload: true });
+      }
+    } catch {}
+  };
+
+  handleAssetDownloadComplete = () => {
+    this.setState({ needsAssetDownload: false });
   };
 
   addToast = (toastData) => {
@@ -1348,6 +1376,12 @@ export default class App extends Component {
 
     if (!this.state.loggedIn) {
       return this.renderAuthOverlay();
+    }
+
+    if (this.state.needsAssetDownload) {
+      return (
+        <FirstRunDownload onComplete={this.handleAssetDownloadComplete} />
+      );
     }
 
     const showDeckGallery = this.state.arenaView === 'deck-gallery' && !this.state.isGameBoardOpen;

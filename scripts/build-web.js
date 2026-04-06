@@ -33,8 +33,7 @@ for (const tex of ['tex-stone', 'tex-chisel', 'tex-scratches', 'tex-cracks', 'te
 }
 await fs.cp('./public/cursors', './dist/cursors', { recursive: true }).catch(() => {});
 
-// Bundle card images
-await fs.cp('./public/sorcery-images', './dist/sorcery-images', { recursive: true }).catch(() => {});
+// Card images are downloaded on first run from CDN — not bundled in the installer
 
 // Bundle all audio files (music, sound effects)
 const publicFiles = await fs.readdir('./public').catch(() => []);

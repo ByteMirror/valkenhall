@@ -5,7 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'url';
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from '@aws-sdk/client-cognito-identity';
@@ -623,6 +623,90 @@ app.get('/sorcery-images/:filename', async (req, res) => {
   } catch (error) {
     res.status(502).json({ error: 'Failed to fetch image', details: error.message });
   }
+});
+
+// --- Asset pre-download (first-run) ---
+
+let assetDownloadState = { running: false, total: 0, downloaded: 0, failed: 0, done: false };
+
+app.get('/api/assets/status', (_req, res) => {
+  // Check how many card images are already cached locally
+  const imagesDir = resolvePublicFile('sorcery-images/placeholder').replace(/placeholder$/, '');
+  let cached = 0;
+  try {
+    const files = readdirSync(imagesDir);
+    cached = files.filter(f => f.endsWith('.png')).length;
+  } catch {}
+  res.json({ ...assetDownloadState, cached });
+});
+
+app.post('/api/assets/download', async (req, res) => {
+  if (assetDownloadState.running) {
+    return res.json({ status: 'already_running', ...assetDownloadState });
+  }
+
+  const { slugs } = req.body;
+  if (!Array.isArray(slugs) || slugs.length === 0) {
+    return res.status(400).json({ error: 'No slugs provided' });
+  }
+
+  // Determine which images need downloading
+  const imagesDir = resolvePublicFile('sorcery-images/placeholder').replace(/placeholder$/, '');
+  try { mkdirSync(imagesDir, { recursive: true }); } catch {}
+
+  const needed = slugs.filter(slug => {
+    const filePath = path.join(imagesDir, `${slug}.png`);
+    return !existsSync(filePath);
+  });
+
+  if (needed.length === 0) {
+    assetDownloadState = { running: false, total: slugs.length, downloaded: slugs.length, failed: 0, done: true };
+    return res.json({ status: 'complete', ...assetDownloadState });
+  }
+
+  assetDownloadState = { running: true, total: needed.length, downloaded: 0, failed: 0, done: false };
+  res.json({ status: 'started', total: needed.length });
+
+  // Download in background with concurrency limit
+  const CONCURRENCY = 8;
+  let index = 0;
+
+  async function downloadNext() {
+    while (index < needed.length) {
+      const i = index++;
+      const slug = needed[i];
+      const cdnUrl = `${SORCERY_CDN_BASE}/${slug}.png`;
+      const filePath = path.join(imagesDir, `${slug}.png`);
+      try {
+        const response = await fetch(cdnUrl, { redirect: 'follow' });
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          await writeFileAtomic(filePath, buffer);
+          assetDownloadState.downloaded++;
+        } else {
+          assetDownloadState.failed++;
+        }
+      } catch {
+        assetDownloadState.failed++;
+      }
+    }
+  }
+
+  async function writeFileAtomic(filePath, data) {
+    const tmpPath = `${filePath}.tmp`;
+    await fs.writeFile(tmpPath, data);
+    await fs.rename(tmpPath, filePath);
+  }
+
+  Promise.all(Array.from({ length: CONCURRENCY }, () => downloadNext()))
+    .then(() => {
+      assetDownloadState.running = false;
+      assetDownloadState.done = true;
+    })
+    .catch(() => {
+      assetDownloadState.running = false;
+      assetDownloadState.done = true;
+    });
 });
 
 // --- Auth token persistence ---
