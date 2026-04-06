@@ -50,6 +50,13 @@ import DeckGallery from './components/DeckGallery';
 import DeckEditor from './components/DeckEditor';
 import Mailbox from './components/Mailbox';
 
+const PAGE_TRANSITION_PROPS = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: 0.25, ease: 'easeInOut' },
+};
+
 function isEditableTarget(target) {
   if (!target || typeof target !== 'object') {
     return false;
@@ -1346,7 +1353,9 @@ export default class App extends Component {
 
     return (
       <>
+        <AnimatePresence>
         {showDeckGallery ? (
+          <motion.div key="deck-gallery" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <DeckGallery
             savedDecks={this.getArenaSavedDecks()}
             sorceryCards={this.state.sorceryCards}
@@ -1372,8 +1381,10 @@ export default class App extends Component {
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
             friendListData={this.state.friendListData}
           />
+          </motion.div>
         ) : null}
         {showDeckEditor ? (
+          <motion.div key="deck-editor" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <DeckEditor
             deck={this.state.editingDeckData}
             sorceryCards={this.state.sorceryCards}
@@ -1398,6 +1409,7 @@ export default class App extends Component {
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
             friendListData={this.state.friendListData}
           />
+          </motion.div>
         ) : null}
         {this.state.isGameBoardOpen && !this.state.sessionMode ? (
           <SessionLobby
@@ -1497,6 +1509,7 @@ export default class App extends Component {
           />
         ) : null}
         {this.state.settingsOpen ? (
+          <motion.div key="settings" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <SettingsScreen
             profile={this.state.arenaProfile}
             updateStatus={this.state.updateStatus}
@@ -1506,6 +1519,7 @@ export default class App extends Component {
             onResetProfile={this.resetArenaProfile}
             onQuit={() => window.close()}
           />
+          </motion.div>
         ) : null}
         {showArena && this.state.arenaView === 'deck-select' ? (
           <ArenaDeckSelect
@@ -1522,6 +1536,7 @@ export default class App extends Component {
           />
         ) : null}
         {showArena && this.state.arenaView === 'store' ? (
+          <motion.div key="store" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <ArenaStore
             profile={this.state.arenaProfile}
             pendingPacks={this.state.arenaPendingPacks}
@@ -1546,8 +1561,10 @@ export default class App extends Component {
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
             friendListData={this.state.friendListData}
           />
+          </motion.div>
         ) : null}
         {showArena && this.state.arenaView === 'auction-house' ? (
+          <motion.div key="auction-house" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <AuctionHouse
             profile={this.state.arenaProfile}
             sorceryCards={this.state.sorceryCards}
@@ -1571,6 +1588,7 @@ export default class App extends Component {
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
             friendListData={this.state.friendListData}
           />
+          </motion.div>
         ) : null}
         {showArena && this.state.arenaView === 'pack-opening' && this.state.arenaOpenedPack ? (
           <ArenaPackOpening
@@ -1613,6 +1631,7 @@ export default class App extends Component {
             }}
           />
         ) : null}
+        </AnimatePresence>
         <FriendsSidebar
           open={this.state.friendsSidebarOpen}
           onClose={() => this.setState({ friendsSidebarOpen: false })}
