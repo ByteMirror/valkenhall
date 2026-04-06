@@ -23,6 +23,16 @@ const PORT = 3001;
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const PERSISTENT_DATA_DIR = path.resolve(
+  process.env.VALKENHALL_DATA_DIR ||
+    (process.platform === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Application Support', 'dev.fabianurbanek.valkenhall', 'data')
+      : process.platform === 'win32'
+        ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'dev.fabianurbanek.valkenhall', 'data')
+        : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'dev.fabianurbanek.valkenhall', 'data')),
+);
+const PERSISTENT_IMAGES_DIR = path.join(PERSISTENT_DATA_DIR, 'sorcery-images');
+
 function resolvePublicFile(relativePath, { runtimeDir = __dirname, cwd = process.cwd() } = {}) {
   const candidates = [
     path.resolve(runtimeDir, '../public', relativePath),
@@ -582,10 +592,15 @@ app.get('/sorcery-images/:filename', async (req, res) => {
     return res.status(400).json({ error: 'Invalid filename' });
   }
 
-  const localPath = resolvePublicFile(`sorcery-images/${filename}`);
+  // Check persistent storage first, then bundled fallback
+  const persistentPath = path.join(PERSISTENT_IMAGES_DIR, filename);
+  if (existsSync(persistentPath)) {
+    return res.sendFile(persistentPath);
+  }
 
-  if (existsSync(localPath)) {
-    return res.sendFile(localPath);
+  const bundledPath = resolvePublicFile(`sorcery-images/${filename}`);
+  if (existsSync(bundledPath)) {
+    return res.sendFile(bundledPath);
   }
 
   const slug = filename.replace(/\.png$/i, '');
@@ -610,11 +625,10 @@ app.get('/sorcery-images/:filename', async (req, res) => {
 let assetDownloadState = { running: false, total: 0, downloaded: 0, failed: 0, done: false };
 
 app.get('/api/assets/status', (_req, res) => {
-  // Check how many card images are already cached locally
-  const imagesDir = resolvePublicFile('sorcery-images/placeholder').replace(/placeholder$/, '');
+  // Check how many card images are cached in persistent storage
   let cached = 0;
   try {
-    const files = readdirSync(imagesDir);
+    const files = readdirSync(PERSISTENT_IMAGES_DIR);
     cached = files.filter(f => f.endsWith('.png')).length;
   } catch {}
   res.json({ ...assetDownloadState, cached });
@@ -630,12 +644,11 @@ app.post('/api/assets/download', async (req, res) => {
     return res.status(400).json({ error: 'No slugs provided' });
   }
 
-  // Determine which images need downloading
-  const imagesDir = resolvePublicFile('sorcery-images/placeholder').replace(/placeholder$/, '');
-  try { mkdirSync(imagesDir, { recursive: true }); } catch {}
+  // Download to persistent storage that survives app updates
+  try { mkdirSync(PERSISTENT_IMAGES_DIR, { recursive: true }); } catch {}
 
   const needed = slugs.filter(slug => {
-    const filePath = path.join(imagesDir, `${slug}.png`);
+    const filePath = path.join(PERSISTENT_IMAGES_DIR, `${slug}.png`);
     return !existsSync(filePath);
   });
 
@@ -656,7 +669,7 @@ app.post('/api/assets/download', async (req, res) => {
       const i = index++;
       const slug = needed[i];
       const cdnUrl = `${SORCERY_CDN_BASE}/${slug}.png`;
-      const filePath = path.join(imagesDir, `${slug}.png`);
+      const filePath = path.join(PERSISTENT_IMAGES_DIR, `${slug}.png`);
       try {
         const response = await fetch(cdnUrl, { redirect: 'follow' });
         if (response.ok) {
