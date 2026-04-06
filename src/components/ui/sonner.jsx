@@ -3,11 +3,16 @@ import { Toaster as Sonner } from 'sonner';
 function Toaster(props) {
   return (
     <Sonner
-      closeButton
-      position="bottom-right"
       theme="dark"
-      duration={3000}
+      position="top-center"
+      className="toaster group"
       visibleToasts={5}
+      style={{
+        '--normal-bg': 'rgba(12, 10, 8, 0.95)',
+        '--normal-text': '#e8d5a0',
+        '--normal-border': 'rgba(180, 140, 60, 0.25)',
+        '--border-radius': '8px',
+      }}
       toastOptions={{
         style: {
           background: 'rgba(12, 10, 8, 0.95)',
@@ -15,14 +20,6 @@ function Toaster(props) {
           borderRadius: '8px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 20px rgba(180,140,60,0.04)',
           color: '#e8d5a0',
-          backdropFilter: 'blur(12px)',
-        },
-        classNames: {
-          toast: '',
-          description: '',
-          actionButton: '',
-          cancelButton: '',
-          closeButton: '',
         },
         descriptionStyle: {
           color: 'rgba(166, 160, 155, 0.5)',
