@@ -54,29 +54,49 @@ const foilFragmentShader = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
 
-  vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+  // Prismatic color stops matching the CSS foil gradient
+  vec3 prismatic(float t) {
+    // #f80e35, #eedf10, #21e985, #0dbde9, #c929f1 repeating
+    vec3 c0 = vec3(0.973, 0.055, 0.208); // red-pink
+    vec3 c1 = vec3(0.933, 0.875, 0.063); // yellow
+    vec3 c2 = vec3(0.129, 0.914, 0.522); // green
+    vec3 c3 = vec3(0.051, 0.743, 0.914); // cyan
+    vec3 c4 = vec3(0.788, 0.161, 0.945); // purple
+    float f = fract(t) * 5.0;
+    if (f < 1.0) return mix(c0, c1, f);
+    if (f < 2.0) return mix(c1, c2, f - 1.0);
+    if (f < 3.0) return mix(c2, c3, f - 2.0);
+    if (f < 4.0) return mix(c3, c4, f - 3.0);
+    return mix(c4, c0, f - 4.0);
   }
 
   void main() {
-    float diagonal = (vUv.x + vUv.y) * 0.5;
-    float wave = sin(diagonal * 12.0 - uTime * 1.5) * 0.5 + 0.5;
-    float shimmer = sin(vUv.x * 8.0 + uTime * 0.7) * sin(vUv.y * 6.0 - uTime * 0.5) * 0.5 + 0.5;
+    // Diagonal stripe direction (~110deg like the CSS gradient)
+    float stripe = vUv.x * 0.82 + vUv.y * 0.57;
 
-    vec3 color;
+    // Slowly animate the stripe position
+    float t = stripe * 2.5 + uTime * 0.08;
+    vec3 color = prismatic(t);
+
+    // Subtle shimmer modulation
+    float shimmer = sin(vUv.x * 14.0 + uTime * 0.9) * sin(vUv.y * 10.0 - uTime * 0.6);
+    shimmer = shimmer * 0.5 + 0.5;
+
+    // Brightness variation along the stripe
+    float brightness = sin(stripe * 18.0 - uTime * 1.2) * 0.15 + 0.85;
+    color *= brightness;
+    color = mix(color, vec3(1.0), shimmer * 0.15);
+
+    // Opacity: visible enough to see the prismatic colors
+    float alpha = 0.22 * (0.7 + shimmer * 0.3);
     if (uIsRainbow > 0.5) {
-      float hue = fract(diagonal * 2.0 + uTime * 0.1);
-      color = hsv2rgb(vec3(hue, 0.6, 1.0));
-      color = mix(color, vec3(1.0), shimmer * 0.3);
+      alpha *= 1.5;
+      color = mix(color, color * 1.3, 0.2);
     } else {
-      color = mix(vec3(0.85, 0.65, 0.2), vec3(1.0, 0.9, 0.5), wave);
-      color = mix(color, vec3(1.0, 1.0, 0.8), shimmer * 0.2);
+      // Standard foil: warm-shifted, slightly less saturated
+      color = mix(color, vec3(0.95, 0.8, 0.4), 0.35);
+      alpha *= 0.85;
     }
-
-    float alpha = mix(0.08, 0.18, wave * shimmer);
-    if (uIsRainbow > 0.5) alpha *= 1.4;
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -148,7 +168,7 @@ export function createCardMesh(cardInstance) {
 
   // Add holographic sheen overlay for foil cards
   if (isFoil) {
-    const sheenGeo = new THREE.PlaneGeometry(CARD_WIDTH * 0.96, CARD_HEIGHT * 0.96);
+    const sheenGeo = new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
     const sheenMat = createFoilSheenMaterial(foiling === 'R');
     const sheenPlane = new THREE.Mesh(sheenGeo, sheenMat);
     // Position slightly above the card face (+Z in local space before rotation)
