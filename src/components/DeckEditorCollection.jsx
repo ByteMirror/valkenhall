@@ -209,20 +209,29 @@ export default class DeckEditorCollection extends Component {
         }
       }
 
+      // When filtering to "deck" scope, check which foiling variants are actually in the deck
+      const deckFoilings = cardScope === 'deck'
+        ? new Set((chosenCards || []).filter((e) => e.card.unique_id === card.unique_id).map((e) => e.printing?.foiling || 'S'))
+        : null;
+
       // Always show the standard version first
       const standardGroup = foilGroups.get('S');
       if (standardGroup) {
-        entries.push({ card, printing: standardGroup.printing, foiling: 'S', ownedQty: standardGroup.ownedQty });
-      } else if (printings.length > 0) {
-        // No standard printing exists — show the first available
+        const inDeckWithFoiling = deckFoilings ? deckFoilings.has('S') : true;
+        if (inDeckWithFoiling || standardGroup.ownedQty > 0 || cardScope === 'all') {
+          entries.push({ card, printing: standardGroup.printing, foiling: 'S', ownedQty: standardGroup.ownedQty });
+        }
+      } else if (printings.length > 0 && cardScope !== 'deck') {
+        // No standard printing exists — show the first available (but not in deck-only mode)
         const first = printings[0];
         entries.push({ card, printing: first, foiling: first.foiling || 'S', ownedQty: 0 });
       }
 
-      // Then show foil/rainbow variants if owned
+      // Then show foil/rainbow variants if owned or in deck
       for (const [foiling, group] of foilGroups) {
         if (foiling === 'S') continue;
-        if (group.ownedQty > 0 || cardScope === 'all') {
+        const inDeckWithFoiling = deckFoilings ? deckFoilings.has(foiling) : true;
+        if (inDeckWithFoiling || group.ownedQty > 0 || cardScope === 'all') {
           entries.push({ card, printing: group.printing, foiling, ownedQty: group.ownedQty });
         }
       }
