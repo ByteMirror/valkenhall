@@ -63,7 +63,7 @@ export default class DeckEditorCollection extends Component {
       typeFilters: new Set(),
       setFilters: new Set(),
       rarityFilters: new Set(),
-      cardScope: 'deck',
+      cardScope: (props.chosenCards?.length || 0) > 0 ? 'deck' : 'owned',
       hoveredCard: null,
       inspectedEntry: null,
       visibleCount: 40,
@@ -217,7 +217,7 @@ export default class DeckEditorCollection extends Component {
       // Always show the standard version first
       const standardGroup = foilGroups.get('S');
       if (standardGroup) {
-        const inDeckWithFoiling = deckFoilings ? deckFoilings.has('S') : true;
+        const inDeckWithFoiling = deckFoilings ? deckFoilings.has('S') : false;
         if (inDeckWithFoiling || standardGroup.ownedQty > 0 || cardScope === 'all') {
           entries.push({ card, printing: standardGroup.printing, foiling: 'S', ownedQty: standardGroup.ownedQty });
         }
@@ -230,7 +230,7 @@ export default class DeckEditorCollection extends Component {
       // Then show foil/rainbow variants if owned or in deck
       for (const [foiling, group] of foilGroups) {
         if (foiling === 'S') continue;
-        const inDeckWithFoiling = deckFoilings ? deckFoilings.has(foiling) : true;
+        const inDeckWithFoiling = deckFoilings ? deckFoilings.has(foiling) : false;
         if (inDeckWithFoiling || group.ownedQty > 0 || cardScope === 'all') {
           entries.push({ card, printing: group.printing, foiling, ownedQty: group.ownedQty });
         }
