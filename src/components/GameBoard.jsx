@@ -19,7 +19,7 @@ import RuneSpinner from './RuneSpinner';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
-  BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
+  BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE, DIALOG_STYLE,
   POPOVER_STYLE, SECTION_HEADER_STYLE, FourCorners, COIN_COLOR,
 } from '../lib/medievalTheme';
 import * as THREE from 'three';
@@ -535,6 +535,10 @@ export default class GameBoard extends Component {
         }
       },
       'turn:pass': (data) => {
+        const localPlayer = this.state.isHost ? 'p1' : 'p2';
+        if (data.currentTurn === localPlayer) {
+          playUI('snd-turn-pass.wav', { volume: 0.5 });
+        }
         this.setState({ currentTurn: data.currentTurn, turnNumber: data.turnNumber });
       },
       'match:propose': (data) => {
@@ -940,6 +944,14 @@ export default class GameBoard extends Component {
 
     if (hit?.userData.type === 'card') {
       if (!this.isOwnedCard(hit.userData.cardInstance)) return;
+
+      // When cards are expanded, collapse first — user needs to click again to drag
+      if (this._expandedCell) {
+        this.collapseCellHover();
+        event.preventDefault();
+        return;
+      }
+
       this.dragging = {
         mesh: hit,
         cardInstance: hit.userData.cardInstance,
@@ -990,6 +1002,12 @@ export default class GameBoard extends Component {
       if (!point) return;
       this.dragging.mesh.position.x = point.x;
       this.dragging.mesh.position.z = point.z;
+
+      // Show grid cell highlight while dragging a card
+      if (this.dragging.cardInstance) {
+        const cell = this.getGridCellAt(point.x, point.z);
+        this.showGridCellHighlight(cell);
+      }
       return;
     }
 
@@ -1007,7 +1025,30 @@ export default class GameBoard extends Component {
     const hit = hits.length > 0 ? this.findHitObject(hits[0].object) : null;
     const newHovered = (hit?.userData?.type === 'card' || hit?.userData?.type === 'pile' || hit?.userData?.type === 'token' || hit?.userData?.type === 'dice' || hit?.userData?.type === 'trackerButton' || hit?.userData?.type === 'lifeButton') ? hit : null;
 
+    // Expanded cell hover management — check bounds, not just hovered mesh
+    if (this._expandedCell && !this.dragging) {
+      const tablePoint = this.scene.raycastTablePoint(event);
+      const inBounds = tablePoint && this.isPointInExpandedBounds(tablePoint.x, tablePoint.z);
+      const hoveringExpandedCard = newHovered?.userData?.type === 'card' && newHovered.userData.cardInstance?._gridCol === this._expandedCell.col && newHovered.userData.cardInstance?._gridRow === this._expandedCell.row;
+
+      if (!inBounds && !hoveringExpandedCard) {
+        this.collapseCellHover();
+      }
+    }
+
+    // Expand cell when hovering a grid card (and not dragging, and no cell already expanded)
+    if (!this.dragging && !this._expandedCell && newHovered?.userData?.type === 'card') {
+      const ci = newHovered.userData.cardInstance;
+      if (ci && ci._gridCol != null && ci._gridRow != null) {
+        const cards = this.getCardsInCell(ci._gridCol, ci._gridRow);
+        if (cards.filter((c) => !c.cardInstance.isSite).length > 1) {
+          this.expandCellOnHover(ci._gridCol, ci._gridRow);
+        }
+      }
+    }
+
     if (this.hoveredMesh !== newHovered) {
+
       // Remove highlight from old
       if (this.hoveredMesh?.material) {
         if (this.hoveredMesh.userData?.action === 'integrated') {
@@ -1069,6 +1110,8 @@ export default class GameBoard extends Component {
 
     const droppedMesh = this.dragging.mesh;
 
+    this.hideGridCellHighlight();
+
     // Token drop — simple position update
     if (this.dragging.tokenInstance) {
       const token = this.dragging.tokenInstance;
@@ -1091,34 +1134,77 @@ export default class GameBoard extends Component {
       return;
     }
 
-    // Card drop — existing stacking logic
+    // Card drop — snap to grid if over a cell, otherwise free placement
     const card = this.dragging.cardInstance;
-    card.x = droppedMesh.position.x;
-    card.z = droppedMesh.position.z;
+    this.hideGridCellHighlight();
 
-    let highestY = this.scene.CARD_REST_Y;
-    for (const [id, mesh] of this.meshes) {
-      if (mesh === droppedMesh) continue;
-      const dx = Math.abs(mesh.position.x - droppedMesh.position.x);
-      const dz = Math.abs(mesh.position.z - droppedMesh.position.z);
-      if (dx < CARD_WIDTH * 0.6 && dz < CARD_HEIGHT * 0.6) {
-        const topOfCard = mesh.position.y + CARD_THICKNESS;
-        if (topOfCard > highestY) highestY = topOfCard;
+    const cell = this.getGridCellAt(droppedMesh.position.x, droppedMesh.position.z);
+    if (cell) {
+      const isSite = card.isSite;
+
+      // Enforce: only one site card per cell
+      if (isSite) {
+        const existingSites = this.getCardsInCell(cell.col, cell.row).filter((c) => c.cardInstance.isSite && c.cardId !== card.id);
+        if (existingSites.length > 0) {
+          // Return the card to the player's hand
+          this.removeCardFromTable(card);
+          this.addToHand(card);
+          toast.error('This site is already occupied. Only one site card per square.');
+          this.dragging = null;
+          return;
+        }
+      }
+
+      // Remove from old cell if moving between cells
+      const oldCol = card._gridCol;
+      const oldRow = card._gridRow;
+
+      // Assign to new cell
+      card._gridCol = cell.col;
+      card._gridRow = cell.row;
+
+      // Rotate site cards horizontally
+      if (isSite && droppedMesh.rotation.z === 0) {
+        droppedMesh.rotation.z = -Math.PI / 2;
+      }
+
+      // Arrange all cards in the new cell (including the dropped one)
+      this.arrangeCardsInCell(cell.col, cell.row);
+
+      // Re-arrange old cell if card moved between cells
+      if (oldCol != null && oldRow != null && (oldCol !== cell.col || oldRow !== cell.row)) {
+        this.arrangeCardsInCell(oldCol, oldRow);
+      }
+    } else {
+      // Dropped outside grid — remove from any cell tracking
+      const oldCol = card._gridCol;
+      const oldRow = card._gridRow;
+      card._gridCol = undefined;
+      card._gridRow = undefined;
+      card.x = droppedMesh.position.x;
+      card.z = droppedMesh.position.z;
+
+      // Free placement stacking
+      let highestY = this.scene.CARD_REST_Y;
+      for (const [id, mesh] of this.meshes) {
+        if (mesh === droppedMesh) continue;
+        const dx = Math.abs(mesh.position.x - droppedMesh.position.x);
+        const dz = Math.abs(mesh.position.z - droppedMesh.position.z);
+        if (dx < CARD_WIDTH * 0.6 && dz < CARD_HEIGHT * 0.6) {
+          const topOfCard = mesh.position.y + CARD_THICKNESS;
+          if (topOfCard > highestY) highestY = topOfCard;
+        }
+      }
+      droppedMesh.position.y = highestY;
+
+      // Re-arrange old cell
+      if (oldCol != null && oldRow != null) {
+        this.arrangeCardsInCell(oldCol, oldRow);
       }
     }
-    for (const [id, mesh] of this.pileMeshes) {
-      const dx = Math.abs(mesh.position.x - droppedMesh.position.x);
-      const dz = Math.abs(mesh.position.z - droppedMesh.position.z);
-      if (dx < CARD_WIDTH * 0.6 && dz < CARD_HEIGHT * 0.6) {
-        const pile = mesh.userData.pile;
-        const pileTop = pile.cards.length * CARD_THICKNESS;
-        if (pileTop > highestY) highestY = pileTop;
-      }
-    }
 
-    droppedMesh.position.y = highestY;
     playSound('cardPlace');
-    emitGameAction('card:move', { cardId: card.id, x: card.x, y: highestY, z: card.z });
+    emitGameAction('card:move', { cardId: card.id, x: card.x, y: droppedMesh.position.y, z: card.z });
     this.dragging = null;
   };
 
@@ -1456,6 +1542,266 @@ export default class GameBoard extends Component {
     };
   };
 
+  // --- Grid Snap Helpers ---
+
+  getCardsInCell = (col, row) => {
+    // Find all card meshes that are snapped to this grid cell
+    const result = [];
+    for (const [cardId, mesh] of this.meshes) {
+      const ci = mesh.userData.cardInstance;
+      if (ci && ci._gridCol === col && ci._gridRow === row) {
+        result.push({ cardId, mesh, cardInstance: ci });
+      }
+    }
+    return result;
+  };
+
+  setHudVisibility = (cardId, visible) => {
+    const hud = this.lifeHUDs.get(cardId);
+    if (!hud) return;
+    const meshes = [hud.sprite, hud.hpSprite, hud.plusMesh, hud.minusMesh, hud.hpPlusMesh, hud.hpMinusMesh];
+    for (const m of meshes) {
+      if (m) m.visible = visible;
+    }
+  };
+
+  arrangeCardsInCell = (col, row, excludeCardId = null) => {
+    const cell = this.getGridCellByIndex(col, row);
+    if (!cell) return;
+
+    const cards = this.getCardsInCell(col, row);
+    const sites = cards.filter((c) => c.cardInstance.isSite);
+    const nonSites = cards.filter((c) => !c.cardInstance.isSite);
+
+    // Separate by player: rotated = player 2, non-rotated = player 1
+    const p1Cards = nonSites.filter((c) => !c.cardInstance.rotated);
+    const p2Cards = nonSites.filter((c) => c.cardInstance.rotated);
+
+    let baseY = this.scene.CARD_REST_Y;
+
+    // Site card: always at the bottom, centered
+    for (const s of sites) {
+      s.mesh.position.x = cell.centerX;
+      s.mesh.position.z = cell.centerZ + cell.height * 0.22;
+      s.mesh.position.y = baseY;
+      s.cardInstance.x = s.mesh.position.x;
+      s.cardInstance.z = s.mesh.position.z;
+      this.setHudVisibility(s.cardId, nonSites.length === 0);
+      baseY += CARD_THICKNESS;
+    }
+
+    const hasBothPlayers = p1Cards.length > 0 && p2Cards.length > 0;
+    // Offset for opposing corners when both players have cards
+    const cornerOffsetX = hasBothPlayers ? cell.width * 0.12 : 0;
+    const cornerOffsetZ = hasBothPlayers ? cell.height * 0.08 : 0;
+
+    // Player 1 cards: upper-left area (negative X offset, negative Z offset)
+    if (p1Cards.length > 0) {
+      const anchorX = cell.centerX - cornerOffsetX;
+      const anchorZ = cell.centerZ - cell.height * 0.18 - cornerOffsetZ;
+      const fanSpread = Math.min(3.5, (cell.width * 0.25) / Math.max(p1Cards.length - 1, 1));
+
+      for (let i = 0; i < p1Cards.length; i++) {
+        const c = p1Cards[i];
+        if (c.cardId === excludeCardId) continue;
+        const offsetX = p1Cards.length > 1 ? (i - (p1Cards.length - 1) / 2) * fanSpread : 0;
+        c.mesh.position.x = anchorX + offsetX;
+        c.mesh.position.z = anchorZ;
+        c.mesh.position.y = baseY + i * CARD_THICKNESS;
+        c.cardInstance.x = c.mesh.position.x;
+        c.cardInstance.z = c.mesh.position.z;
+        this.setHudVisibility(c.cardId, i === p1Cards.length - 1);
+      }
+    }
+
+    // Player 2 cards: lower-right area (positive X offset, positive Z offset)
+    if (p2Cards.length > 0) {
+      const anchorX = cell.centerX + cornerOffsetX;
+      const anchorZ = cell.centerZ - cell.height * 0.18 + cornerOffsetZ;
+      const p2BaseY = baseY + p1Cards.length * CARD_THICKNESS;
+      const fanSpread = Math.min(3.5, (cell.width * 0.25) / Math.max(p2Cards.length - 1, 1));
+
+      for (let i = 0; i < p2Cards.length; i++) {
+        const c = p2Cards[i];
+        if (c.cardId === excludeCardId) continue;
+        const offsetX = p2Cards.length > 1 ? (i - (p2Cards.length - 1) / 2) * fanSpread : 0;
+        c.mesh.position.x = anchorX + offsetX;
+        c.mesh.position.z = anchorZ;
+        c.mesh.position.y = p2BaseY + i * CARD_THICKNESS;
+        c.cardInstance.x = c.mesh.position.x;
+        c.cardInstance.z = c.mesh.position.z;
+        this.setHudVisibility(c.cardId, i === p2Cards.length - 1);
+      }
+    }
+  };
+
+  expandCellOnHover = (col, row) => {
+    const cards = this.getCardsInCell(col, row);
+    const nonSites = cards.filter((c) => !c.cardInstance.isSite);
+    if (nonSites.length <= 1) return;
+
+    const cell = this.getGridCellByIndex(col, row);
+    if (!cell) return;
+
+    const p1Cards = nonSites.filter((c) => !c.cardInstance.rotated);
+    const p2Cards = nonSites.filter((c) => c.cardInstance.rotated);
+
+    const gap = CARD_WIDTH * 0.15;
+    const spreadPerCard = CARD_WIDTH + gap;
+    const liftY = 3;
+    const baseZ = cell.centerZ - cell.height * 0.18;
+    // If both players have cards, separate into two rows
+    const p1Z = p2Cards.length > 0 ? baseZ - CARD_HEIGHT * 0.55 : baseZ;
+    const p2Z = p1Cards.length > 0 ? baseZ + CARD_HEIGHT * 0.55 : baseZ;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+
+    const fanRow = (group, anchorZ) => {
+      for (let i = 0; i < group.length; i++) {
+        const c = group[i];
+        const offsetX = (i - (group.length - 1) / 2) * spreadPerCard;
+        const posX = cell.centerX + offsetX;
+        c.mesh.position.x = posX;
+        c.mesh.position.z = anchorZ;
+        c.mesh.position.y = this.scene.CARD_REST_Y + liftY;
+        minX = Math.min(minX, posX - CARD_WIDTH / 2);
+        maxX = Math.max(maxX, posX + CARD_WIDTH / 2);
+        minZ = Math.min(minZ, anchorZ - CARD_HEIGHT / 2);
+        maxZ = Math.max(maxZ, anchorZ + CARD_HEIGHT / 2);
+        this.setHudVisibility(c.cardId, true);
+      }
+    };
+
+    if (p1Cards.length > 0) fanRow(p1Cards, p1Z);
+    if (p2Cards.length > 0) fanRow(p2Cards, p2Z);
+
+    this._expandedCell = { col, row };
+    this._expandedBounds = {
+      minX: minX - gap,
+      maxX: maxX + gap,
+      minZ: minZ - 2,
+      maxZ: maxZ + 2,
+    };
+  };
+
+  collapseCellHover = () => {
+    if (!this._expandedCell) return;
+    const { col, row } = this._expandedCell;
+    this.arrangeCardsInCell(col, row);
+    this._expandedCell = null;
+    this._expandedBounds = null;
+  };
+
+  isPointInExpandedBounds = (x, z) => {
+    if (!this._expandedBounds) return false;
+    const b = this._expandedBounds;
+    return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
+  };
+
+  getGridCellByIndex = (col, row) => {
+    const grid = getGameGrid(this.state.spawnConfig);
+    if (!grid) return null;
+    const { colPositions, rowPositions } = this.computeGridPositions(grid);
+    if (col < 0 || col >= colPositions.length - 1 || row < 0 || row >= rowPositions.length - 1) return null;
+
+    const tl = this.getGridPoint(grid, colPositions[col], rowPositions[row]);
+    const tr = this.getGridPoint(grid, colPositions[col + 1], rowPositions[row]);
+    const bl = this.getGridPoint(grid, colPositions[col], rowPositions[row + 1]);
+    const br = this.getGridPoint(grid, colPositions[col + 1], rowPositions[row + 1]);
+    const centerX = (tl.x + tr.x + bl.x + br.x) / 4;
+    const centerZ = (tl.z + tr.z + bl.z + br.z) / 4;
+    const width = Math.abs(tr.x - tl.x);
+    const height = Math.abs(bl.z - tl.z);
+    return { col, row, centerX, centerZ, width, height, tl, tr, bl, br, totalRows: rowPositions.length - 1 };
+  };
+
+  getGridCellAt = (x, z) => {
+    const grid = getGameGrid(this.state.spawnConfig);
+    if (!grid) return null;
+    const { colPositions, rowPositions } = this.computeGridPositions(grid);
+
+    // Find which cell the point falls in
+    let col = -1;
+    let row = -1;
+    for (let c = 0; c < colPositions.length - 1; c++) {
+      const left = this.getGridPoint(grid, colPositions[c], 0.5);
+      const right = this.getGridPoint(grid, colPositions[c + 1], 0.5);
+      if (x >= Math.min(left.x, right.x) && x <= Math.max(left.x, right.x)) { col = c; break; }
+    }
+    for (let r = 0; r < rowPositions.length - 1; r++) {
+      const top = this.getGridPoint(grid, 0.5, rowPositions[r]);
+      const bot = this.getGridPoint(grid, 0.5, rowPositions[r + 1]);
+      if (z >= Math.min(top.z, bot.z) && z <= Math.max(top.z, bot.z)) { row = r; break; }
+    }
+    if (col < 0 || row < 0) return null;
+
+    // Compute cell center and bounds
+    const tl = this.getGridPoint(grid, colPositions[col], rowPositions[row]);
+    const tr = this.getGridPoint(grid, colPositions[col + 1], rowPositions[row]);
+    const bl = this.getGridPoint(grid, colPositions[col], rowPositions[row + 1]);
+    const br = this.getGridPoint(grid, colPositions[col + 1], rowPositions[row + 1]);
+    const centerX = (tl.x + tr.x + bl.x + br.x) / 4;
+    const centerZ = (tl.z + tr.z + bl.z + br.z) / 4;
+    const width = Math.abs(tr.x - tl.x);
+    const height = Math.abs(bl.z - tl.z);
+
+    return { col, row, centerX, centerZ, width, height, tl, tr, bl, br, totalRows: rowPositions.length - 1 };
+  };
+
+  showGridCellHighlight = (cell) => {
+    if (!cell || !this.scene) {
+      this.hideGridCellHighlight();
+      return;
+    }
+    const { tl, tr, bl, br } = cell;
+    const Y = 0.16;
+
+    if (!this.gridHighlightMesh) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([
+        tl.x, Y, tl.z, tr.x, Y, tr.z,
+        tr.x, Y, tr.z, br.x, Y, br.z,
+        br.x, Y, br.z, bl.x, Y, bl.z,
+        bl.x, Y, bl.z, tl.x, Y, tl.z,
+      ], 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xf0c050, transparent: true, opacity: 0.8 });
+      this.gridHighlightMesh = new THREE.LineSegments(geo, mat);
+      this.scene.scene.add(this.gridHighlightMesh);
+
+      // Fill quad
+      const fillGeo = new THREE.BufferGeometry();
+      fillGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+        tl.x, Y - 0.01, tl.z, tr.x, Y - 0.01, tr.z, bl.x, Y - 0.01, bl.z,
+        tr.x, Y - 0.01, tr.z, br.x, Y - 0.01, br.z, bl.x, Y - 0.01, bl.z,
+      ], 3));
+      const fillMat = new THREE.MeshBasicMaterial({ color: 0xd4a843, transparent: true, opacity: 0.12, side: THREE.DoubleSide });
+      this.gridHighlightFill = new THREE.Mesh(fillGeo, fillMat);
+      this.scene.scene.add(this.gridHighlightFill);
+    } else {
+      const pos = this.gridHighlightMesh.geometry.attributes.position;
+      pos.setXYZ(0, tl.x, Y, tl.z); pos.setXYZ(1, tr.x, Y, tr.z);
+      pos.setXYZ(2, tr.x, Y, tr.z); pos.setXYZ(3, br.x, Y, br.z);
+      pos.setXYZ(4, br.x, Y, br.z); pos.setXYZ(5, bl.x, Y, bl.z);
+      pos.setXYZ(6, bl.x, Y, bl.z); pos.setXYZ(7, tl.x, Y, tl.z);
+      pos.needsUpdate = true;
+
+      const fPos = this.gridHighlightFill.geometry.attributes.position;
+      fPos.setXYZ(0, tl.x, Y - 0.01, tl.z); fPos.setXYZ(1, tr.x, Y - 0.01, tr.z); fPos.setXYZ(2, bl.x, Y - 0.01, bl.z);
+      fPos.setXYZ(3, tr.x, Y - 0.01, tr.z); fPos.setXYZ(4, br.x, Y - 0.01, br.z); fPos.setXYZ(5, bl.x, Y - 0.01, bl.z);
+      fPos.needsUpdate = true;
+    }
+    this.gridHighlightMesh.visible = true;
+    this.gridHighlightFill.visible = true;
+  };
+
+  hideGridCellHighlight = () => {
+    if (this.gridHighlightMesh) this.gridHighlightMesh.visible = false;
+    if (this.gridHighlightFill) this.gridHighlightFill.visible = false;
+  };
+
   clearGridVisualization = () => {
     if (this.gridLinesMesh) {
       this.scene?.scene.remove(this.gridLinesMesh);
@@ -1475,6 +1821,18 @@ export default class GameBoard extends Component {
       handle.material.dispose();
     }
     this.gridHandles = [];
+    if (this.gridHighlightMesh) {
+      this.scene?.scene.remove(this.gridHighlightMesh);
+      this.gridHighlightMesh.geometry.dispose();
+      this.gridHighlightMesh.material.dispose();
+      this.gridHighlightMesh = null;
+    }
+    if (this.gridHighlightFill) {
+      this.scene?.scene.remove(this.gridHighlightFill);
+      this.gridHighlightFill.geometry.dispose();
+      this.gridHighlightFill.material.dispose();
+      this.gridHighlightFill = null;
+    }
   };
 
   updateGridVisualization = (grid, showHandles = true) => {
@@ -1581,10 +1939,10 @@ export default class GameBoard extends Component {
       topRight: { x: maxX, z: minZ },
       bottomLeft: { x: minX, z: maxZ },
       bottomRight: { x: maxX, z: maxZ },
-      cols: 4,
-      rows: 5,
-      colDividers: [0.25, 0.5, 0.75],
-      rowDividers: [0.2, 0.4, 0.6, 0.8],
+      cols: 5,
+      rows: 4,
+      colDividers: [0.2, 0.4, 0.6, 0.8],
+      rowDividers: [0.25, 0.5, 0.75],
     };
   };
 
@@ -2400,26 +2758,28 @@ export default class GameBoard extends Component {
     const sorceryDecks = savedDecks || [];
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => this.setState({ showDeckPicker: false })}>
-        <div className="relative w-[480px] max-h-[70vh] overflow-y-auto p-4" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }} onClick={() => this.setState({ showDeckPicker: false })}>
+        <div className="relative w-[520px] max-h-[70vh] flex flex-col" style={DIALOG_STYLE} onClick={(e) => e.stopPropagation()}>
           <FourCorners radius={12} />
-          <h2 className="mb-3 text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Spawn Deck</h2>
-          {sorceryDecks.length === 0 ? (
-            <p className="text-sm" style={{ color: TEXT_MUTED }}>No saved Sorcery decks. Build and save a deck first.</p>
-          ) : (
-            <div className="grid gap-2">
-              {sorceryDecks.map((deck) => (
-                <div key={deck.id} className="relative flex items-center gap-2 p-3" style={{ background: `${GOLD} 0.03)`, border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate" style={{ color: TEXT_PRIMARY }}>{deck.name}</div>
-                    <div className="text-xs" style={{ color: TEXT_MUTED }}>{deck.cardCount} cards</div>
+          <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Spawn Deck</h2>
+          <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
+            {sorceryDecks.length === 0 ? (
+              <p className="text-sm" style={{ color: TEXT_MUTED }}>No saved Sorcery decks. Build and save a deck first.</p>
+            ) : (
+              <div className="grid gap-2">
+                {sorceryDecks.map((deck) => (
+                  <div key={deck.id} className="relative flex items-center gap-2 p-3" style={{ background: `${GOLD} 0.03)`, border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate" style={{ color: TEXT_PRIMARY }}>{deck.name}</div>
+                      <div className="text-xs" style={{ color: TEXT_MUTED }}>{deck.cardCount} cards</div>
+                    </div>
+                    <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 1)}>P1</button>
+                    <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 2)}>P2</button>
                   </div>
-                  <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 1)}>P1</button>
-                  <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 2)}>P2</button>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
