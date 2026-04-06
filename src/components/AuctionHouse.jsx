@@ -620,6 +620,48 @@ export default class AuctionHouse extends Component {
       });
     }
 
+    // Expand cards into per-foiling entries (standard vs foil vs rainbow)
+    const collection = profile.collection || [];
+    const printingOwned = new Map();
+    for (const entry of collection) {
+      if (entry.printingId) {
+        printingOwned.set(entry.printingId, (printingOwned.get(entry.printingId) || 0) + entry.quantity);
+      }
+    }
+
+    const sellEntries = [];
+    for (const card of availableCards) {
+      const printings = card.printings || [];
+      const foilGroups = new Map();
+      for (const p of printings) {
+        const f = p.foiling || 'S';
+        const qty = printingOwned.get(p.unique_id) || 0;
+        if (!foilGroups.has(f)) {
+          foilGroups.set(f, { printing: p, ownedQty: qty });
+        } else {
+          const existing = foilGroups.get(f);
+          existing.ownedQty += qty;
+        }
+      }
+      // Standard version
+      const stdGroup = foilGroups.get('S');
+      if (stdGroup && stdGroup.ownedQty > 0) {
+        sellEntries.push({ card, printing: stdGroup.printing, foiling: 'S', qty: stdGroup.ownedQty });
+      }
+      // Foil/rainbow variants
+      for (const [f, group] of foilGroups) {
+        if (f === 'S') continue;
+        if (group.ownedQty > 0) {
+          sellEntries.push({ card, printing: group.printing, foiling: f, qty: group.ownedQty });
+        }
+      }
+      // Fallback: if no printing-level tracking, show card-level qty
+      if (foilGroups.size === 0 || (sellEntries.length === 0 && getAvailableQuantity(card.unique_id, ownedMap, usedMap) > 0)) {
+        const p = printings[0] || {};
+        sellEntries.push({ card, printing: p, foiling: p.foiling || 'S', qty: getAvailableQuantity(card.unique_id, ownedMap, usedMap) });
+      }
+    }
+
     const selectedCard = selectedCardId ? findCard(sorceryCards, selectedCardId) : null;
     const selectedQty = selectedCardId ? getAvailableQuantity(selectedCardId, ownedMap, usedMap) : 0;
 
@@ -676,28 +718,30 @@ export default class AuctionHouse extends Component {
 
           {/* Card grid */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {availableCards.length === 0 ? (
+            {sellEntries.length === 0 ? (
               <div className="text-center py-16 text-sm" style={{ color: TEXT_MUTED }}>No available cards to sell</div>
             ) : (
               <div className="card-grid px-4">
-                {availableCards.map((card) => {
-                  const qty = getAvailableQuantity(card.unique_id, ownedMap, usedMap);
-                  const printing = card.printings?.[0] || {};
+                {sellEntries.map((entry, idx) => {
+                  const { card, printing, foiling, qty } = entry;
+                  const key = `${card.unique_id}-${foiling}`;
                   const isSelected = selectedCardId === card.unique_id;
+                  const foil = isFoilFinish(foiling);
                   return (
-                    <div key={card.unique_id}>
+                    <div key={key}>
                       <DeckCardTile
-                        entry={{ card, printing: printing || {}, zone: 'spellbook', entryIndex: 0 }}
+                        entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: idx }}
                         isSelected={isSelected}
                         onClick={() => this.setState({ selectedCardId: card.unique_id, sellPrice: '', sellQuantity: 1, sellError: null })}
                       />
-                      {qty > 1 && (
-                        <div className="text-center mt-1">
+                      <div className="flex items-center justify-center gap-1 mt-1">
+                        {qty > 1 && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: PANEL_BG, color: ACCENT_GOLD, border: `1px solid ${GOLD} 0.3)` }}>
                             ×{qty}
                           </span>
-                        </div>
-                      )}
+                        )}
+                        {foil && <span className="text-[9px] font-semibold" style={{ color: foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>{FOIL_LABEL[foiling]}</span>}
+                      </div>
                       <div className="text-[10px] truncate mt-0.5 text-center px-0.5" style={{ color: TEXT_MUTED }}>{card.name}</div>
                     </div>
                   );
