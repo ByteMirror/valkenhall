@@ -14,6 +14,8 @@ export default {
     copy: {
       dist: 'dist',
       'server/upscaling': 'server/upscaling',
+      'node_modules/@img': 'node_modules/@img',
+      'node_modules/sharp': 'node_modules/sharp',
     },
     mac: {
       bundleCEF: true,

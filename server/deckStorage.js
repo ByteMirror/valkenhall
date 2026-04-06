@@ -2,7 +2,14 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import sharp from 'sharp';
+
+// Sharp is optional — deck preview generation is skipped if it can't load
+let sharp = null;
+try {
+  sharp = (await import('sharp')).default;
+} catch {
+  console.warn('Sharp not available — deck preview images will not be generated');
+}
 
 const APP_STORAGE_DIR_NAME = 'fab-builder';
 const DECKS_DIR_NAME = 'decks';
@@ -254,6 +261,8 @@ async function previewFileExists(previewPath) {
 }
 
 async function generateDeckPreview(previewPath, previewCards) {
+  if (!sharp) return null; // Sharp not available — skip preview generation
+
   const cardsToRender = normalizePreviewCards(previewCards);
 
   if (cardsToRender.length === 0) {
