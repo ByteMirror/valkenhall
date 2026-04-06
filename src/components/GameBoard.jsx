@@ -442,14 +442,9 @@ export default class GameBoard extends Component {
     });
 
     onPlayerLeft(() => {
-      if (!this.state.isHost) {
-        disconnectSocket();
-        toast.error('Host disconnected');
-        this.props.onExit();
-        return;
-      }
-      this.setState({ connectionStatus: 'opponent disconnected' });
-      toast.warning('Opponent disconnected');
+      disconnectSocket();
+      toast.error('Opponent disconnected — session ended');
+      this.props.onExit();
     });
 
     onStateSyncRequest(() => {
