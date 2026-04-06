@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getLocalApiOrigin } from '../localApi';
+import { resolveLocalImageUrl } from '../localApi';
 
 const CARD_SCALE = 1.75;
 const CARD_WIDTH = 6.35 * CARD_SCALE;
@@ -141,10 +141,7 @@ export function createCardMesh(cardInstance) {
     : CARD_EDGE_COLOR;
   const edgeMat = new THREE.MeshStandardMaterial({ color: edgeColor });
 
-  // Resolve image URL locally — remote card instances may have a different player's port
-  const rawUrl = cardInstance.imageUrl || '';
-  const pathPart = cardInstance.imagePath || rawUrl.replace(/^https?:\/\/[^/]+/, '');
-  const imageUrl = pathPart.startsWith('/') ? `${getLocalApiOrigin()}${pathPart}` : rawUrl;
+  const imageUrl = resolveLocalImageUrl(cardInstance.imageUrl);
 
   const frontMat = new THREE.MeshStandardMaterial({
     map: loadTexture(imageUrl),

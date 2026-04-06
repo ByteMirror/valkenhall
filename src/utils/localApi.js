@@ -17,3 +17,13 @@ export function getLocalApiOrigin() {
 }
 
 export const LOCAL_API_ORIGIN = getLocalApiOrigin();
+
+/**
+ * Resolve a card image URL to the local API origin.
+ * Remote players send URLs with their port; this rebuilds with ours.
+ */
+export function resolveLocalImageUrl(url) {
+  if (!url) return '';
+  const path = url.replace(/^https?:\/\/[^/]+/, '');
+  return path.startsWith('/') ? `${getLocalApiOrigin()}${path}` : url;
+}

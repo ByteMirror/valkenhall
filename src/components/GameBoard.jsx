@@ -10,7 +10,7 @@ import CardInspector from './CardInspector';
 import { addTween, animateCardFlip, animateCardTap, animateShufflePile, animateCardToPile, animateCardFromPile } from '../utils/game/animations';
 import { saveGameSession, loadGameSession, listGameSessions } from '../utils/game/sessionStorage';
 import { createRoom, createRoomWithCode, joinRoom, emitGameAction, onGameAction, offGameAction, disconnectSocket, onPlayerJoined, onPlayerLeft, onStateSyncRequest, sendStateSync, requestStateSync, onStateSync } from '../utils/game/socketClient';
-import { getLocalApiOrigin } from '../utils/localApi';
+import { getLocalApiOrigin, resolveLocalImageUrl } from '../utils/localApi';
 import { playSound, preloadSounds } from '../utils/game/sounds';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
@@ -2829,7 +2829,7 @@ export default class GameBoard extends Component {
         box-shadow: 0 8px 30px rgba(0,0,0,0.5);
       `;
       const img = document.createElement('img');
-      img.src = card.imageUrl;
+      img.src = resolveLocalImageUrl(card.imageUrl);
       img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
       img.draggable = false;
       flyCard.appendChild(img);
@@ -4683,7 +4683,7 @@ export default class GameBoard extends Component {
     return (
       <CardInspector
         card={fullCard}
-        imageUrl={inspectedCard.imageUrl}
+        imageUrl={resolveLocalImageUrl(inspectedCard.imageUrl)}
         foiling={inspectedCard.foiling}
         onClose={() => this.setState({ inspectedCard: null })}
       />
@@ -4738,7 +4738,7 @@ export default class GameBoard extends Component {
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.4)`; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.12)`; }}
                   >
-                    <img src={card.imageUrl} alt={card.name} className={cn('w-full object-cover', card.isSite ? 'aspect-[88.9/63.5]' : 'aspect-[63.5/88.9]')} />
+                    <img src={resolveLocalImageUrl(card.imageUrl)} alt={card.name} className={cn('w-full object-cover', card.isSite ? 'aspect-[88.9/63.5]' : 'aspect-[63.5/88.9]')} />
                     <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="w-full p-2 flex gap-1">
                         <button
@@ -5724,7 +5724,7 @@ export default class GameBoard extends Component {
                     data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
                   >
                     <img
-                      src={card.imageUrl}
+                      src={resolveLocalImageUrl(card.imageUrl)}
                       alt={card.name}
                       className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
                       draggable={false}
@@ -5862,7 +5862,7 @@ export default class GameBoard extends Component {
                   className={cn('w-full h-full overflow-hidden rounded-md card-mask', isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES)}
                   data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
                 >
-                  <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
+                  <img src={resolveLocalImageUrl(card.imageUrl)} alt={card.name} className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
                 </div>
               </div>
             );
@@ -5918,7 +5918,7 @@ export default class GameBoard extends Component {
                 className={cn('w-full h-full overflow-hidden rounded-lg card-mask', isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES)}
                 data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
               >
-                <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
+                <img src={resolveLocalImageUrl(card.imageUrl)} alt={card.name} className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
               </div>
             </div>
           );
