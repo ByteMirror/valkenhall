@@ -1317,15 +1317,35 @@ export default class GameBoard extends Component {
     const cell = this.getGridCellAt(droppedMesh.position.x, droppedMesh.position.z);
     if (cell) {
       const isSite = card.isSite;
+      const cardsInCell = this.getCardsInCell(cell.col, cell.row);
+      const isCardOwnerP1 = !card.rotated;
 
       // Enforce: only one site card per cell
       if (isSite) {
-        const existingSites = this.getCardsInCell(cell.col, cell.row).filter((c) => c.cardInstance.isSite && c.cardId !== card.id);
+        const existingSites = cardsInCell.filter((c) => c.cardInstance.isSite && c.cardId !== card.id);
         if (existingSites.length > 0) {
-          // Return the card to the player's hand
           this.removeCardFromTable(card);
           this.addToHand(card);
           toast.error('This site is already occupied. Only one site card per square.');
+          this.dragging = null;
+          return;
+        }
+      }
+
+      // Enforce: non-site cards can only be summoned onto cells with a friendly site
+      if (!isSite) {
+        const friendlySite = cardsInCell.find((c) => c.cardInstance.isSite && !!c.cardInstance.rotated === !!card.rotated);
+        const enemySite = cardsInCell.find((c) => c.cardInstance.isSite && !!c.cardInstance.rotated !== !!card.rotated);
+        // Only block if the card is being freshly placed (not already on the grid — moving between cells is handled by path mode)
+        const isBeingPlayed = card._gridCol == null && card._gridRow == null;
+        if (isBeingPlayed && !friendlySite) {
+          this.removeCardFromTable(card);
+          this.addToHand(card);
+          if (enemySite) {
+            toast.error('Cannot summon units on an enemy-controlled site.');
+          } else {
+            toast.error('Units can only be summoned on a site you control.');
+          }
           this.dragging = null;
           return;
         }

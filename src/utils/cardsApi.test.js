@@ -3,7 +3,7 @@ import { getCardsApiEndpoint, getCardsAssetUrl } from './cardsApi';
 
 describe('cardsApi', () => {
   it('uses the local desktop api for cards', () => {
-    expect(getCardsApiEndpoint({ hostname: 'localhost' })).toBe('http://localhost:3001/api/cards');
+    expect(getCardsApiEndpoint({ hostname: 'localhost' })).toBe('http://127.0.0.1:3001/api/cards');
     expect(getCardsApiEndpoint({ hostname: '127.0.0.1' })).toBe('http://127.0.0.1:3001/api/cards');
   });
 

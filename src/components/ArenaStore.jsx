@@ -218,7 +218,7 @@ export default class ArenaStore extends Component {
                           <button
                             type="button"
                             className="w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 active:scale-90"
-                            style={{ ...BEVELED_BTN, borderRadius: '4px', color: '#A6A09B' }}
+                            style={{ ...BEVELED_BTN, background: `url("/tex-noise.webp"), url("/tex-stone.webp"), rgba(20, 16, 10, 0.95)`, borderRadius: '4px', color: '#A6A09B' }}
                             onClick={() => this.setCart(setKey, qty - 1)}
                           >
                             −
@@ -235,7 +235,7 @@ export default class ArenaStore extends Component {
                           <button
                             type="button"
                             className="w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 active:scale-90"
-                            style={{ ...BEVELED_BTN, borderRadius: '4px', color: '#A6A09B' }}
+                            style={{ ...BEVELED_BTN, background: `url("/tex-noise.webp"), url("/tex-stone.webp"), rgba(20, 16, 10, 0.95)`, borderRadius: '4px', color: '#A6A09B' }}
                             onClick={() => this.setCart(setKey, qty + 1)}
                           >
                             +
@@ -341,7 +341,7 @@ export default class ArenaStore extends Component {
                 <button
                   type="button"
                   className="flex-1 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  style={{ ...BEVELED_BTN, borderRadius: '4px', color: '#A6A09B' }}
+                  style={{ ...BEVELED_BTN, background: `url("/tex-noise.webp"), url("/tex-stone.webp"), rgba(20, 16, 10, 0.95)`, borderRadius: '4px', color: '#A6A09B' }}
                   data-sound={UI.CANCEL}
                   onClick={() => this.setState({ showConfirm: false })}
                 >

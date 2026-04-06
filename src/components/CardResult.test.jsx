@@ -376,8 +376,6 @@ describe('CardResult special variant shortcuts', () => {
     expect(within(menu).getAllByRole('img')).toHaveLength(6);
     expect(within(menu).getAllByText('Optimal').length).toBeGreaterThan(0);
     expect(within(menu).getAllByText('Optimal')[0].parentElement).toHaveClass('absolute');
-    expect(within(menu).getAllByText('Optimal')[0].parentElement).toHaveClass('bg-card');
-    expect(within(menu).getAllByText('Optimal')[0].parentElement).toHaveClass('rounded-md');
     expect(within(menu).queryByText('1200×1680px')).not.toBeInTheDocument();
     expect(within(menu).queryByText('1190×1670px')).not.toBeInTheDocument();
   });

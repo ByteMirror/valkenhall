@@ -40,21 +40,25 @@ describe('savedDeckRestore', () => {
         card: cards[0],
         printing: cards[0].printings[0],
         isSideboard: false,
+        zone: undefined,
       },
       {
         card: cards[0],
         printing: cards[0].printings[1],
         isSideboard: false,
+        zone: undefined,
       },
       {
         card: cards[0],
         printing: cards[0].printings[1],
         isSideboard: true,
+        zone: 'collection',
       },
       {
         card: cards[1],
         printing: cards[1].printings[0],
         isSideboard: false,
+        zone: undefined,
       },
     ]);
     expect(resolvePreferredPrinting).toHaveBeenCalledTimes(1);
