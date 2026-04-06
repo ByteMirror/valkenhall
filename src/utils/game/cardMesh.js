@@ -228,23 +228,21 @@ export function createLifeHUD(cardInstance) {
 
   // ATK tracker — bottom-left
   const atkGeo = new THREE.PlaneGeometry(STAT_HUD_W, STAT_HUD_H);
-  const atkMat = new THREE.MeshBasicMaterial({ map: createStatTexture('⚔', atk, 'rgba(245,158,11,0.9)'), transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const atkMat = new THREE.MeshBasicMaterial({ map: createStatTexture('⚔', atk, 'rgba(245,158,11,0.9)'), transparent: true, depthTest: true, side: THREE.DoubleSide });
   const atkMesh = new THREE.Mesh(atkGeo, atkMat);
   atkMesh.position.set(-CARD_WIDTH / 2 + STAT_HUD_W / 2 + STAT_PAD, yPos, STAT_Z);
-  atkMesh.renderOrder = 999;
   atkMesh.userData = { type: 'lifeHUD', cardId: cardInstance.id, stat: 'atk' };
 
   // HP tracker — bottom-right
   const hpGeo = new THREE.PlaneGeometry(STAT_HUD_W, STAT_HUD_H);
-  const hpMat = new THREE.MeshBasicMaterial({ map: createStatTexture('♥', hp, 'rgba(239,68,68,0.9)'), transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const hpMat = new THREE.MeshBasicMaterial({ map: createStatTexture('♥', hp, 'rgba(239,68,68,0.9)'), transparent: true, depthTest: true, side: THREE.DoubleSide });
   const hpMesh = new THREE.Mesh(hpGeo, hpMat);
   hpMesh.position.set(CARD_WIDTH / 2 - STAT_HUD_W / 2 - STAT_PAD, yPos, STAT_Z);
-  hpMesh.renderOrder = 999;
   hpMesh.userData = { type: 'lifeHUD', cardId: cardInstance.id, stat: 'hp' };
 
-  // Hit zones: left half = minus, right half = plus (each covers half the tracker)
+  // Hit zones: left half = minus, right half = plus — oversized for easier clicking
   const halfW = STAT_HUD_W / 2;
-  const hitGeo = new THREE.PlaneGeometry(halfW, STAT_HUD_H * 1.5);
+  const hitGeo = new THREE.PlaneGeometry(halfW * 1.6, STAT_HUD_H * 3);
   const hitMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
 
   const atkMinusMesh = new THREE.Mesh(hitGeo, hitMat);

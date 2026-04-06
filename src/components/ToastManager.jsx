@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   GOLD_BTN, BEVELED_BTN, FourCorners, getViewportScale,
@@ -40,6 +41,7 @@ export default class ToastManager extends Component {
                         type="button"
                         className="px-3 py-1 text-xs font-medium cursor-pointer transition-all"
                         style={action.primary ? GOLD_BTN : { ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                        data-sound={action.primary ? UI.CONFIRM : undefined}
                         onClick={() => onAction(toast.id, action.key)}
                       >
                         {action.label}
@@ -54,6 +56,7 @@ export default class ToastManager extends Component {
                 style={{ color: TEXT_MUTED }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; }}
+                data-sound={UI.CANCEL}
                 onClick={() => onDismiss(toast.id)}
               >
                 x

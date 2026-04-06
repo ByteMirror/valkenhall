@@ -1,8 +1,10 @@
 import { Component } from 'preact';
+import RuneSpinner from './RuneSpinner';
 import { cn } from '../lib/utils';
 import { searchPlayers, sendFriendRequest, acceptFriendRequest, declineFriendRequest, removeFriend } from '../utils/friendsApi';
 import { formatRank, TIER_COLORS } from '../utils/arena/rankUtils';
 import { levelFromXp } from '../utils/arena/profileDefaults';
+import { UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   GOLD_BTN, DANGER_BTN, BEVELED_BTN, INPUT_STYLE,
@@ -144,6 +146,7 @@ export default class FriendsSidebar extends Component {
                 style={{ color: TEXT_MUTED }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
+                data-sound={UI.CANCEL}
                 onClick={onClose}
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -256,7 +259,7 @@ export default class FriendsSidebar extends Component {
                   <div className="flex flex-col gap-1.5">
                     {searchLoading ? (
                       <div className="flex items-center justify-center py-8">
-                        <div className="w-5 h-5 rounded-full animate-spin" style={{ border: `2px solid ${GOLD} 0.2)`, borderTopColor: ACCENT_GOLD }} />
+                        <RuneSpinner size={40} />
                       </div>
                     ) : searchResults.length === 0 ? (
                       <div className="text-center py-8">
@@ -294,6 +297,7 @@ export default class FriendsSidebar extends Component {
                               type="button"
                               className="px-3 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"
                               style={GOLD_BTN}
+                              data-sound={UI.CONFIRM}
                               onClick={() => this.handleSendRequest(r.id)}
                             >
                               Add Friend

@@ -42,8 +42,8 @@ export async function fetchMyListings(token) {
   return res.json();
 }
 
-export async function createListing(token, cardId, cardName, price) {
-  return postAction(token, 'list', { cardId, cardName, price }, 'Failed to create listing');
+export async function createListing(token, cardId, cardName, price, foiling) {
+  return postAction(token, 'list', { cardId, cardName, price, foiling: foiling || 'S' }, 'Failed to create listing');
 }
 
 export async function buyListing(token, listingId) {

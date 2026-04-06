@@ -189,7 +189,7 @@ function InspectorCard({ imgSrc, cardName, isSite, isFoil, foiling }) {
   );
 }
 
-export default function CardInspector({ card, imageUrl, rarity, foiling, onClose }) {
+export default function CardInspector({ card, imageUrl, rarity, foiling, onClose, zoom }) {
   if (!card) return null;
 
   // Play open sound on mount, close sound on unmount
@@ -215,7 +215,7 @@ export default function CardInspector({ card, imageUrl, rarity, foiling, onClose
       onClick={handleClose}
     >
       <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-      <div className="relative flex items-start gap-8 max-w-[90vw]" style={{ zoom: getViewportScale() }} onClick={(e) => e.stopPropagation()}>
+      <div className="relative flex items-start gap-8 max-w-[90vw]" style={{ zoom: zoom ?? getViewportScale() }} onClick={(e) => e.stopPropagation()}>
         <InspectorCard
           imgSrc={imgSrc}
           cardName={card.name}

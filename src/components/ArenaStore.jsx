@@ -4,7 +4,8 @@ import { CURRENCY, SET_UNLOCK_LEVELS, levelFromXp, isArenaDebugMode } from '../u
 import { BOOSTER_SETS } from '../utils/arena/packGenerator';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { cn } from '../lib/utils';
-import { GOLD, GOLD_TEXT, ACCENT_GOLD, BEVELED_BTN, PANEL_BG, PANEL_BORDER, CornerPlating, getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
+import { GOLD, GOLD_TEXT, ACCENT_GOLD, BEVELED_BTN, GOLD_BTN, PANEL_BG, PANEL_BORDER, CornerPlating, getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
+import AppHeader from './AppHeader';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import AmbientParticles from './AmbientParticles';
 import StoreTorchFX from './StoreTorchFX';
@@ -103,81 +104,36 @@ export default class ArenaStore extends Component {
         ) : null}
 
         {/* ─── TOP BAR ─────────────────────────────── */}
-        <div className="relative z-10 flex items-center gap-4 px-6 py-3" style={{ background: 'rgba(8,6,4,0.85)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${PANEL_BORDER}` }}>
+        <AppHeader
+          profile={profile}
+          onToggleMailbox={onToggleMailbox}
+          mailboxUnreadCount={mailboxUnreadCount}
+          mailboxDropdown={mailboxDropdown}
+          onToggleFriends={onToggleFriends}
+          friendListData={friendListData}
+          zoom={1}
+        >
           <button
             type="button"
             className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-[0.97]"
-            style={{
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.1) 100%)',
-              border: `1px solid ${GOLD} 0.3)`,
-              borderRadius: '4px',
-              color: '#A6A09B',
-              textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-            }}
+            style={{ ...BEVELED_BTN, color: '#A6A09B', borderRadius: '4px' }}
             data-sound={UI.CANCEL}
             onClick={onBack}
           >
             Back to Hub
           </button>
-
-          <div className="ml-auto flex items-center gap-3">
-            <div className="relative">
-              <button
-                type="button"
-                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-                onClick={onToggleMailbox}
-              >
-                <Mail size={14} />
-                Mailbox
-                {(mailboxUnreadCount || 0) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
-                    {mailboxUnreadCount}
-                  </span>
-                )}
-              </button>
-              {mailboxDropdown}
-            </div>
+          {totalPending > 0 ? (
             <button
               type="button"
-              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onClick={onToggleFriends}
+              className="flex items-center gap-2 px-4 py-1.5 text-xs font-semibold transition-all hover:scale-[1.02]"
+              style={{ ...GOLD_BTN, borderRadius: '4px' }}
+              onClick={onOpenPacks}
             >
-              <Users size={14} />
-              Friends
-              {(friendListData?.pendingCount || 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
-                  {friendListData.pendingCount}
-                </span>
-              )}
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              {totalPending} pack{totalPending !== 1 ? 's' : ''} to open
             </button>
-            <div className="flex items-center gap-5">
-            {totalPending > 0 ? (
-              <button
-                type="button"
-                className="flex items-center gap-2 px-4 py-1.5 text-xs font-semibold transition-all hover:scale-[1.02]"
-                style={{
-                  background: `${GOLD} 0.12)`,
-                  border: `1px solid ${GOLD} 0.35)`,
-                  borderRadius: '4px',
-                  color: '#d4a843',
-                  boxShadow: `0 0 12px ${GOLD} 0.1)`,
-                }}
-                onClick={onOpenPacks}
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                {totalPending} pack{totalPending !== 1 ? 's' : ''} to open
-              </button>
-            ) : null}
-            <div className="flex items-center gap-1.5">
-              <span style={{ color: '#f0d060', fontSize: '14px', textShadow: '0 0 8px rgba(240,208,96,0.3)' }}>●</span>
-              <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
-              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
-            </div>
-            </div>
-          </div>
-        </div>
+          ) : null}
+        </AppHeader>
 
         {/* ─── TAB BAR ─────────────────────────────── */}
         <div className="relative z-10 flex justify-center py-1" style={{ background: 'rgba(8,6,4,0.7)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${GOLD} 0.12)` }}>
@@ -262,7 +218,7 @@ export default class ArenaStore extends Component {
                           <button
                             type="button"
                             className="w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 active:scale-90"
-                            style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '4px', color: '#A6A09B' }}
+                            style={{ ...BEVELED_BTN, borderRadius: '4px', color: '#A6A09B' }}
                             onClick={() => this.setCart(setKey, qty - 1)}
                           >
                             −
@@ -279,7 +235,7 @@ export default class ArenaStore extends Component {
                           <button
                             type="button"
                             className="w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 active:scale-90"
-                            style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '4px', color: '#A6A09B' }}
+                            style={{ ...BEVELED_BTN, borderRadius: '4px', color: '#A6A09B' }}
                             onClick={() => this.setCart(setKey, qty + 1)}
                           >
                             +
@@ -325,18 +281,9 @@ export default class ArenaStore extends Component {
                     disabled={cartPacks === 0 || !canAffordCart}
                     className="px-8 py-3 text-sm font-semibold arena-heading uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-[0.97]"
                     style={cartPacks > 0 && canAffordCart
-                      ? {
-                          background: `linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)`,
-                          border: `1px solid rgba(228,200,100,0.6)`,
-                          borderRadius: '6px',
-                          color: '#1a1408',
-                          boxShadow: `0 0 20px ${GOLD} 0.2), inset 0 1px 0 rgba(255,255,255,0.2)`,
-                          textShadow: '0 1px 0 rgba(255,255,255,0.2)',
-                        }
+                      ? GOLD_BTN
                       : {
-                          background: 'rgba(166,160,155,0.08)',
-                          border: '1px solid rgba(166,160,155,0.15)',
-                          borderRadius: '6px',
+                          ...BEVELED_BTN,
                           color: 'rgba(166,160,155,0.25)',
                         }
                     }
@@ -394,7 +341,7 @@ export default class ArenaStore extends Component {
                 <button
                   type="button"
                   className="flex-1 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  style={{ background: 'transparent', border: `1px solid ${GOLD} 0.2)`, borderRadius: '4px', color: '#A6A09B' }}
+                  style={{ ...BEVELED_BTN, borderRadius: '4px', color: '#A6A09B' }}
                   data-sound={UI.CANCEL}
                   onClick={() => this.setState({ showConfirm: false })}
                 >
@@ -403,13 +350,7 @@ export default class ArenaStore extends Component {
                 <button
                   type="button"
                   className="flex-1 py-2.5 text-sm font-semibold arena-heading uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-[0.97]"
-                  style={{
-                    background: 'linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)',
-                    border: '1px solid rgba(228,200,100,0.6)',
-                    borderRadius: '4px',
-                    color: '#1a1408',
-                    boxShadow: `0 0 15px ${GOLD} 0.15), inset 0 1px 0 rgba(255,255,255,0.2)`,
-                  }}
+                  style={{ ...GOLD_BTN, borderRadius: '4px' }}
                   data-sound={UI.CONFIRM}
                   onClick={this.handlePurchase}
                 >

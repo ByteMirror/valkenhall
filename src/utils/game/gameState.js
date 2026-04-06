@@ -60,6 +60,7 @@ export function createCardInstance(card, printing, rotated = false) {
     cardId: card.unique_id,
     name: card.name,
     imageUrl: printing?.image_url || card.printings?.[0]?.image_url || '',
+    foiling: printing?.foiling || 'S',
     type: card.type || card.types?.[0] || '',
     isSite: card.played_horizontally || card.type === 'Site',
     tapped: false,

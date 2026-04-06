@@ -107,4 +107,16 @@ export function getTrackerTokenPosition(config, player, trackerKey, row, posInde
   return data[posIndex] || null;
 }
 
+export function getGameGrid(config) {
+  return config?.gameGrid || null;
+}
+
+export function setGameGrid(config, grid) {
+  if (grid) {
+    config.gameGrid = grid;
+  } else {
+    delete config.gameGrid;
+  }
+}
+
 export { DEFAULT_SPAWN_POINTS, SPAWN_LABELS, SPAWN_COLORS };

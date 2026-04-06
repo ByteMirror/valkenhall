@@ -1,4 +1,5 @@
 import { Component, createRef } from 'preact';
+import RuneSpinner from './RuneSpinner';
 import { rankPrintingsByResolution, rankPrintingsByResolutionStatic } from '../utils/imageQuality';
 import { Button } from './ui/button';
 import { IconChevronDown, IconPlus, IconTrash } from './ui/icons';
@@ -309,7 +310,7 @@ export default class CardResult extends Component {
     const { currentResolution, printing, qualityActionsOpen, qualityActionsPosition, rankedByResolution } = this.state;
 
     if (printing == null) {
-      return <article className="card-card">Loading...</article>;
+      return <article className="card-card flex items-center justify-center"><RuneSpinner size={48} /></article>;
     }
 
     const rotateImage =
@@ -466,7 +467,7 @@ export default class CardResult extends Component {
                 aria-label={`Upscaling ${card.name}`}
                 role="status"
               >
-                <div className="size-10 animate-spin rounded-full border-2 border-border border-t-primary" aria-hidden="true" />
+                <RuneSpinner size={48} />
                 <div className="space-y-1 text-center">
                   <p className="text-sm font-semibold text-card-foreground">Upscaling...</p>
                   <p className="text-xs text-muted-foreground">Replacing this printing with a sharper local copy.</p>

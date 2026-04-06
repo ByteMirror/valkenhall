@@ -1,11 +1,13 @@
 import { Component } from 'preact';
+import RuneSpinner from './RuneSpinner';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
+import { UI } from '../utils/arena/uiSounds';
 import {
   GOLD, GOLD_TEXT, BG_ATMOSPHERE, VIGNETTE,
   TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, PARCHMENT, PANEL_BG,
   DIALOG_STYLE, BEVELED_BTN, GOLD_BTN, DANGER_BTN,
-  FourCorners, OrnamentalDivider, getViewportScale, onViewportScaleChange,
+  FourCorners, CornerPlating, OrnamentalDivider, getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
 const SECTIONS = [
@@ -200,16 +202,16 @@ export default class SettingsScreen extends Component {
           <div className="flex items-center justify-end gap-2 px-4 py-3">
             {status.state === 'DOWNLOAD_FAILED' ? (
               <button type="button" className="px-4 py-1.5 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px', opacity: retrying ? 0.6 : 1 }} disabled={retrying} onClick={this.handleRetry}>
-                {retrying ? 'Retrying...' : 'Retry Download'}
+                {retrying ? <RuneSpinner size={14} className="inline-block" /> : 'Retry Download'}
               </button>
             ) : null}
             {status.state === 'UP_TO_DATE' || status.state === 'DOWNLOAD_FAILED' ? (
               <button type="button" className="px-4 py-1.5 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px', opacity: checking ? 0.6 : 1 }} disabled={checking} onClick={this.handleCheck}>
-                {checking ? 'Checking...' : 'Check for Updates'}
+                {checking ? <RuneSpinner size={14} className="inline-block" /> : 'Check for Updates'}
               </button>
             ) : null}
             {status.state === 'READY_TO_INSTALL' ? (
-              <button type="button" className="px-4 py-1.5 text-xs font-bold arena-heading cursor-pointer transition-all" style={{ ...GOLD_BTN, borderRadius: '6px' }} onClick={onApply}>
+              <button type="button" className="px-4 py-1.5 text-xs font-bold arena-heading cursor-pointer transition-all" style={{ ...GOLD_BTN, borderRadius: '6px' }} data-sound={UI.CONFIRM} onClick={onApply}>
                 Restart to Update
               </button>
             ) : null}
@@ -235,7 +237,7 @@ export default class SettingsScreen extends Component {
               </div>
               {showResetConfirm ? (
                 <div className="flex items-center gap-2">
-                  <button type="button" className="px-3 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...DANGER_BTN, background: 'rgba(180,60,60,0.8)', color: '#fff', borderRadius: '6px' }} onClick={() => { this.setState({ showResetConfirm: false }); this.props.onBack(); onResetProfile(); }}>
+                  <button type="button" className="px-3 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...DANGER_BTN, background: 'rgba(180,60,60,0.8)', color: '#fff', borderRadius: '6px' }} data-sound={UI.CANCEL} onClick={() => { this.setState({ showResetConfirm: false }); this.props.onBack(); onResetProfile(); }}>
                     Confirm
                   </button>
                   <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_MUTED, borderRadius: '6px' }} onClick={() => this.setState({ showResetConfirm: false })}>
@@ -246,6 +248,7 @@ export default class SettingsScreen extends Component {
                 <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...DANGER_BTN, borderRadius: '6px' }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.55)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.35)'; }}
+                  data-sound={UI.CANCEL}
                   onClick={() => this.setState({ showResetConfirm: true })}
                 >
                   Reset
@@ -262,6 +265,7 @@ export default class SettingsScreen extends Component {
               <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...DANGER_BTN, borderRadius: '6px' }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.55)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.35)'; }}
+                data-sound={UI.CANCEL}
                 onClick={() => { this.props.onBack(); onQuit(); }}
               >
                 Quit
@@ -285,9 +289,9 @@ export default class SettingsScreen extends Component {
     });
 
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: `url("/tex-noise-panel.webp"), rgba(0,0,0,0.85)`, backdropFilter: 'blur(4px)' }}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-        <div className="relative w-full max-w-2xl mx-auto flex flex-col" style={{ ...DIALOG_STYLE, zoom: viewScale, maxHeight: `${80 / viewScale}vh` }}>
+        <div className="relative w-full max-w-2xl mx-auto flex flex-col" style={{ ...DIALOG_STYLE, zoom: viewScale, maxHeight: `${80 / viewScale}vh`, background: `url("/tex-noise.webp"), url("/tex-stone.webp"), ${DIALOG_STYLE.background}` }}>
           <FourCorners radius={12} />
 
           {/* Header */}
@@ -299,6 +303,7 @@ export default class SettingsScreen extends Component {
               type="button"
               className="px-4 py-1.5 text-xs cursor-pointer transition-all"
               style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+              data-sound={UI.CANCEL}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
               onClick={onBack}
@@ -312,7 +317,18 @@ export default class SettingsScreen extends Component {
           {/* Layout: sidebar + scrollable content */}
           <div className="flex flex-1 min-h-0 px-8 py-5 gap-6">
             {/* Sidebar */}
-            <div className="w-36 shrink-0 flex flex-col gap-1">
+            <div
+              className="relative w-40 shrink-0 flex flex-col gap-1 p-2.5 rounded-lg"
+              style={{
+                background: `url("/tex-noise.webp"), rgba(0,0,0,0.25)`,
+                border: `1px solid ${GOLD} 0.1)`,
+                boxShadow: `inset 0 2px 6px rgba(0,0,0,0.4), inset 0 -1px 0 ${GOLD} 0.04)`,
+              }}
+            >
+              <CornerPlating position="top-left" color={`${GOLD} 0.25)`} radius={8} />
+              <CornerPlating position="top-right" color={`${GOLD} 0.25)`} radius={8} />
+              <CornerPlating position="bottom-left" color={`${GOLD} 0.25)`} radius={8} />
+              <CornerPlating position="bottom-right" color={`${GOLD} 0.25)`} radius={8} />
               {visibleSections.map((section) => (
                 <button
                   key={section.key}

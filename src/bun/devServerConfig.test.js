@@ -7,7 +7,7 @@ describe('desktop dev server config', () => {
   });
 
   it('does not start a second embedded proxy when using an external renderer url', () => {
-    expect(shouldStartEmbeddedProxy({ ELECTROBUN_RENDERER_URL: 'http://127.0.0.1:4173/flesh-and-blood-proxies' })).toBe(
+    expect(shouldStartEmbeddedProxy({ ELECTROBUN_RENDERER_URL: 'http://127.0.0.1:4173' })).toBe(
       false
     );
     expect(shouldStartEmbeddedProxy({})).toBe(true);

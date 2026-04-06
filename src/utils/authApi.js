@@ -1,3 +1,5 @@
+import { LOCAL_API_ORIGIN } from './localApi';
+
 const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
 
 export async function requestLoginCode(email) {
@@ -38,14 +40,29 @@ export async function validateToken(token) {
   return res.json();
 }
 
-export function getStoredToken() {
+export async function getStoredToken() {
+  try {
+    const res = await fetch(`${LOCAL_API_ORIGIN}/api/auth/token`);
+    if (res.ok) {
+      const { token } = await res.json();
+      if (token) return token;
+    }
+  } catch {}
   try { return localStorage.getItem('valkenhall-token'); } catch { return null; }
 }
 
-export function setStoredToken(token) {
+export async function setStoredToken(token) {
   try { localStorage.setItem('valkenhall-token', token); } catch {}
+  try {
+    await fetch(`${LOCAL_API_ORIGIN}/api/auth/token`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  } catch {}
 }
 
-export function clearStoredToken() {
+export async function clearStoredToken() {
   try { localStorage.removeItem('valkenhall-token'); } catch {}
+  try { await fetch(`${LOCAL_API_ORIGIN}/api/auth/token`, { method: 'DELETE' }); } catch {}
 }

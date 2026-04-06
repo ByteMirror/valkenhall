@@ -21,8 +21,8 @@ export async function loadSorceryCardsWithSource(fetchImpl = globalThis.fetch, l
   let lastError = null;
 
   for (const [source, url] of [
-    ['api', getSorceryCardsApiEndpoint(locationLike)],
     ['asset', SORCERY_CARDS_ASSET_PATH],
+    ['api', getSorceryCardsApiEndpoint(locationLike)],
   ]) {
     try {
       const cards = await fetchCardsFrom(fetchImpl, url);

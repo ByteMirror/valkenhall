@@ -333,6 +333,7 @@ export default class ArenaPackOpening extends Component {
             imageUrl={inspectedEntry.printing?.image_url}
             rarity={inspectedEntry.rarity}
             foiling={inspectedEntry.printing?.foiling}
+            zoom={1}
             onClose={() => this.setState({ inspectedEntry: null })}
           />
         ) : null}

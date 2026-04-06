@@ -153,6 +153,7 @@ export default class Mailbox extends Component {
   };
 
   handleSlotCollect = (mail, slotKey, animData, allCards, hasCoins) => {
+    playUI(UI.MAIL_COLLECT);
     const claimedSlots = new Set(this.state.claimedSlots || []);
     claimedSlots.add(slotKey);
 
@@ -193,17 +194,19 @@ export default class Mailbox extends Component {
         this.props.onProfileUpdate({ ...this.props.profile, ...updates });
       }
 
-      // Auto-delete auction mail immediately after claiming
+      // Auto-delete auction mail after a short delay
       const isAuction = mail.type === 'auction';
+      const updatedMail = this.state.mail.map(m =>
+        m.id === mail.id ? { ...m, claimed: true } : m
+      );
+      this.setState({ mail: updatedMail, selectedMail: { ...mail, claimed: true }, claiming: false });
+
       if (isAuction) {
-        await deleteMail(mail.id).catch(() => {});
-        const remaining = this.state.mail.filter(m => m.id !== mail.id);
-        this.setState({ mail: remaining, selectedMail: null, view: 'list', claiming: false, claimedSlots: new Set() });
-      } else {
-        const updatedMail = this.state.mail.map(m =>
-          m.id === mail.id ? { ...m, claimed: true } : m
-        );
-        this.setState({ mail: updatedMail, selectedMail: { ...mail, claimed: true }, claiming: false, claimedSlots: new Set() });
+        setTimeout(async () => {
+          await deleteMail(mail.id).catch(() => {});
+          const remaining = this.state.mail.filter(m => m.id !== mail.id);
+          this.setState({ mail: remaining, selectedMail: null, view: 'list', claimedSlots: new Set() });
+        }, 2000);
       }
     } catch (err) {
       this.setState({ claiming: false, error: err.message });
@@ -211,6 +214,7 @@ export default class Mailbox extends Component {
   };
 
   handleDelete = async (mail) => {
+    playUI(UI.MAIL_DELETE);
     this.setState({ error: null });
     try {
       await deleteMail(mail.id);
@@ -373,7 +377,7 @@ export default class Mailbox extends Component {
                     {m.senderName || 'System'}
                   </span>
                   <span className="text-[10px] shrink-0" style={{ color: TEXT_MUTED }}>
-                    {timeAgo(m.timestamp)}
+                    {timeAgo(m.createdAt)}
                   </span>
                 </div>
                 <div className="text-[11px] truncate mt-0.5" style={{ color: TEXT_MUTED }}>
@@ -410,6 +414,8 @@ export default class Mailbox extends Component {
     const isFriend = (m.type || 'friend') === 'friend';
 
     const claimedSlots = this.state.claimedSlots || new Set();
+    // Once claimed on server, treat ALL slots as collected
+    const effectiveClaimed = m.claimed ? true : false;
     const allSlotsClaimed = canClaim && cards.every((_, i) => claimedSlots.has(`card-${i}`)) && (coins <= 0 || claimedSlots.has('coins'));
 
     return (
@@ -433,7 +439,7 @@ export default class Mailbox extends Component {
                 {m.senderName || 'System'}
               </div>
               <div className="text-[10px] mt-0.5" style={{ color: TEXT_MUTED }}>
-                {timeAgo(m.timestamp)}
+                {timeAgo(m.createdAt)}
               </div>
             </div>
           </div>
@@ -458,7 +464,7 @@ export default class Mailbox extends Component {
           {hasAttachments && (
             <div className="py-3 mt-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
             <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.45)` }}>
-              {m.claimed ? 'Collected' : 'Attachments — click to collect'}
+              {effectiveClaimed ? 'Collected' : 'Attachments — click to collect'}
             </div>
             <div className="grid grid-cols-5 gap-1.5">
               {cards.map((cardId, i) => {
@@ -466,36 +472,36 @@ export default class Mailbox extends Component {
                 const imgUrl = resolveCardImage(resolvedId, sorceryCards);
                 const name = resolveCardName(resolvedId, sorceryCards);
                 const slotKey = `card-${i}`;
-                const collected = m.claimed || claimedSlots.has(slotKey);
+                const collected = effectiveClaimed || claimedSlots.has(slotKey);
                 return (
                   <button
                     key={`${resolvedId}-${i}`}
                     type="button"
-                    disabled={m.claimed || collected}
+                    disabled={effectiveClaimed || collected}
                     className="relative rounded-lg overflow-hidden transition-all duration-200"
                     style={{
                       border: `1px solid ${collected ? `${GOLD} 0.15)` : `${GOLD} 0.12)`}`,
                       opacity: collected ? 0.3 : 1,
-                      cursor: (m.claimed || collected) ? 'default' : 'pointer',
-                      transform: collected && !m.claimed ? 'scale(0.85)' : 'scale(1)',
+                      cursor: (effectiveClaimed || collected) ? 'default' : 'pointer',
+                      transform: collected && !effectiveClaimed ? 'scale(0.85)' : 'scale(1)',
                       filter: collected ? 'grayscale(0.8)' : 'none',
                     }}
                     onMouseEnter={(e) => {
-                      if (!collected && !m.claimed) {
+                      if (!collected && !effectiveClaimed) {
                         e.currentTarget.style.transform = 'scale(1.08)';
                         e.currentTarget.style.borderColor = ACCENT_GOLD;
                         e.currentTarget.style.boxShadow = `0 0 12px ${GOLD} 0.3)`;
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!collected && !m.claimed) {
+                      if (!collected && !effectiveClaimed) {
                         e.currentTarget.style.transform = 'scale(1)';
                         e.currentTarget.style.borderColor = `${GOLD} 0.12)`;
                         e.currentTarget.style.boxShadow = 'none';
                       }
                     }}
                     onClick={() => {
-                      if (m.claimed || collected) return;
+                      if (effectiveClaimed || collected) return;
                       this.handleSlotCollect(m, slotKey, { type: 'card', name, imgUrl }, cards, coins > 0);
                     }}
                   >
@@ -509,7 +515,7 @@ export default class Mailbox extends Component {
                     <div className="absolute bottom-0 left-0 right-0 text-[7px] text-center py-0.5 truncate" style={{ background: 'rgba(0,0,0,0.8)', color: TEXT_BODY }}>
                       {name}
                     </div>
-                    {collected && !m.claimed && (
+                    {collected && !effectiveClaimed && (
                       <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
                         <span className="text-sm" style={{ color: ACCENT_GOLD }}>✓</span>
                       </div>
@@ -520,33 +526,33 @@ export default class Mailbox extends Component {
               {coins > 0 && (
                 <button
                   type="button"
-                  disabled={m.claimed || claimedSlots.has('coins')}
+                  disabled={effectiveClaimed || claimedSlots.has('coins')}
                   className="relative rounded-lg overflow-hidden flex flex-col items-center justify-center gap-1 transition-all duration-200"
                   style={{
-                    border: `1px solid ${(m.claimed || claimedSlots.has('coins')) ? `${GOLD} 0.15)` : `${GOLD} 0.12)`}`,
+                    border: `1px solid ${(effectiveClaimed || claimedSlots.has('coins')) ? `${GOLD} 0.15)` : `${GOLD} 0.12)`}`,
                     background: `${GOLD} 0.04)`,
-                    opacity: (m.claimed || claimedSlots.has('coins')) ? 0.3 : 1,
-                    cursor: (m.claimed || claimedSlots.has('coins')) ? 'default' : 'pointer',
+                    opacity: (effectiveClaimed || claimedSlots.has('coins')) ? 0.3 : 1,
+                    cursor: (effectiveClaimed || claimedSlots.has('coins')) ? 'default' : 'pointer',
                     aspectRatio: '63 / 88',
-                    transform: (claimedSlots.has('coins') && !m.claimed) ? 'scale(0.85)' : 'scale(1)',
+                    transform: (claimedSlots.has('coins') && !effectiveClaimed) ? 'scale(0.85)' : 'scale(1)',
                     filter: claimedSlots.has('coins') ? 'grayscale(0.8)' : 'none',
                   }}
                   onMouseEnter={(e) => {
-                    if (!claimedSlots.has('coins') && !m.claimed) {
+                    if (!claimedSlots.has('coins') && !effectiveClaimed) {
                       e.currentTarget.style.transform = 'scale(1.08)';
                       e.currentTarget.style.borderColor = ACCENT_GOLD;
                       e.currentTarget.style.boxShadow = `0 0 12px ${GOLD} 0.3)`;
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!claimedSlots.has('coins') && !m.claimed) {
+                    if (!claimedSlots.has('coins') && !effectiveClaimed) {
                       e.currentTarget.style.transform = 'scale(1)';
                       e.currentTarget.style.borderColor = `${GOLD} 0.12)`;
                       e.currentTarget.style.boxShadow = 'none';
                     }
                   }}
                   onClick={() => {
-                    if (m.claimed || claimedSlots.has('coins')) return;
+                    if (effectiveClaimed || claimedSlots.has('coins')) return;
                     this.handleSlotCollect(m, 'coins', { type: 'coins', amount: coins }, cards, true);
                   }}
                 >
@@ -556,7 +562,7 @@ export default class Mailbox extends Component {
                   />
                   <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>{coins}</span>
                   <span className="text-[7px]" style={{ color: TEXT_MUTED }}>gold</span>
-                  {claimedSlots.has('coins') && !m.claimed && (
+                  {claimedSlots.has('coins') && !effectiveClaimed && (
                     <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
                       <span className="text-sm" style={{ color: ACCENT_GOLD }}>✓</span>
                     </div>
@@ -659,6 +665,7 @@ export default class Mailbox extends Component {
                   type="button"
                   className="px-3 py-1 text-[10px] cursor-pointer transition-all"
                   style={DANGER_BTN}
+                  data-sound={UI.CANCEL}
                   onClick={() => {
                     this.setState({ confirmDeleteMail: null });
                     this.handleDelete(m);
@@ -881,11 +888,11 @@ export default class Mailbox extends Component {
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           style={{
             top: 'calc(100% + 8px)',
-            right: '50%',
-            marginRight: -200,
+            right: 0,
             width: 400,
+            maxHeight: 'min(580px, calc(100vh - 80px))',
             height: 580,
-            transformOrigin: 'top center',
+            transformOrigin: 'top right',
             ...DIALOG_STYLE,
           }}
           onClick={e => e.stopPropagation()}
@@ -933,6 +940,7 @@ export default class Mailbox extends Component {
                 type="button"
                 className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"
                 style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                data-sound={UI.CONFIRM}
                 onClick={() => this.openCompose()}
               >
                 Compose
@@ -960,6 +968,7 @@ export default class Mailbox extends Component {
                     type="button"
                     className="px-3 py-1.5 text-[10px] cursor-pointer transition-all ml-auto"
                     style={DANGER_BTN}
+                    data-sound={UI.CANCEL}
                     onClick={() => {
                       if (hasAtt && !m.claimed) {
                         this.setState({ confirmDeleteMail: m });

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { cn } from '../lib/utils';
 import { Button } from './ui/button';
 import { getPrintingVariantLabel, getQualityTone } from './printingOptions';
+import { isFoilFinish, FOIL_LABEL_COLOR, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 
 const PRINTING_MENU_OPEN_EVENT = 'card-result-printing-menu-open';
 
@@ -178,6 +179,8 @@ export default function PrintingSelector({
                   const isActive = printing.unique_id === selectedPrinting?.unique_id;
                   const qualityTone = getQualityTone(quality.label);
 
+                  const isFoilPrinting = isFoilFinish(printing.foiling);
+
                   return (
                     <button
                       key={printing.unique_id}
@@ -190,11 +193,19 @@ export default function PrintingSelector({
                       )}
                       onClick={() => handleSelect(printing)}
                     >
-                      <div className="relative">
-                        <div className="absolute left-2.5 top-2.5 z-10 rounded-md bg-card shadow-[0_8px_20px_rgba(0,0,0,0.28)]">
-                          <span className={cn('inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-medium', qualityTone)}>
+                      <div className={cn('relative', isFoilPrinting && `${FOIL_OVERLAY_CLASSES} rounded-xl`)} data-foil={isFoilPrinting ? printing.foiling : undefined}>
+                        <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1">
+                          <span className={cn('inline-flex items-center rounded-md bg-card px-2.5 py-1 text-[11px] font-medium shadow-[0_8px_20px_rgba(0,0,0,0.28)]', qualityTone)}>
                             {quality.label}
                           </span>
+                          {isFoilPrinting ? (
+                            <span className={cn(
+                              'inline-flex items-center rounded-md bg-card px-2 py-1 text-[10px] font-bold tracking-wide shadow-[0_8px_20px_rgba(0,0,0,0.28)]',
+                              FOIL_LABEL_COLOR[printing.foiling]
+                            )}>
+                              {printing.foiling === 'R' ? '✦' : '◆'}
+                            </span>
+                          ) : null}
                         </div>
                         {onToggleUpscale && (printing._upscaled || printing._cachedUpscale) ? (
                           <button
@@ -226,7 +237,10 @@ export default function PrintingSelector({
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {label}
+                          {isFoilPrinting ? <span className={`ml-1 ${FOIL_LABEL_COLOR[printing.foiling]}`}>· {printing.foiling === 'R' ? 'Rainbow' : 'Foil'}</span> : null}
+                        </p>
                       </div>
                     </button>
                   );

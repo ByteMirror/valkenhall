@@ -24,5 +24,5 @@ test('desktop dev uses the built preview renderer instead of the Bun HMR server'
   expect(packageJson.scripts['desktop:dev']).toContain('bun run desktop:renderer:dev');
   expect(packageJson.scripts['desktop:renderer:dev']).toContain('bun --watch scripts/build-web.js');
   expect(packageJson.scripts['desktop:renderer:dev']).toContain('bun run preview');
-  expect(packageJson.scripts['desktop:dev:app']).toContain('http://127.0.0.1:4173/flesh-and-blood-proxies');
+  expect(packageJson.scripts['desktop:dev:app']).toContain('http://127.0.0.1:4173');
 });

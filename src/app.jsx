@@ -776,7 +776,7 @@ export default class App extends Component {
   };
 
   handleOpenSettings = () => {
-    this.setState({ settingsOpen: true });
+    this.setState({ settingsOpen: true, gameMenuOpen: false });
   };
 
   handleCloseSettings = () => {
@@ -1359,6 +1359,7 @@ export default class App extends Component {
           <DeckGallery
             savedDecks={this.getArenaSavedDecks()}
             sorceryCards={this.state.sorceryCards}
+            profile={this.state.arenaProfile}
             onCreateDeck={this.handleCreateNewDeck}
             onOpenDeck={this.handleOpenDeckInEditor}
             onDeleteDeck={this.handleDeleteDeckFromGallery}
@@ -1509,7 +1510,7 @@ export default class App extends Component {
           />
         ) : null}
         {this.state.settingsOpen ? (
-          <motion.div key="settings" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
+          <motion.div key="settings" className="fixed inset-0 z-[100]" {...PAGE_TRANSITION_PROPS}>
           <SettingsScreen
             profile={this.state.arenaProfile}
             updateStatus={this.state.updateStatus}

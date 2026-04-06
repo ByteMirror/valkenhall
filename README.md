@@ -1,6 +1,6 @@
 # Valkenhall
 
-A desktop card game arena built with Electrobun, Bun, and Preact. Play Flesh and Blood and Sorcery TCG with deck building, ranked matchmaking, collection management, and a 3D game board.
+A desktop card game arena built with Electrobun, Bun, and Preact. Play Sorcery TCG with deck building, ranked matchmaking, collection management, and a 3D game board.
 
 Runs natively on macOS, Linux, and Windows.
 
@@ -8,12 +8,19 @@ Runs natively on macOS, Linux, and Windows.
 
 ```bash
 bun install
-bun run desktop:dev
+npm run dev
 ```
 
-This builds the renderer, serves it on `127.0.0.1:4173`, starts the local proxy server on port `3001`, and launches the Electrobun desktop shell.
+This starts the full desktop development environment:
 
-**Prerequisites:** Bun 1.3.6
+| Service | URL | Description |
+|---------|-----|-------------|
+| Renderer | `http://127.0.0.1:4173` | Built app served locally (also opens in Electrobun desktop window) |
+| Proxy API | `http://127.0.0.1:3001` | Local API for deck storage, card data, auth token persistence |
+
+The renderer auto-rebuilds when files in `src/` change. The Electrobun desktop shell rebuilds when `src/bun/`, `server/proxy.js`, or `electrobun.config.ts` change.
+
+**Prerequisites:** [Bun](https://bun.sh/) 1.3+
 
 ## Commands
 

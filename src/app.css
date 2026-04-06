@@ -1,3 +1,11 @@
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
 .app-shell {
   --desktop-scale: 1;
   --shell-width: calc(100vw - 24px);
@@ -28,8 +36,8 @@
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
 }
 
 .card-image-shell {
@@ -227,6 +235,245 @@
   padding-bottom: 4px;
 }
 
+.deck-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding-bottom: 4px;
+}
+
+@media (min-width: 2200px) {
+  .deck-card-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+.deck-card-tile {
+  position: relative;
+  aspect-ratio: 63 / 88;
+  background: color-mix(in oklab, var(--muted) 15%, transparent);
+}
+
+.deck-card-tile--hover {
+  z-index: 10;
+  overflow: visible;
+}
+
+.deck-card-tile--site-hover {
+  z-index: 20;
+  overflow: visible;
+}
+
+/* Card edge fix: mask-image clips the final composited result
+   (image + blend-mode overlays) to a clean rounded rect, hiding
+   the semi-transparent PNG fringe AFTER compositing.
+   isolation prevents blend-mode leakage to the background. */
+.card-mask,
+.deck-card-tile-inner {
+  isolation: isolate;
+  -webkit-mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="140"><rect width="100" height="140" rx="8.5" ry="6.5" fill="white"/></svg>');
+  mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="140"><rect width="100" height="140" rx="8.5" ry="6.5" fill="white"/></svg>');
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* Landscape variant for site cards displayed horizontally */
+.card-mask--landscape {
+  -webkit-mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="140" height="100"><rect width="140" height="100" rx="6.5" ry="8.5" fill="white"/></svg>');
+  mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="140" height="100"><rect width="140" height="100" rx="6.5" ry="8.5" fill="white"/></svg>');
+}
+
+/* ── Card surface sheen (all cards) ────────────────── */
+
+.card-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 4;
+  opacity: var(--sheen-d, 0);
+  background:
+    /* Main specular band — perpendicular to tilt, offset opposite to cursor */
+    linear-gradient(
+      var(--sheen-angle, 90deg),
+      transparent 0%,
+      transparent calc(35% + var(--sheen-offset, 0%)),
+      hsla(0, 0%, 100%, 0.22) calc(46% + var(--sheen-offset, 0%)),
+      hsla(0, 0%, 100%, 0.35) calc(50% + var(--sheen-offset, 0%)),
+      hsla(0, 0%, 100%, 0.22) calc(54% + var(--sheen-offset, 0%)),
+      transparent calc(65% + var(--sheen-offset, 0%)),
+      transparent 100%
+    ),
+    /* Fresnel edge glow — card edges catch more light at steep angles */
+    linear-gradient(
+      var(--sheen-angle, 90deg),
+      hsla(0, 0%, 100%, 0.06) 0%,
+      transparent 15%,
+      transparent 85%,
+      hsla(0, 0%, 100%, 0.06) 100%
+    );
+  mix-blend-mode: soft-light;
+}
+
+/* ── Foil card effect ──────────────────────────────── */
+
+.foil-overlay {
+  position: relative;
+  overflow: hidden;
+  transform: translate3d(0, 0, 0.01px);
+}
+
+/* Foil glow — applied via inline boxShadow in DeckCardTile.jsx */
+
+/* Rainbow prismatic shine — ::after */
+.foil-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 2;
+  mix-blend-mode: color-dodge;
+  will-change: background-position, opacity, filter;
+}
+
+/* Specular glare band — ::before (physics-based, same as card-sheen but stronger) */
+.foil-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 3;
+  mix-blend-mode: soft-light;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+/*
+ * IDLE state: static centered foil, always visible.
+ * Looks like hovering in the center — no movement.
+ */
+.foil-overlay--idle::after,
+.foil-overlay.foil-overlay--always::after {
+  opacity: 0.85;
+  background-position: 50% 50%;
+  filter: brightness(0.55) contrast(1.5) saturate(1.2);
+}
+
+/*
+ * ACTIVE state (hovering/tilting): mouse-driven, no animation.
+ * JS sets --foil-bg-x, --foil-bg-y, --foil-mx, --foil-my, --foil-d.
+ */
+.foil-overlay--active::after {
+  opacity: 0.85;
+  animation: none;
+}
+
+.foil-overlay--active::before {
+  opacity: var(--foil-d, 0);
+}
+
+/* ── Foil gradient (standard foil) ──────────────── */
+.foil-overlay[data-foil="F"]::after {
+  background-image:
+    repeating-linear-gradient(
+      110deg,
+      #f80e35, #eedf10, #21e985, #0dbde9, #c929f1,
+      #f80e35, #eedf10, #21e985, #0dbde9, #c929f1,
+      #f80e35
+    );
+  background-size: 400% 400%;
+}
+
+.foil-overlay--active[data-foil="F"]::after {
+  background-position: var(--foil-bg-x, 50%) var(--foil-bg-y, 50%);
+  filter:
+    brightness(calc(0.48 + var(--foil-d, 0) * 0.22))
+    contrast(1.4)
+    saturate(1.15);
+}
+
+.foil-overlay--active[data-foil="F"]::before {
+  background:
+    linear-gradient(
+      var(--foil-angle, 90deg),
+      transparent 0%,
+      transparent calc(30% + var(--foil-offset, 0%)),
+      hsla(45, 60%, 90%, 0.35) calc(44% + var(--foil-offset, 0%)),
+      hsla(45, 80%, 95%, 0.55) calc(50% + var(--foil-offset, 0%)),
+      hsla(45, 60%, 90%, 0.35) calc(56% + var(--foil-offset, 0%)),
+      transparent calc(70% + var(--foil-offset, 0%)),
+      transparent 100%
+    ),
+    linear-gradient(
+      var(--foil-angle, 90deg),
+      hsla(45, 40%, 90%, 0.08) 0%,
+      transparent 12%,
+      transparent 88%,
+      hsla(45, 40%, 90%, 0.08) 100%
+    );
+}
+
+/* ── Rainbow gradient (rare holo) ──────────────── */
+.foil-overlay[data-foil="R"]::after {
+  background-image:
+    repeating-linear-gradient(
+      110deg,
+      #f80e35, #eedf10, #21e985, #0dbde9, #c929f1,
+      #f80e35, #eedf10, #21e985, #0dbde9, #c929f1,
+      #f80e35, #eedf10, #21e985, #0dbde9, #c929f1,
+      #f80e35
+    );
+  background-size: 500% 500%;
+}
+
+.foil-overlay--active[data-foil="R"]::after {
+  background-position: var(--foil-bg-x, 50%) var(--foil-bg-y, 50%);
+  filter:
+    brightness(calc(0.5 + var(--foil-d, 0) * 0.28))
+    contrast(1.5)
+    saturate(1.3);
+}
+
+.foil-overlay--active[data-foil="R"]::before {
+  background:
+    linear-gradient(
+      var(--foil-angle, 90deg),
+      transparent 0%,
+      transparent calc(28% + var(--foil-offset, 0%)),
+      hsla(270, 70%, 92%, 0.4) calc(42% + var(--foil-offset, 0%)),
+      hsla(200, 80%, 95%, 0.65) calc(50% + var(--foil-offset, 0%)),
+      hsla(270, 70%, 92%, 0.4) calc(58% + var(--foil-offset, 0%)),
+      transparent calc(72% + var(--foil-offset, 0%)),
+      transparent 100%
+    ),
+    linear-gradient(
+      var(--foil-angle, 90deg),
+      hsla(270, 50%, 90%, 0.1) 0%,
+      transparent 12%,
+      transparent 88%,
+      hsla(200, 50%, 90%, 0.1) 100%
+    );
+}
+
+/* ── Always-on variant (pack opening, game board) ── */
+.foil-overlay.foil-overlay--always::before {
+  opacity: 0.3;
+  background: linear-gradient(
+    120deg,
+    transparent 30%,
+    hsla(45, 60%, 95%, 0.35) 46%,
+    hsla(45, 80%, 97%, 0.45) 50%,
+    hsla(45, 60%, 95%, 0.35) 54%,
+    transparent 70%
+  );
+}
+
+/* ─────────────────────────────────────────────────── */
+
 .card-preview-stage {
   perspective: 1800px;
 }
@@ -296,9 +543,15 @@
   }
 }
 
+@media (min-width: 2200px) {
+  .card-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
 @media (max-width: 1024px) {
   .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .deck-import-grid {

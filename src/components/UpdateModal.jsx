@@ -25,7 +25,7 @@ export default class UpdateModal extends Component {
         style={{ background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(6px)' }}
       >
         <div className="relative w-full max-w-lg p-8" style={DIALOG_STYLE}>
-          <FourCorners />
+          <FourCorners radius={12} />
 
           <div className="text-center mb-6">
             <div

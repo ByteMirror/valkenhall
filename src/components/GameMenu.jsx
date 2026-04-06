@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { UI } from '../utils/arena/uiSounds';
 import {
   VIGNETTE, GOLD, TEXT_PRIMARY, TEXT_BODY,
   DANGER_BTN, FourCorners, OrnamentalDivider, MenuButton, getViewportScale, onViewportScaleChange,
@@ -25,7 +26,7 @@ export default class GameMenu extends Component {
     return (
       <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', zoom: viewScale }}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-        <img src="/flesh-and-blood-proxies/valkenhall-logo.png" alt="Valkenhall" className="w-80 mb-12 relative" draggable={false} />
+        <img src="/valkenhall-logo.png" alt="Valkenhall" className="w-80 mb-12 relative" draggable={false} />
         <div className="flex flex-col gap-1 w-64 relative">
           <MenuButton title="Resume" onClick={onResume} />
           <MenuButton title="Settings" onClick={onOpenSettings} />
@@ -36,6 +37,7 @@ export default class GameMenu extends Component {
             style={{ ...DANGER_BTN, borderRadius: '6px' }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.55)'; e.currentTarget.style.transform = 'scale(1.02)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.35)'; e.currentTarget.style.transform = 'scale(1)'; }}
+            data-sound={UI.CANCEL}
             onClick={onQuit}
           >
             Quit Game

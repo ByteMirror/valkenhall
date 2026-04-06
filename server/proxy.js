@@ -6,6 +6,7 @@
 import express from 'express';
 import cors from 'cors';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'url';
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from '@aws-sdk/client-cognito-identity';
 import { SignatureV4 } from '@aws-sdk/signature-v4';
@@ -621,6 +622,50 @@ app.get('/sorcery-images/:filename', async (req, res) => {
     res.send(buffer);
   } catch (error) {
     res.status(502).json({ error: 'Failed to fetch image', details: error.message });
+  }
+});
+
+// --- Auth token persistence ---
+
+const AUTH_TOKEN_DIR = path.resolve(
+  process.env.FAB_BUILDER_DATA_DIR ||
+    (process.platform === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Application Support', 'fab-builder')
+      : process.platform === 'win32'
+        ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'fab-builder')
+        : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'fab-builder')),
+);
+const AUTH_TOKEN_PATH = path.join(AUTH_TOKEN_DIR, 'auth-token.json');
+
+app.get('/api/auth/token', async (_req, res) => {
+  try {
+    const raw = await fs.readFile(AUTH_TOKEN_PATH, 'utf8');
+    const { token } = JSON.parse(raw);
+    res.json({ token });
+  } catch (error) {
+    if (error?.code === 'ENOENT') return res.json({ token: null });
+    res.status(500).json({ error: 'Failed to read token' });
+  }
+});
+
+app.put('/api/auth/token', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'Token is required' });
+    await fs.mkdir(AUTH_TOKEN_DIR, { recursive: true });
+    await fs.writeFile(AUTH_TOKEN_PATH, JSON.stringify({ token }), 'utf8');
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save token' });
+  }
+});
+
+app.delete('/api/auth/token', async (_req, res) => {
+  try {
+    await fs.unlink(AUTH_TOKEN_PATH).catch(() => {});
+    res.status(204).end();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to remove token' });
   }
 });
 

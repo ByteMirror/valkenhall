@@ -1,5 +1,8 @@
 import { Component } from 'preact';
-import { Mail, Users } from 'lucide-react';
+import { Mail, Users, Sparkles } from 'lucide-react';
+import AppHeader from './AppHeader';
+import AmbientParticles from './AmbientParticles';
+import StoreTorchFX from './StoreTorchFX';
 import DeckCardTile from './DeckCardTile';
 import RuneSpinner from './RuneSpinner';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil.js';
@@ -104,6 +107,7 @@ export default class AuctionHouse extends Component {
       sortOrder: 'desc',
       page: 0,
       selectedCardId: null,
+      selectedFoiling: 'S',
       sellPrice: '',
       sellQuantity: 1,
       sellLoading: false,
@@ -117,6 +121,7 @@ export default class AuctionHouse extends Component {
       viewScale: getViewportScale(),
       previewListing: null,
       elementFilters: new Set(),
+      foilOnly: false,
       sellSearch: '',
       now: Date.now(),
     };
@@ -227,8 +232,9 @@ export default class AuctionHouse extends Component {
 
     this.setState({ sellLoading: true, sellError: null });
     try {
+      const foiling = this.state.selectedFoiling || 'S';
       for (let i = 0; i < qty; i++) {
-        await createListing(profile.serverToken, selectedCardId, card.name, price);
+        await createListing(profile.serverToken, selectedCardId, card.name, price, foiling);
       }
       let collection = [...profile.collection];
       for (let i = 0; i < qty; i++) {
@@ -238,7 +244,7 @@ export default class AuctionHouse extends Component {
       }
       playUI(UI.GOLD);
       this.props.onUpdateProfile({ ...profile, collection });
-      this.setState({ selectedCardId: null, sellPrice: '', sellQuantity: 1 });
+      this.setState({ selectedCardId: null, selectedFoiling: 'S', sellPrice: '', sellQuantity: 1 });
       this.loadMyListings();
     } catch (err) {
       this.setState({ sellError: err.message });
@@ -313,6 +319,17 @@ export default class AuctionHouse extends Component {
         return card?.elements?.some((e) => elementFilters.has(e.name));
       });
     }
+    if (this.state.foilOnly) {
+      filteredListings = filteredListings.filter((listing) => {
+        if (listing.foiling === 'F' || listing.foiling === 'R') return true;
+        // Fallback: check if the card name contains foil indicator from the listing
+        if (listing.foiling) return false;
+        // No foiling field — check the card's printings for any foil variant
+        const card = findCard(sorceryCards, listing.cardId);
+        const printing = card?.printings?.find((p) => p.unique_id === listing.printingId);
+        return printing && isFoilFinish(printing.foiling);
+      });
+    }
 
     return (
       <div className="flex gap-0 flex-1 min-h-0">
@@ -359,6 +376,18 @@ export default class AuctionHouse extends Component {
                   <span className="hidden md:inline">{el}</span>
                 </button>
               ))}
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] transition-colors cursor-pointer"
+                style={this.state.foilOnly
+                  ? { ...TAB_ACTIVE, borderRadius: '4px', aspectRatio: '1' }
+                  : { ...TAB_INACTIVE, borderRadius: '4px', aspectRatio: '1' }
+                }
+                title="Show foil cards only"
+                onClick={() => this.setState((s) => ({ foilOnly: !s.foilOnly }))}
+              >
+                <Sparkles size={13} style={{ color: this.state.foilOnly ? ACCENT_GOLD : TEXT_MUTED }} />
+              </button>
             </div>
           </div>
 
@@ -644,23 +673,30 @@ export default class AuctionHouse extends Component {
         }
       }
       // Standard version
+      let addedForCard = 0;
       const stdGroup = foilGroups.get('S');
       if (stdGroup && stdGroup.ownedQty > 0) {
         sellEntries.push({ card, printing: stdGroup.printing, foiling: 'S', qty: stdGroup.ownedQty });
+        addedForCard++;
       }
       // Foil/rainbow variants
       for (const [f, group] of foilGroups) {
         if (f === 'S') continue;
         if (group.ownedQty > 0) {
           sellEntries.push({ card, printing: group.printing, foiling: f, qty: group.ownedQty });
+          addedForCard++;
         }
       }
       // Fallback: if no printing-level tracking, show card-level qty
-      if (foilGroups.size === 0 || (sellEntries.length === 0 && getAvailableQuantity(card.unique_id, ownedMap, usedMap) > 0)) {
+      if (addedForCard === 0 && getAvailableQuantity(card.unique_id, ownedMap, usedMap) > 0) {
         const p = printings[0] || {};
         sellEntries.push({ card, printing: p, foiling: p.foiling || 'S', qty: getAvailableQuantity(card.unique_id, ownedMap, usedMap) });
       }
     }
+
+    const filteredSellEntries = this.state.foilOnly
+      ? sellEntries.filter((e) => e.foiling === 'F' || e.foiling === 'R')
+      : sellEntries;
 
     const selectedCard = selectedCardId ? findCard(sorceryCards, selectedCardId) : null;
     const selectedQty = selectedCardId ? getAvailableQuantity(selectedCardId, ownedMap, usedMap) : 0;
@@ -713,16 +749,28 @@ export default class AuctionHouse extends Component {
                   <span className="hidden md:inline">{el}</span>
                 </button>
               ))}
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] transition-colors cursor-pointer"
+                style={this.state.foilOnly
+                  ? { ...TAB_ACTIVE, borderRadius: '4px', aspectRatio: '1' }
+                  : { ...TAB_INACTIVE, borderRadius: '4px', aspectRatio: '1' }
+                }
+                title="Show foil cards only"
+                onClick={() => this.setState((s) => ({ foilOnly: !s.foilOnly }))}
+              >
+                <Sparkles size={13} style={{ color: this.state.foilOnly ? ACCENT_GOLD : TEXT_MUTED }} />
+              </button>
             </div>
           </div>
 
           {/* Card grid */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {sellEntries.length === 0 ? (
+            {filteredSellEntries.length === 0 ? (
               <div className="text-center py-16 text-sm" style={{ color: TEXT_MUTED }}>No available cards to sell</div>
             ) : (
               <div className="card-grid px-4">
-                {sellEntries.map((entry, idx) => {
+                {filteredSellEntries.map((entry, idx) => {
                   const { card, printing, foiling, qty } = entry;
                   const key = `${card.unique_id}-${foiling}`;
                   const isSelected = selectedCardId === card.unique_id;
@@ -732,7 +780,7 @@ export default class AuctionHouse extends Component {
                       <DeckCardTile
                         entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: idx }}
                         isSelected={isSelected}
-                        onClick={() => this.setState({ selectedCardId: card.unique_id, sellPrice: '', sellQuantity: 1, sellError: null })}
+                        onClick={() => this.setState({ selectedCardId: card.unique_id, selectedFoiling: foiling, sellPrice: '', sellQuantity: 1, sellError: null })}
                       />
                       <div className="flex items-center justify-center gap-1 mt-1">
                         {qty > 1 && (
@@ -756,7 +804,7 @@ export default class AuctionHouse extends Component {
               <OrnamentalDivider className="my-3" />
               <div
                 className="relative flex items-start gap-4 p-4 shrink-0"
-                style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.18)`, borderRadius: '8px' }}
+                style={{ background: 'rgba(12, 10, 8, 0.92)', border: `1px solid ${GOLD} 0.18)`, borderRadius: '8px' }}
               >
                 <FourCorners />
                 <img
@@ -765,7 +813,21 @@ export default class AuctionHouse extends Component {
                   className="w-20 rounded-lg aspect-[63/88] object-cover bg-black/40 shrink-0"
                 />
                 <div className="flex-1 flex flex-col gap-2 min-w-0">
-                  <div className="text-sm font-bold truncate" style={{ color: TEXT_PRIMARY }}>{selectedCard.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold truncate" style={{ color: TEXT_PRIMARY }}>{selectedCard.name}</span>
+                    {isFoilFinish(this.state.selectedFoiling) && (
+                      <span className="flex items-center gap-1 shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                        style={{
+                          color: this.state.selectedFoiling === 'R' ? '#c480e0' : ACCENT_GOLD,
+                          background: this.state.selectedFoiling === 'R' ? 'rgba(196,128,224,0.1)' : `${GOLD} 0.1)`,
+                          border: `1px solid ${this.state.selectedFoiling === 'R' ? 'rgba(196,128,224,0.25)' : `${GOLD} 0.25)`}`,
+                        }}
+                      >
+                        <Sparkles size={11} />
+                        {FOIL_LABEL[this.state.selectedFoiling]}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs" style={{ color: TEXT_MUTED }}>
                     Available: <span style={{ color: ACCENT_GOLD }}>{selectedQty}</span>
                   </div>
@@ -812,7 +874,7 @@ export default class AuctionHouse extends Component {
                       className="px-3 py-1.5 text-xs cursor-pointer transition-all"
                       style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                       data-sound={UI.CANCEL}
-                      onClick={() => this.setState({ selectedCardId: null, sellPrice: '', sellError: null })}
+                      onClick={() => this.setState({ selectedCardId: null, selectedFoiling: 'S', sellPrice: '', sellError: null })}
                     >
                       Cancel
                     </button>
@@ -866,12 +928,10 @@ export default class AuctionHouse extends Component {
                               />
                             )}
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>
+                              <div className="text-xs font-semibold truncate flex items-center gap-1.5" style={{ color: TEXT_PRIMARY }}>
                                 {card?.name || listing.cardId}
                                 {isFoilFinish(listing.foiling) && (
-                                  <span className="ml-1 text-[9px]" style={{ color: listing.foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>
-                                    {FOIL_LABEL[listing.foiling]}
-                                  </span>
+                                  <Sparkles size={11} className="shrink-0" style={{ color: listing.foiling === 'R' ? '#c480e0' : ACCENT_GOLD }} />
                                 )}
                               </div>
                             </div>
@@ -925,8 +985,11 @@ export default class AuctionHouse extends Component {
                                 className="w-7 rounded aspect-[63/88] object-cover bg-black/40 shrink-0"
                               />
                             )}
-                            <span className="text-xs flex-1 truncate" style={{ color: TEXT_MUTED }}>
+                            <span className="text-xs flex-1 truncate flex items-center gap-1" style={{ color: TEXT_MUTED }}>
                               {card?.name || listing.cardId}
+                              {isFoilFinish(listing.foiling) && (
+                                <Sparkles size={10} className="shrink-0" style={{ color: listing.foiling === 'R' ? '#c480e0' : ACCENT_GOLD }} />
+                              )}
                             </span>
                             <span className="text-xs font-semibold shrink-0" style={{ color: '#6ab04c' }}>
                               +{listing.price}g
@@ -950,34 +1013,44 @@ export default class AuctionHouse extends Component {
     const { tab, error, viewScale } = this.state;
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: BG_ATMOSPHERE, color: TEXT_BODY }}>
-        <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: '#08080a', color: TEXT_BODY }}>
+        {/* Background image with blur */}
+        <div className="absolute inset-0" style={{ background: "url('/auction-bg.webp') center/cover no-repeat", filter: 'blur(1.5px)', transform: 'scale(1.008)' }} />
+        {/* Darken overlay */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.35) 40%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.75) 100%)' }} />
+        {/* Vignette */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
+
+        {/* Torch firelight glow + particles — behind all UI */}
+        <StoreTorchFX />
+        <AmbientParticles preset="auction" />
+
+        {/* All UI content sits above effects */}
+        <div className="relative z-10 flex flex-col flex-1 min-h-0">
 
         {/* Top bar */}
-        <div
-          className="relative flex items-center gap-4 px-6 py-3 shrink-0"
-          style={{ background: PANEL_BG, borderBottom: `1px solid ${GOLD} 0.15)`, zoom: viewScale }}
+        <AppHeader
+          profile={profile}
+          onToggleMailbox={onToggleMailbox}
+          mailboxUnreadCount={mailboxUnreadCount}
+          mailboxDropdown={mailboxDropdown}
+          onToggleFriends={onToggleFriends}
+          friendListData={friendListData}
+          zoom={viewScale}
         >
           <button
             type="button"
             className="px-3 py-1.5 text-xs font-medium cursor-pointer transition-all"
             style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
             data-sound={UI.CANCEL}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
             onClick={onBack}
           >
             Back to Hub
           </button>
-          <div
-            className="text-sm font-bold arena-heading"
-            style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
-          >
+          <div className="text-sm font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
             Auction House
           </div>
-
-          {/* Tabs inline */}
-          <div className="flex items-center gap-2 ml-6">
+          <div className="flex items-center gap-2 ml-4">
             {[
               { key: 'browse', label: 'Browse' },
               { key: 'sell', label: 'Sell & My Listings' },
@@ -993,49 +1066,7 @@ export default class AuctionHouse extends Component {
               </button>
             ))}
           </div>
-
-          <div className="ml-auto flex items-center gap-3">
-            <div className="relative">
-              <button
-                type="button"
-                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-                onClick={onToggleMailbox}
-              >
-                <Mail size={14} />
-                Mailbox
-                {(mailboxUnreadCount || 0) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
-                    {mailboxUnreadCount}
-                  </span>
-                )}
-              </button>
-              {mailboxDropdown}
-            </div>
-            <button
-              type="button"
-              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onClick={onToggleFriends}
-            >
-              <Users size={14} />
-              Friends
-              {(friendListData?.pendingCount || 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
-                  {friendListData.pendingCount}
-                </span>
-              )}
-            </button>
-            <span
-              className="inline-block w-3.5 h-3.5 rounded-full"
-              style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 6px ${GOLD} 0.4)` }}
-            />
-            <span className="text-sm font-bold" style={{ color: COIN_COLOR, textShadow: `0 0 8px ${GOLD} 0.3)` }}>
-              {profile.coins}
-            </span>
-            <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>gold</span>
-          </div>
-        </div>
+        </AppHeader>
 
         {/* Error banner */}
         {error && (
@@ -1080,6 +1111,7 @@ export default class AuctionHouse extends Component {
             {this.state.purchaseMessage}
           </div>
         )}
+        </div>{/* end UI content wrapper */}
       </div>
     );
   }

@@ -1,5 +1,7 @@
 import { Component } from 'preact';
 import { Mail } from 'lucide-react';
+import RuneSpinner from './RuneSpinner';
+import { UI } from '../utils/arena/uiSounds';
 import { cn } from '../lib/utils';
 import { getPublicProfile } from '../utils/friendsApi';
 import { xpProgressInLevel, levelFromXp } from '../utils/arena/profileDefaults';
@@ -88,12 +90,12 @@ export default class FriendProfileOverlay extends Component {
           <FourCorners radius={12} />
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 rounded-full animate-spin" style={{ border: `2px solid ${GOLD} 0.2)`, borderTopColor: ACCENT_GOLD }} />
+              <RuneSpinner size={56} />
             </div>
           ) : error ? (
             <div className="text-center py-16 px-6">
               <div className="text-sm" style={{ color: '#c45050' }}>{error}</div>
-              <button type="button" className="mt-3 text-xs cursor-pointer" style={{ color: TEXT_MUTED }} onClick={onClose}>Close</button>
+              <button type="button" className="mt-3 text-xs cursor-pointer" style={{ color: TEXT_MUTED }} data-sound={UI.CANCEL} onClick={onClose}>Close</button>
             </div>
           ) : profile ? this.renderProfile(profile) : null}
         </div>
@@ -150,6 +152,7 @@ export default class FriendProfileOverlay extends Component {
             style={{ color: TEXT_MUTED }}
             onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
+            data-sound={UI.CANCEL}
             onClick={onClose}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -403,6 +406,7 @@ export default class FriendProfileOverlay extends Component {
                   style={{ color: TEXT_MUTED }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
+                  data-sound={UI.CANCEL}
                   onClick={() => this.setState({ showAchievements: false })}
                 >
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>

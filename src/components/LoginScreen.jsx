@@ -36,7 +36,7 @@ export default class LoginScreen extends Component {
     this.setState({ loading: true, error: null });
     try {
       const result = await verifyLoginCode(email.trim(), code.trim());
-      setStoredToken(result.token);
+      await setStoredToken(result.token);
       this.props.onLogin(result);
     } catch (err) {
       this.setState({ error: err.message, loading: false });
@@ -53,7 +53,7 @@ export default class LoginScreen extends Component {
 
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
-        <img src="/flesh-and-blood-proxies/valkenhall-logo.png" alt="Valkenhall" className="w-[48rem] max-w-[90vw] mb-10" draggable={false} />
+        <img src="/valkenhall-logo.png" alt="Valkenhall" className="w-[48rem] max-w-[90vw] mb-10" draggable={false} />
         <div className="w-full max-w-sm">
 
           {step === 'email' ? (

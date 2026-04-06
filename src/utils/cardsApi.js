@@ -1,5 +1,5 @@
 import { getLocalApiOrigin } from './localApi';
-export const APP_BASE_PATH = '/flesh-and-blood-proxies';
+export const APP_BASE_PATH = '';
 
 export function getCardsAssetUrl(locationLike = globalThis.location) {
   const pathname = locationLike?.pathname || '';

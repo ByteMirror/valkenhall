@@ -52,7 +52,7 @@ export function normalizeSorceryCard(raw, imageBaseUrl = '') {
   const printings = [];
   for (const set of raw.sets || []) {
     const setRarity = set.metadata?.rarity || guardian.rarity;
-    for (const variant of (set.variants || []).filter((v) => v.finish === 'Standard')) {
+    for (const variant of set.variants || []) {
       printings.push({
         unique_id: variant.slug,
         set_printing_unique_id: variant.slug,

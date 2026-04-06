@@ -65,13 +65,17 @@ function ContextMenuContent({
       role="menu"
       aria-label={ariaLabel}
       className={cn(
-        'fixed z-[140] min-w-60 overflow-hidden rounded-2xl border border-border/70 bg-popover/96 p-1.5 text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl',
+        'fixed z-[140] min-w-60 overflow-hidden rounded-lg p-1',
         className
       )}
       style={{
         left: `${resolvedPosition.x}px`,
         top: `${resolvedPosition.y}px`,
         width: `${MENU_WIDTH}px`,
+        background: 'rgba(12, 10, 8, 0.96)',
+        border: '1px solid rgba(180, 140, 60, 0.25)',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.5), 0 0 20px rgba(180,140,60,0.04)',
+        backdropFilter: 'blur(16px)',
       }}
     >
       {children}
@@ -80,23 +84,48 @@ function ContextMenuContent({
   );
 }
 
-function ContextMenuItem({ className, inset = false, onClick, ...props }) {
+function ContextMenuItem({ className, inset = false, onClick, children, ...props }) {
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
       role="menuitem"
-      className={cn('w-full justify-start rounded-xl px-3 py-2 text-left text-sm', inset && 'pl-8', className)}
+      className={cn(
+        'w-full text-left rounded px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+        inset && 'pl-8',
+        className
+      )}
+      style={{
+        color: '#A6A09B',
+        background: 'transparent',
+        border: 'none',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'rgba(180,140,60,0.1)';
+        e.currentTarget.style.color = '#e8d5a0';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = '#A6A09B';
+      }}
       onClick={(event) => {
         onClick?.(event);
       }}
       {...props}
-    />
+    >
+      {children}
+    </button>
   );
 }
 
 function ContextMenuSeparator({ className, ...props }) {
-  return <div className={cn('mx-2 my-1 h-px bg-border/70', className)} aria-hidden="true" {...props} />;
+  return (
+    <div
+      className={cn('mx-2 my-1 h-px', className)}
+      style={{ background: 'linear-gradient(90deg, transparent, rgba(180,140,60,0.2), transparent)' }}
+      aria-hidden="true"
+      {...props}
+    />
+  );
 }
 
 export { ContextMenuContent, ContextMenuItem, ContextMenuSeparator };

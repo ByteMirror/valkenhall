@@ -1,5 +1,5 @@
 import { Component } from 'preact';
-import { Mail, Users } from 'lucide-react';
+import AppHeader from './AppHeader';
 import {
   GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   BEVELED_BTN, INPUT_STYLE, BG_ATMOSPHERE, VIGNETTE, PANEL_BG,
@@ -56,10 +56,14 @@ export default class DeckGallery extends Component {
         <div className="absolute inset-0 pointer-events-none" style={{ background: BG_ATMOSPHERE }} />
         <div className="absolute inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
 
-        {/* Header — minimal, just back + title */}
-        <div
-          className="relative z-10 flex items-center gap-4 px-6 py-3"
-          style={{ borderBottom: `1px solid ${GOLD} 0.12)`, background: PANEL_BG, zoom: viewScale }}
+        <AppHeader
+          profile={this.props.profile}
+          onToggleMailbox={onToggleMailbox}
+          mailboxUnreadCount={mailboxUnreadCount}
+          mailboxDropdown={mailboxDropdown}
+          onToggleFriends={onToggleFriends}
+          friendListData={friendListData}
+          zoom={viewScale}
         >
           <button
             type="button"
@@ -72,40 +76,7 @@ export default class DeckGallery extends Component {
             Back
           </button>
           <h1 className="arena-heading text-lg font-bold" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Deck Collection</h1>
-          <div className="ml-auto flex items-center gap-3">
-            <div className="relative">
-              <button
-                type="button"
-                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-                onClick={onToggleMailbox}
-              >
-                <Mail size={14} />
-                Mailbox
-                {(mailboxUnreadCount || 0) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
-                    {mailboxUnreadCount}
-                  </span>
-                )}
-              </button>
-              {mailboxDropdown}
-            </div>
-            <button
-              type="button"
-              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onClick={onToggleFriends}
-            >
-              <Users size={14} />
-              Friends
-              {(friendListData?.pendingCount || 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
-                  {friendListData.pendingCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+        </AppHeader>
 
         {/* Body */}
         <div className="relative z-10 flex-1 overflow-y-auto" style={{ zoom: viewScale }}>

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const APP_BASE_PATH = '/flesh-and-blood-proxies';
+export const APP_BASE_PATH = '';
 const DEFAULT_RENDERER_HOST = '127.0.0.1';
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,15 +29,10 @@ export function resolveDistDirectory() {
 }
 
 function resolveRendererAssetPath(distDir, pathname) {
-  if (pathname === '/' || pathname === '') {
-    return { redirect: APP_BASE_PATH };
-  }
-
-  if (!pathname.startsWith(APP_BASE_PATH)) {
-    return null;
-  }
-
-  const relativePath = pathname.slice(APP_BASE_PATH.length).replace(/^\/+/, '') || 'index.html';
+  const stripped = APP_BASE_PATH && pathname.startsWith(APP_BASE_PATH)
+    ? pathname.slice(APP_BASE_PATH.length)
+    : pathname;
+  const relativePath = stripped.replace(/^\/+/, '') || 'index.html';
   const requestedFile = path.join(distDir, relativePath);
 
   if (existsSync(requestedFile) && !requestedFile.endsWith(path.sep)) {

@@ -2,6 +2,7 @@ import { Component } from 'preact';
 import { Mail, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import RuneSpinner from './RuneSpinner';
+import AppHeader from './AppHeader';
 import DeckEditorCollection from './DeckEditorCollection';
 import DeckEditorSidebar from './DeckEditorSidebar';
 import { playUI, UI } from '../utils/arena/uiSounds';
@@ -369,24 +370,24 @@ export default class DeckEditor extends Component {
         <div className="absolute inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
 
         {/* ─── TOOLBAR ──────────────────────────────────────── */}
-        <div
-          className="relative z-10 flex items-center gap-3 px-5 py-2.5 shrink-0"
-          style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', zoom: viewScale }}
+        <AppHeader
+          profile={arenaProfile}
+          onToggleMailbox={onToggleMailbox}
+          mailboxUnreadCount={mailboxUnreadCount}
+          mailboxDropdown={mailboxDropdown}
+          onToggleFriends={onToggleFriends}
+          friendListData={friendListData}
+          zoom={viewScale}
         >
-          {/* Back button */}
           <button
             type="button"
             data-sound={UI.CANCEL}
             className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
             style={{ ...BEVELED_BTN, color: TEXT_BODY }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
             onClick={this.handleBack}
           >
             &#8592; Back
           </button>
-
-          {/* Deck name input */}
           <input
             type="text"
             value={deckName}
@@ -395,58 +396,14 @@ export default class DeckEditor extends Component {
             style={{ ...INPUT_STYLE, color: TEXT_PRIMARY, fontSize: '18px' }}
             onInput={(e) => this.setState({ deckName: e.target.value, hasUnsavedChanges: true })}
           />
-
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Mailbox button */}
-          <div className="relative">
-            <button
-              type="button"
-              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onClick={onToggleMailbox}
-            >
-              <Mail size={14} />
-              Mailbox
-              {(mailboxUnreadCount || 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
-                  {mailboxUnreadCount}
-                </span>
-              )}
-            </button>
-            {mailboxDropdown}
-          </div>
-
-          {/* Friends button */}
-          <button
-            type="button"
-            className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-            style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-            onClick={onToggleFriends}
-          >
-            <Users size={14} />
-            Friends
-            {(friendListData?.pendingCount || 0) > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
-                {friendListData.pendingCount}
-              </span>
-            )}
-          </button>
-
-          {/* Stats button */}
           <button
             type="button"
             className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
             style={{ ...BEVELED_BTN, color: TEXT_BODY }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
             onClick={() => this.setState({ showStats: true })}
           >
             Stats
           </button>
-
-          {/* Save button */}
           <button
             type="button"
             data-sound={UI.CONFIRM}
@@ -457,7 +414,7 @@ export default class DeckEditor extends Component {
           >
             {isSaving ? <RuneSpinner size={18} className="inline-block" /> : 'Save Deck'}
           </button>
-        </div>
+        </AppHeader>
 
         {/* ─── MAIN CONTENT ─────────────────────────────────── */}
         <div

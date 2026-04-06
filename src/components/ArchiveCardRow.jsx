@@ -5,6 +5,7 @@ import { getPitchLabel } from '../utils/deckMetrics';
 import { Button } from './ui/button';
 import PrintingSelector from './PrintingSelector';
 import { buildPrintingOptions, resolveDefaultPrinting } from './printingOptions';
+import { isFoilFinish, FOIL_LABEL_COLOR } from '../utils/sorcery/foil.js';
 
 function getPitchTone(pitchLabel) {
   if (pitchLabel === 'Red') {
@@ -117,7 +118,14 @@ export default function ArchiveCardRow({
       />
       <div className={cn('grid min-w-0 gap-3', !arenaAvailability && 'sm:grid-cols-[minmax(0,1fr)_minmax(170px,220px)] sm:items-center')}>
         <div className="min-w-0">
-          <strong className="block truncate text-sm text-card-foreground">{card.name}</strong>
+          <strong className="block truncate text-sm text-card-foreground">
+            {card.name}
+            {isFoilFinish(selectedPrinting?.foiling) ? (
+              <span className={`ml-1.5 text-[9px] font-semibold ${FOIL_LABEL_COLOR[selectedPrinting.foiling]}`}>
+                {selectedPrinting.foiling === 'R' ? 'RAINBOW' : 'FOIL'}
+              </span>
+            ) : null}
+          </strong>
           {arenaAvailability ? (
             <div className="mt-1.5 flex items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">

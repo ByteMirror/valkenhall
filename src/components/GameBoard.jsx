@@ -25,6 +25,8 @@ import {
 import * as THREE from 'three';
 import ArenaMatchResult from './ArenaMatchResult';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
+import { resolveCombat, resolveSiteAttack, getValidTargets, resolveMultiCombat, getDefenders, getInterceptors } from '../utils/game/combat';
+import { getMovementAbilities, getMaxSteps, isValidStep, getLevelOptions, LEVELS } from '../utils/game/movementAbilities';
 
 
 export default class GameBoard extends Component {
@@ -96,6 +98,12 @@ export default class GameBoard extends Component {
       gridDragStart: null,
       gridDragEnd: null,
       gridAdjustHandle: null,
+      combatSelectingTarget: null,
+      pendingAttack: null,
+      defendPrompt: null,
+      waitingForDefense: false,
+      interceptPrompt: null,
+      waitingForIntercept: false,
     };
   }
 
@@ -171,6 +179,10 @@ export default class GameBoard extends Component {
     this.trackerButtonMeshes.clear();
     this.trackerPreviewMarkers = [];
     this.clearGridVisualization();
+    if (this._combatHighlightPulse) cancelAnimationFrame(this._combatHighlightPulse);
+    if (this._defendHighlightPulse) cancelAnimationFrame(this._defendHighlightPulse);
+    if (this._interceptHighlightPulse) cancelAnimationFrame(this._interceptHighlightPulse);
+    this.clearPathStepLabel();
     disposeTextureCache();
     this.scene?.dispose();
     this.scene = null;
@@ -218,6 +230,19 @@ export default class GameBoard extends Component {
       return;
     }
     if (event.key === 'Escape') {
+      if (this._pathMode) {
+        this.cancelPathMode();
+        this.hideGridCellHighlight();
+        this.setState({ contextMenu: null });
+        return;
+      }
+      if (this.state.combatSelectingTarget) {
+        this.clearCombatHighlights();
+        toast('Target selection cancelled');
+        return;
+      }
+      // Don't allow escape out of defend/intercept prompts or waiting states
+      if (this.state.defendPrompt || this.state.interceptPrompt || this.state.waitingForDefense || this.state.waitingForIntercept) return;
       if (this.state.showExitConfirm) {
         this.setState({ showExitConfirm: false });
       } else {
@@ -561,6 +586,35 @@ export default class GameBoard extends Component {
           this.matchResultRef.applyRewards(iWon);
         }
       },
+      'combat:resolve': (data) => {
+        this.applyRemoteCombatResolve(data);
+      },
+      'combat:siteAttack': (data) => {
+        this.applyRemoteSiteAttack(data);
+      },
+      'combat:declareAttack': (data) => {
+        this.handleRemoteDeclareAttack(data);
+      },
+      'combat:defendResponse': (data) => {
+        this.handleRemoteDefendResponse(data);
+      },
+      'combat:moveComplete': (data) => {
+        this.handleRemoteMoveComplete(data);
+      },
+      'combat:interceptResponse': (data) => {
+        this.handleRemoteInterceptResponse(data);
+      },
+      'combat:multiResolve': (data) => {
+        this.applyRemoteMultiCombatResolve(data);
+      },
+      'card:level': (data) => {
+        const mesh = this.meshes.get(data.cardId);
+        if (mesh) {
+          const ci = mesh.userData.cardInstance;
+          ci._level = data.level;
+          this.updateLevelIndicator(ci, mesh);
+        }
+      },
     };
 
     for (const [event, handler] of Object.entries(actionHandlers)) {
@@ -848,6 +902,84 @@ export default class GameBoard extends Component {
       return;
     }
 
+    // Defend prompt: clicking valid defenders on the board toggles them
+    if (this.state.defendPrompt) {
+      const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
+      if (hits.length > 0) {
+        const hit = this.findHitObject(hits[0].object);
+        if (hit?.userData.type === 'card') {
+          const clickedCard = hit.userData.cardInstance;
+          if (this.state.defendPrompt.validDefenders.includes(clickedCard.id)) {
+            this.toggleDefender(clickedCard.id);
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+      event.preventDefault();
+      return;
+    }
+
+    // Intercept prompt: clicking valid interceptors toggles them
+    if (this.state.interceptPrompt) {
+      const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
+      if (hits.length > 0) {
+        const hit = this.findHitObject(hits[0].object);
+        if (hit?.userData.type === 'card') {
+          const clickedCard = hit.userData.cardInstance;
+          if (this.state.interceptPrompt.validInterceptors.includes(clickedCard.id)) {
+            this.toggleInterceptor(clickedCard.id);
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+      event.preventDefault();
+      return;
+    }
+
+    // Block interaction while waiting for opponent response
+    if (this.state.waitingForDefense || this.state.waitingForIntercept) {
+      event.preventDefault();
+      return;
+    }
+
+    // Combat target selection mode: clicking selects a target
+    if (this.state.combatSelectingTarget) {
+      const { attackerInstance, attackerMesh, targetIds } = this.state.combatSelectingTarget;
+      const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
+      if (hits.length > 0) {
+        const hit = this.findHitObject(hits[0].object);
+        if (hit?.userData.type === 'card') {
+          const clickedCard = hit.userData.cardInstance;
+          if (targetIds.has(clickedCard.id)) {
+            this.resolveCombatAction(attackerInstance, attackerMesh, clickedCard, hit);
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+      // Clicked something that isn't a valid target — cancel
+      this.clearCombatHighlights();
+      toast('Target selection cancelled');
+      event.preventDefault();
+      return;
+    }
+
+    // Path mode: clicking adds cells to the path
+    if (this._pathMode) {
+      const point = this.scene.raycastTablePoint(event);
+      if (point) {
+        const cell = this.getGridCellAt(point.x, point.z);
+        if (cell) {
+          this.addCellToPath(cell.col, cell.row);
+          playSound('cardPickup');
+        }
+      }
+      event.preventDefault();
+      return;
+    }
+
     // Priority raycast: check life buttons first (they're children of cards, so
     // the general raycast hits the card before the button)
     const lifeButtonMeshes = [];
@@ -945,16 +1077,43 @@ export default class GameBoard extends Component {
     if (hit?.userData.type === 'card') {
       if (!this.isOwnedCard(hit.userData.cardInstance)) return;
 
-      // When cards are expanded, collapse first — user needs to click again to drag
+      // When cards are expanded and user clicks a card NOT in the expanded cell, collapse first
+      const ci = hit.userData.cardInstance;
       if (this._expandedCell) {
+        const inExpandedCell = ci._gridCol === this._expandedCell.col && ci._gridRow === this._expandedCell.row;
+        if (!inExpandedCell) {
+          this.collapseCellHover();
+          event.preventDefault();
+          return;
+        }
+        // Card IS in expanded cell — allow interaction, then collapse
         this.collapseCellHover();
+      }
+      const isOnGrid = ci._gridCol != null && ci._gridRow != null;
+      const isSite = ci.isSite;
+
+      // Click a non-site card on the grid: directly start Move path mode
+      if (isOnGrid && !isSite) {
+        if (this._pathMode && this._pathMode.cardInstance.id === ci.id) {
+          this.cancelPathMode();
+          event.preventDefault();
+          return;
+        }
+        const abilities = this.getCardAbilities(ci);
+        if (abilities?.immobile) {
+          toast('This unit is immobile');
+          event.preventDefault();
+          return;
+        }
+        this.startPathMode(ci, hit, 'move');
         event.preventDefault();
         return;
       }
 
+      // Free drag for cards not on the grid or site cards
       this.dragging = {
         mesh: hit,
-        cardInstance: hit.userData.cardInstance,
+        cardInstance: ci,
         offsetX: 0,
         offsetZ: 0,
       };
@@ -993,6 +1152,23 @@ export default class GameBoard extends Component {
         this.gridDraggingHandle = this.gridHandles.find((h) =>
           h.userData.colIndex === colIndex && h.userData.rowIndex === rowIndex
         ) || null;
+      }
+      return;
+    }
+
+    // Path mode: update hover preview
+    if (this._pathMode) {
+      const point = this.scene.raycastTablePoint(event);
+      if (point) {
+        const cell = this.getGridCellAt(point.x, point.z);
+        const newHover = cell ? { col: cell.col, row: cell.row } : null;
+        const prev = this._pathMode.lastHoveredCell;
+        if (!prev || !newHover || prev.col !== newHover.col || prev.row !== newHover.row) {
+          this._pathMode.lastHoveredCell = newHover;
+          this.renderPathArrow();
+        }
+        // Show grid highlight on hovered cell
+        this.showGridCellHighlight(cell);
       }
       return;
     }
@@ -1209,6 +1385,21 @@ export default class GameBoard extends Component {
   };
 
   handleDoubleClick = (event) => {
+    // Path mode: double-click confirms the move immediately
+    if (this._pathMode && this._pathMode.path.length > 1) {
+      this.hideGridCellHighlight();
+      this.confirmPathMove();
+      event.preventDefault();
+      return;
+    }
+    if (this._pathMode) {
+      // Double-click with no path — cancel
+      this.cancelPathMode();
+      this.hideGridCellHighlight();
+      event.preventDefault();
+      return;
+    }
+
     const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
     if (hits.length === 0) return;
 
@@ -1233,6 +1424,13 @@ export default class GameBoard extends Component {
 
   handleContextMenu = (event) => {
     event.preventDefault();
+
+    // Right-click cancels path mode
+    if (this._pathMode) {
+      this.cancelPathMode();
+      this.hideGridCellHighlight();
+      return;
+    }
 
     const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
     if (hits.length === 0) {
@@ -1693,6 +1891,437 @@ export default class GameBoard extends Component {
     this.arrangeCardsInCell(col, row);
     this._expandedCell = null;
     this._expandedBounds = null;
+  };
+
+  // --- Path Movement Mode ---
+
+  startPathMode = (cardInstance, mesh, action = 'move') => {
+    const startCol = cardInstance._gridCol;
+    const startRow = cardInstance._gridRow;
+    const startCell = this.getGridCellByIndex(startCol, startRow);
+    if (!startCell) return;
+
+    // Look up full card data and parse movement abilities
+    const abilities = this.getCardAbilities(cardInstance);
+
+    if (abilities.immobile) {
+      toast('This unit is immobile');
+      return;
+    }
+
+    const maxSteps = getMaxSteps(abilities, action);
+
+    // Highlight the selected card
+    mesh.position.y += 0.5;
+
+    this._pathMode = {
+      cardInstance,
+      mesh,
+      startCol,
+      startRow,
+      action,
+      abilities,
+      maxSteps,
+      // Path is a list of {col, row} cells visited
+      path: [{ col: startCol, row: startRow }],
+      lastHoveredCell: null,
+    };
+    this.renderPathArrow();
+  };
+
+  cancelPathMode = () => {
+    if (!this._pathMode) return;
+    // Restore card height
+    this.arrangeCardsInCell(this._pathMode.startCol, this._pathMode.startRow);
+    this.clearPathArrow();
+    this.clearPathStepLabel();
+    this._pathMode = null;
+  };
+
+  addCellToPath = (col, row) => {
+    if (!this._pathMode) return;
+    const { path, abilities, maxSteps } = this._pathMode;
+    const last = path[path.length - 1];
+
+    // Validate adjacency using movement abilities (allows diagonals for Airborne)
+    if (!isValidStep(last.col, last.row, col, row, abilities)) return;
+
+    // Check if stepping back — remove last step (undo)
+    if (path.length >= 2) {
+      const prev = path[path.length - 2];
+      if (prev.col === col && prev.row === row) {
+        path.pop();
+        this.renderPathArrow();
+        return;
+      }
+    }
+
+    // Don't revisit cells already in path
+    if (path.some((p) => p.col === col && p.row === row)) return;
+
+    // Enforce step limit (path includes start cell, so steps = path.length - 1)
+    const currentSteps = path.length - 1;
+    if (currentSteps >= maxSteps) return;
+
+    path.push({ col, row });
+    this.renderPathArrow();
+  };
+
+  confirmPathMove = () => {
+    if (!this._pathMode) return;
+    const { cardInstance, mesh, startCol, startRow, path, action } = this._pathMode;
+    if (path.length <= 1) {
+      this.cancelPathMode();
+      return;
+    }
+
+    const dest = path[path.length - 1];
+    this.clearPathArrow();
+    this.clearPathStepLabel();
+    this.setState({ contextMenu: null });
+
+    // Animate the card along the path
+    this.animateCardAlongPath(cardInstance, mesh, path, () => {
+      const oldCol = cardInstance._gridCol;
+      const oldRow = cardInstance._gridRow;
+
+      cardInstance._gridCol = dest.col;
+      cardInstance._gridRow = dest.row;
+
+      this.arrangeCardsInCell(dest.col, dest.row);
+      if (oldCol !== dest.col || oldRow !== dest.row) {
+        this.arrangeCardsInCell(oldCol, oldRow);
+      }
+
+      playSound('cardPlace');
+      emitGameAction('card:move', {
+        cardId: cardInstance.id,
+        x: cardInstance.x,
+        y: mesh.position.y,
+        z: cardInstance.z,
+        action,
+        path: path.map((p) => ({ col: p.col, row: p.row })),
+      });
+
+      // Only Move & Attack taps the unit — plain movement does not
+      if (action === 'attack') {
+        if (!cardInstance.tapped) {
+          cardInstance.tapped = true;
+          animateCardTap(mesh, cardInstance);
+          emitGameAction('card:tap', { cardId: cardInstance.id, tapped: true });
+        }
+        this.enterTargetSelection(cardInstance, mesh);
+      } else if (action === 'move') {
+        // Broadcast move-complete so opponent can intercept
+        this.broadcastMoveComplete(cardInstance, dest.col, dest.row);
+      }
+    });
+
+    this._pathMode = null;
+  };
+
+  animateCardAlongPath = (cardInstance, mesh, path, onComplete) => {
+    if (path.length <= 1) { onComplete(); return; }
+
+    const waypoints = path.map((p) => {
+      const cell = this.getGridCellByIndex(p.col, p.row);
+      return cell ? { x: cell.centerX, z: cell.centerZ - cell.height * 0.18 } : null;
+    }).filter(Boolean);
+
+    if (waypoints.length <= 1) { onComplete(); return; }
+
+    const liftY = this.scene.CARD_REST_Y + 1.5;
+    mesh.position.y = liftY;
+    let step = 1;
+    const speed = 0.22; // lerp speed per frame — fast but smooth
+
+    const tick = () => {
+      if (step >= waypoints.length) {
+        onComplete();
+        return;
+      }
+      const target = waypoints[step];
+      const dx = target.x - mesh.position.x;
+      const dz = target.z - mesh.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < 0.3) {
+        mesh.position.x = target.x;
+        mesh.position.z = target.z;
+        cardInstance.x = target.x;
+        cardInstance.z = target.z;
+        step++;
+        requestAnimationFrame(tick);
+      } else {
+        mesh.position.x += dx * speed;
+        mesh.position.z += dz * speed;
+        requestAnimationFrame(tick);
+      }
+    };
+
+    requestAnimationFrame(tick);
+  };
+
+  renderPathArrow = () => {
+    this.clearPathArrow();
+    if (!this._pathMode || this._pathMode.path.length < 1) return;
+
+    const path = this._pathMode.path;
+    const Y = 0.2;
+    const verts = [];
+
+    for (let i = 0; i < path.length; i++) {
+      const cell = this.getGridCellByIndex(path[i].col, path[i].row);
+      if (!cell) continue;
+      if (i > 0) {
+        const prevCell = this.getGridCellByIndex(path[i - 1].col, path[i - 1].row);
+        if (prevCell) {
+          verts.push(prevCell.centerX, Y, prevCell.centerZ);
+          verts.push(cell.centerX, Y, cell.centerZ);
+        }
+      }
+    }
+
+    // Also draw to current hover cell if valid step and within step limit
+    const abilities = this._pathMode.abilities;
+    const maxSteps = this._pathMode.maxSteps;
+    const currentSteps = path.length - 1;
+    if (this._pathMode.lastHoveredCell) {
+      const hc = this._pathMode.lastHoveredCell;
+      const last = path[path.length - 1];
+      const validStep = isValidStep(last.col, last.row, hc.col, hc.row, abilities);
+      const withinLimit = currentSteps < maxSteps;
+      if (validStep && withinLimit && !path.some((p) => p.col === hc.col && p.row === hc.row)) {
+        const lastCell = this.getGridCellByIndex(last.col, last.row);
+        const hoverCell = this.getGridCellByIndex(hc.col, hc.row);
+        if (lastCell && hoverCell) {
+          verts.push(lastCell.centerX, Y, lastCell.centerZ);
+          verts.push(hoverCell.centerX, Y, hoverCell.centerZ);
+        }
+      }
+    }
+
+    // Build a thick ribbon from the path points
+    const points = [];
+    for (let i = 0; i < path.length; i++) {
+      const cell = this.getGridCellByIndex(path[i].col, path[i].row);
+      if (cell) points.push({ x: cell.centerX, z: cell.centerZ });
+    }
+    if (this._pathMode.lastHoveredCell) {
+      const hc = this._pathMode.lastHoveredCell;
+      const last = path[path.length - 1];
+      const validStep = isValidStep(last.col, last.row, hc.col, hc.row, abilities);
+      const withinLimit = currentSteps < maxSteps;
+      if (validStep && withinLimit && !path.some((p) => p.col === hc.col && p.row === hc.row)) {
+        const hoverCell = this.getGridCellByIndex(hc.col, hc.row);
+        if (hoverCell) points.push({ x: hoverCell.centerX, z: hoverCell.centerZ });
+      }
+    }
+
+    if (points.length < 2) return;
+
+    const ribbonWidth = 1.4;
+    const hw = ribbonWidth / 2;
+    const ribbonVerts = [];
+    const circleSegs = 10;
+
+    // Add a filled circle at each waypoint for rounded corners
+    const addCircle = (cx, cz, radius) => {
+      for (let s = 0; s < circleSegs; s++) {
+        const a1 = (s / circleSegs) * Math.PI * 2;
+        const a2 = ((s + 1) / circleSegs) * Math.PI * 2;
+        ribbonVerts.push(
+          cx, Y, cz,
+          cx + Math.cos(a1) * radius, Y, cz + Math.sin(a1) * radius,
+          cx + Math.cos(a2) * radius, Y, cz + Math.sin(a2) * radius,
+        );
+      }
+    };
+
+    // Ribbon quads between waypoints
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.sqrt(dx * dx + dz * dz) || 1;
+      const px = (-dz / len) * hw;
+      const pz = (dx / len) * hw;
+      ribbonVerts.push(
+        a.x + px, Y, a.z + pz, b.x + px, Y, b.z + pz, a.x - px, Y, a.z - pz,
+        b.x + px, Y, b.z + pz, b.x - px, Y, b.z - pz, a.x - px, Y, a.z - pz,
+      );
+      // Rounded joint at each waypoint
+      addCircle(a.x, a.z, hw);
+    }
+    // Circle at the last point before arrowhead
+    addCircle(points[points.length - 1].x, points[points.length - 1].z, hw);
+
+    // Arrowhead at the end
+    if (points.length >= 2) {
+      const tip = points[points.length - 1];
+      const prev = points[points.length - 2];
+      const dx = tip.x - prev.x;
+      const dz = tip.z - prev.z;
+      const len = Math.sqrt(dx * dx + dz * dz) || 1;
+      const nx = dx / len;
+      const nz = dz / len;
+      const arrowLen = 2.5;
+      const arrowW = 2.2;
+      const tipX = tip.x + nx * arrowLen;
+      const tipZ = tip.z + nz * arrowLen;
+      const px = -nz * arrowW / 2;
+      const pz = nx * arrowW / 2;
+      ribbonVerts.push(
+        tip.x + px, Y, tip.z + pz, tipX, Y, tipZ, tip.x - px, Y, tip.z - pz,
+      );
+    }
+
+    // Color the ribbon based on action and step limit
+    const atLimit = currentSteps >= maxSteps;
+    const isAttackAction = this._pathMode.action === 'attack';
+    const ribbonColor = atLimit ? 0xcc6633 : (isAttackAction ? 0xc04040 : 0xd4a843);
+    const lineColor = atLimit ? 0xe07040 : (isAttackAction ? 0xf06060 : 0xf0d060);
+
+    const ribbonGeo = new THREE.BufferGeometry();
+    ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(ribbonVerts, 3));
+    const ribbonMat = new THREE.MeshBasicMaterial({ color: ribbonColor, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+    this._pathArrowMesh = new THREE.Mesh(ribbonGeo, ribbonMat);
+    this.scene.scene.add(this._pathArrowMesh);
+
+    // Brighter center line
+    const lineVerts = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      lineVerts.push(points[i].x, Y + 0.01, points[i].z, points[i + 1].x, Y + 0.01, points[i + 1].z);
+    }
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(lineVerts, 3));
+    const lineMat = new THREE.LineBasicMaterial({ color: lineColor, transparent: true, opacity: 0.85 });
+    this._pathCenterLine = new THREE.LineSegments(lineGeo, lineMat);
+    this.scene.scene.add(this._pathCenterLine);
+
+    // Highlight cells in the path (orange/red when at step limit)
+    this._pathCellHighlights = [];
+    for (let i = 1; i < path.length; i++) {
+      const cell = this.getGridCellByIndex(path[i].col, path[i].row);
+      if (!cell) continue;
+      const { tl, tr, bl, br } = cell;
+      const fillGeo = new THREE.BufferGeometry();
+      fillGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+        tl.x, Y - 0.01, tl.z, tr.x, Y - 0.01, tr.z, bl.x, Y - 0.01, bl.z,
+        tr.x, Y - 0.01, tr.z, br.x, Y - 0.01, br.z, bl.x, Y - 0.01, bl.z,
+      ], 3));
+      const isLastCell = i === path.length - 1;
+      const cellColor = (atLimit && isLastCell) ? 0xcc6633 : 0xd4a843;
+      const cellOpacity = (atLimit && isLastCell) ? 0.15 : 0.08;
+      const fillMat = new THREE.MeshBasicMaterial({ color: cellColor, transparent: true, opacity: cellOpacity, side: THREE.DoubleSide });
+      const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+      this.scene.scene.add(fillMesh);
+      this._pathCellHighlights.push(fillMesh);
+    }
+
+    // Start cell highlight (different color)
+    const startCell = this.getGridCellByIndex(path[0].col, path[0].row);
+    if (startCell) {
+      const { tl, tr, bl, br } = startCell;
+      const sGeo = new THREE.BufferGeometry();
+      sGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+        tl.x, Y - 0.01, tl.z, tr.x, Y - 0.01, tr.z, bl.x, Y - 0.01, bl.z,
+        tr.x, Y - 0.01, tr.z, br.x, Y - 0.01, br.z, bl.x, Y - 0.01, bl.z,
+      ], 3));
+      const sMat = new THREE.MeshBasicMaterial({ color: 0x50c0f0, transparent: true, opacity: 0.1, side: THREE.DoubleSide });
+      const sMesh = new THREE.Mesh(sGeo, sMat);
+      this.scene.scene.add(sMesh);
+      this._pathCellHighlights.push(sMesh);
+    }
+
+    // Update step counter label
+    this.updatePathStepLabel();
+  };
+
+  clearPathArrow = () => {
+    if (this._pathArrowMesh) {
+      this.scene?.scene.remove(this._pathArrowMesh);
+      this._pathArrowMesh.geometry.dispose();
+      this._pathArrowMesh.material.dispose();
+      this._pathArrowMesh = null;
+    }
+    if (this._pathCenterLine) {
+      this.scene?.scene.remove(this._pathCenterLine);
+      this._pathCenterLine.geometry.dispose();
+      this._pathCenterLine.material.dispose();
+      this._pathCenterLine = null;
+    }
+    if (this._pathCellHighlights) {
+      for (const m of this._pathCellHighlights) {
+        this.scene?.scene.remove(m);
+        m.geometry.dispose();
+        m.material.dispose();
+      }
+      this._pathCellHighlights = null;
+    }
+  };
+
+  getCardAbilities = (cardInstance) => {
+    if (cardInstance._abilities) return cardInstance._abilities;
+    const fullCard = this.props.sorceryCards?.find((c) => c.unique_id === cardInstance.cardId);
+    const rulesText = fullCard?.functional_text_plain || fullCard?.functional_text || '';
+    cardInstance._abilities = getMovementAbilities(rulesText);
+    return cardInstance._abilities;
+  };
+
+  updatePathStepLabel = () => {
+    if (!this._pathMode) { this.clearPathStepLabel(); return; }
+
+    const { path, maxSteps, action, abilities } = this._pathMode;
+    const currentSteps = path.length - 1;
+    const atLimit = currentSteps >= maxSteps;
+
+    // Build label text
+    const parts = [];
+    if (action === 'attack') parts.push('ATK');
+    else parts.push('MOV');
+    if (abilities.airborne) parts.push('AIR');
+    if (maxSteps < 99) parts.push(`${currentSteps}/${maxSteps}`);
+    else if (currentSteps > 0) parts.push(`${currentSteps}`);
+    const labelText = parts.join(' ');
+
+    // Create or update the DOM step label overlay
+    if (!this._pathStepLabel) {
+      this._pathStepLabel = document.createElement('div');
+      this._pathStepLabel.className = 'fixed pointer-events-none z-[200] text-xs font-semibold px-2 py-0.5 rounded-md';
+      document.body.appendChild(this._pathStepLabel);
+    }
+
+    this._pathStepLabel.textContent = labelText;
+    this._pathStepLabel.style.background = atLimit ? 'rgba(180, 80, 30, 0.85)' : 'rgba(40, 35, 30, 0.85)';
+    this._pathStepLabel.style.color = atLimit ? '#ffccaa' : '#e0c880';
+    this._pathStepLabel.style.border = `1px solid ${atLimit ? 'rgba(220, 120, 50, 0.5)' : 'rgba(200, 170, 80, 0.3)'}`;
+
+    // Position near the last path cell
+    const last = path[path.length - 1];
+    const cell = this.getGridCellByIndex(last.col, last.row);
+    if (cell && this.scene) {
+      const pos = new THREE.Vector3(cell.centerX, 1.5, cell.centerZ);
+      pos.project(this.scene.camera);
+      const canvas = this.canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = ((pos.x + 1) / 2) * rect.width + rect.left;
+        const y = ((-pos.y + 1) / 2) * rect.height + rect.top - 24;
+        this._pathStepLabel.style.left = `${x}px`;
+        this._pathStepLabel.style.top = `${y}px`;
+        this._pathStepLabel.style.transform = 'translateX(-50%)';
+      }
+    }
+    this._pathStepLabel.style.display = 'block';
+  };
+
+  clearPathStepLabel = () => {
+    if (this._pathStepLabel) {
+      this._pathStepLabel.remove();
+      this._pathStepLabel = null;
+    }
   };
 
   isPointInExpandedBounds = (x, z) => {
@@ -2263,6 +2892,1093 @@ export default class GameBoard extends Component {
     emitGameAction('turn:pass', { currentTurn: nextTurn, turnNumber: nextNumber });
   };
 
+  // --- Combat System ---
+
+  enterTargetSelection = (attackerInstance, attackerMesh) => {
+    const col = attackerInstance._gridCol;
+    const row = attackerInstance._gridRow;
+    if (col == null || row == null) return;
+
+    const cardsInCell = this.getCardsInCell(col, row);
+    const targets = getValidTargets(attackerInstance, cardsInCell, { sorceryCards: this.props.sorceryCards });
+
+    if (targets.length === 0) {
+      toast('No valid targets in this cell');
+      return;
+    }
+
+    if (targets.length === 1) {
+      this.resolveCombatAction(attackerInstance, attackerMesh, targets[0].cardInstance, targets[0].mesh);
+      return;
+    }
+
+    // Multiple targets — highlight them and wait for user to pick one
+    this._combatHighlightedMeshes = [];
+    for (const t of targets) {
+      const mats = Array.isArray(t.mesh.material) ? t.mesh.material : [t.mesh.material];
+      for (const mat of mats) {
+        mat._prevEmissive = mat.emissive ? mat.emissive.clone() : null;
+        mat._prevEmissiveIntensity = mat.emissiveIntensity ?? 0;
+        if (mat.emissive) {
+          mat.emissive.setHex(0xcc4422);
+          mat.emissiveIntensity = 0.6;
+        }
+      }
+      this._combatHighlightedMeshes.push(t.mesh);
+    }
+    this._combatHighlightPulse = this.startCombatHighlightPulse();
+
+    this.setState({
+      combatSelectingTarget: {
+        attackerInstance,
+        attackerMesh,
+        cell: { col, row },
+        targetIds: new Set(targets.map((t) => t.cardInstance.id)),
+      },
+    });
+    toast('Select a target to attack');
+  };
+
+  startCombatHighlightPulse = () => {
+    let frame = 0;
+    const tick = () => {
+      if (!this._combatHighlightedMeshes?.length) return;
+      frame++;
+      const intensity = 0.4 + Math.sin(frame * 0.08) * 0.25;
+      for (const mesh of this._combatHighlightedMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat.emissive) mat.emissiveIntensity = intensity;
+        }
+      }
+      this._combatHighlightPulse = requestAnimationFrame(tick);
+    };
+    return requestAnimationFrame(tick);
+  };
+
+  clearCombatHighlights = () => {
+    if (this._combatHighlightPulse) {
+      cancelAnimationFrame(this._combatHighlightPulse);
+      this._combatHighlightPulse = null;
+    }
+    if (this._combatHighlightedMeshes) {
+      for (const mesh of this._combatHighlightedMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat._prevEmissive) {
+            mat.emissive.copy(mat._prevEmissive);
+            mat.emissiveIntensity = mat._prevEmissiveIntensity ?? 0;
+            delete mat._prevEmissive;
+            delete mat._prevEmissiveIntensity;
+          }
+        }
+      }
+      this._combatHighlightedMeshes = null;
+    }
+    this.setState({ combatSelectingTarget: null });
+  };
+
+  resolveCombatAction = (attackerInstance, attackerMesh, targetInstance, targetMesh) => {
+    this.clearCombatHighlights();
+
+    if (targetInstance.isSite) {
+      this.resolveSiteAttackAction(attackerInstance, attackerMesh, targetInstance, targetMesh);
+      return;
+    }
+
+    // In multiplayer, route through defense phase so opponent can respond
+    if (this.state.connectionStatus === 'connected') {
+      const cell = { col: targetInstance._gridCol, row: targetInstance._gridRow };
+      this.setState({
+        pendingAttack: {
+          attackerId: attackerInstance.id,
+          attackerMesh,
+          targetId: targetInstance.id,
+          targetMesh,
+          targetType: 'unit',
+          cell,
+        },
+        waitingForDefense: true,
+      });
+      emitGameAction('combat:declareAttack', {
+        attackerId: attackerInstance.id,
+        targetId: targetInstance.id,
+        targetType: 'unit',
+        cell,
+      });
+      return;
+    }
+
+    // Offline: resolve immediately (no defense phase)
+    this.resolveDirectCombat(attackerInstance, attackerMesh, targetInstance, targetMesh);
+  };
+
+  resolveDirectCombat = (attackerInstance, attackerMesh, targetInstance, targetMesh) => {
+    const attackerAbilities = this.getCardAbilities(attackerInstance);
+    const defenderAbilities = this.getCardAbilities(targetInstance);
+    const result = resolveCombat(attackerInstance, targetInstance, { attackerAbilities, defenderAbilities });
+
+    attackerInstance.currentLife = result.attackerNewLife;
+    targetInstance.currentLife = result.defenderNewLife;
+
+    const atkHud = this.lifeHUDs.get(attackerInstance.id);
+    if (atkHud) updateLifeHUD(atkHud.hpSprite, attackerInstance.currentLife, 'hp');
+    const defHud = this.lifeHUDs.get(targetInstance.id);
+    if (defHud) updateLifeHUD(defHud.hpSprite, targetInstance.currentLife, 'hp');
+
+    if (result.defenderDamage > 0) {
+      this.showDamageNumber(targetMesh, result.defenderDamage, 'damage');
+    }
+    if (result.attackerDamage > 0) {
+      this.showDamageNumber(attackerMesh, result.attackerDamage, 'damage');
+    }
+
+    playSound('cardPlace');
+
+    setTimeout(() => {
+      const attackerCol = attackerInstance._gridCol;
+      const attackerRow = attackerInstance._gridRow;
+      const targetCol = targetInstance._gridCol;
+      const targetRow = targetInstance._gridRow;
+
+      if (result.defenderDead) {
+        this.animateCardDeath(targetInstance, targetMesh);
+      }
+      if (result.attackerDead) {
+        this.animateCardDeath(attackerInstance, attackerMesh);
+      }
+
+      setTimeout(() => {
+        if (result.defenderDead && targetCol != null) {
+          this.arrangeCardsInCell(targetCol, targetRow);
+        }
+        if (result.attackerDead && attackerCol != null) {
+          this.arrangeCardsInCell(attackerCol, attackerRow);
+        }
+      }, 600);
+    }, 400);
+
+    emitGameAction('combat:resolve', {
+      attackerId: attackerInstance.id,
+      targetId: targetInstance.id,
+      attackerDamage: result.attackerDamage,
+      defenderDamage: result.defenderDamage,
+      attackerNewLife: result.attackerNewLife,
+      defenderNewLife: result.defenderNewLife,
+      attackerDead: result.attackerDead,
+      defenderDead: result.defenderDead,
+    });
+  };
+
+  resolveSiteAttackAction = (attackerInstance, attackerMesh, siteInstance, siteMesh) => {
+    const { damage } = resolveSiteAttack(attackerInstance);
+
+    if (damage > 0) {
+      this.showDamageNumber(siteMesh, damage, 'damage');
+    }
+
+    playSound('cardPlace');
+    toast(`Avatar takes ${damage} damage from site attack`);
+
+    emitGameAction('combat:siteAttack', {
+      attackerId: attackerInstance.id,
+      siteId: siteInstance.id,
+      damage,
+    });
+  };
+
+  applyRemoteCombatResolve = (data) => {
+    const attackerMesh = this.meshes.get(data.attackerId);
+    const targetMesh = this.meshes.get(data.targetId);
+    if (!attackerMesh || !targetMesh) return;
+
+    const attacker = attackerMesh.userData.cardInstance;
+    const target = targetMesh.userData.cardInstance;
+
+    attacker.currentLife = data.attackerNewLife;
+    target.currentLife = data.defenderNewLife;
+
+    const atkHud = this.lifeHUDs.get(data.attackerId);
+    if (atkHud) updateLifeHUD(atkHud.hpSprite, attacker.currentLife, 'hp');
+    const defHud = this.lifeHUDs.get(data.targetId);
+    if (defHud) updateLifeHUD(defHud.hpSprite, target.currentLife, 'hp');
+
+    if (data.defenderDamage > 0) {
+      this.showDamageNumber(targetMesh, data.defenderDamage, 'damage');
+    }
+    if (data.attackerDamage > 0) {
+      this.showDamageNumber(attackerMesh, data.attackerDamage, 'damage');
+    }
+
+    playSound('cardPlace');
+
+    setTimeout(() => {
+      const attackerCol = attacker._gridCol;
+      const attackerRow = attacker._gridRow;
+      const targetCol = target._gridCol;
+      const targetRow = target._gridRow;
+
+      if (data.defenderDead) {
+        this.animateCardDeath(target, targetMesh);
+      }
+      if (data.attackerDead) {
+        this.animateCardDeath(attacker, attackerMesh);
+      }
+
+      setTimeout(() => {
+        if (data.defenderDead && targetCol != null) {
+          this.arrangeCardsInCell(targetCol, targetRow);
+        }
+        if (data.attackerDead && attackerCol != null) {
+          this.arrangeCardsInCell(attackerCol, attackerRow);
+        }
+      }, 600);
+    }, 400);
+  };
+
+  applyRemoteSiteAttack = (data) => {
+    const siteMesh = this.meshes.get(data.siteId);
+    if (siteMesh && data.damage > 0) {
+      this.showDamageNumber(siteMesh, data.damage, 'damage');
+    }
+    playSound('cardPlace');
+    toast(`Avatar takes ${data.damage} damage from site attack`);
+  };
+
+  // --- Defense & Intercept Reaction System ---
+
+  getAllGridCards = () => {
+    const result = [];
+    for (const [cardId, mesh] of this.meshes) {
+      const ci = mesh.userData.cardInstance;
+      if (ci && ci._gridCol != null && ci._gridRow != null) {
+        result.push({ cardId, mesh, cardInstance: ci });
+      }
+    }
+    return result;
+  };
+
+  handleRemoteDeclareAttack = (data) => {
+    const { attackerId, targetId, targetType, cell } = data;
+    const targetMesh = this.meshes.get(targetId);
+    const attackerMesh = this.meshes.get(attackerId);
+    if (!targetMesh || !attackerMesh) return;
+
+    const targetInstance = targetMesh.userData.cardInstance;
+    const attackerInstance = attackerMesh.userData.cardInstance;
+
+    // Defending player is the one whose card is being attacked
+    const defendingPlayerRotated = !!targetInstance.rotated;
+    const allGridCards = this.getAllGridCards();
+    const attackerAbilities = this.getCardAbilities(attackerInstance);
+    const validDefenders = getDefenders(cell.col, cell.row, allGridCards, defendingPlayerRotated, { attackerAbilities });
+
+    if (validDefenders.length === 0) {
+      // No defenders available, auto-pass
+      emitGameAction('combat:defendResponse', {
+        attackerId,
+        targetId,
+        defenders: [],
+        keepTarget: true,
+      });
+      return;
+    }
+
+    // Highlight valid defender meshes with blue pulse
+    this._defendHighlightedMeshes = [];
+    for (const d of validDefenders) {
+      const mats = Array.isArray(d.mesh.material) ? d.mesh.material : [d.mesh.material];
+      for (const mat of mats) {
+        mat._prevEmissive = mat.emissive ? mat.emissive.clone() : null;
+        mat._prevEmissiveIntensity = mat.emissiveIntensity ?? 0;
+        if (mat.emissive) {
+          mat.emissive.setHex(0x2266cc);
+          mat.emissiveIntensity = 0.5;
+        }
+      }
+      this._defendHighlightedMeshes.push(d.mesh);
+    }
+    this._defendHighlightPulse = this.startDefendHighlightPulse();
+
+    this.setState({
+      defendPrompt: {
+        attackerId,
+        targetId,
+        attackerName: attackerInstance.name || 'Attacker',
+        targetName: targetInstance.name || 'Target',
+        validDefenders: validDefenders.map((d) => d.cardInstance.id),
+        selectedDefenders: new Set(),
+        keepOriginalTarget: true,
+        cell,
+      },
+    });
+  };
+
+  startDefendHighlightPulse = () => {
+    let frame = 0;
+    const tick = () => {
+      if (!this._defendHighlightedMeshes?.length) return;
+      frame++;
+      const intensity = 0.3 + Math.sin(frame * 0.06) * 0.2;
+      for (const mesh of this._defendHighlightedMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat.emissive) mat.emissiveIntensity = intensity;
+        }
+      }
+      this._defendHighlightPulse = requestAnimationFrame(tick);
+    };
+    return requestAnimationFrame(tick);
+  };
+
+  clearDefendHighlights = () => {
+    if (this._defendHighlightPulse) {
+      cancelAnimationFrame(this._defendHighlightPulse);
+      this._defendHighlightPulse = null;
+    }
+    if (this._defendHighlightedMeshes) {
+      for (const mesh of this._defendHighlightedMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat._prevEmissive) {
+            mat.emissive.copy(mat._prevEmissive);
+            mat.emissiveIntensity = mat._prevEmissiveIntensity ?? 0;
+            delete mat._prevEmissive;
+            delete mat._prevEmissiveIntensity;
+          }
+        }
+      }
+      this._defendHighlightedMeshes = null;
+    }
+  };
+
+  toggleDefender = (cardId) => {
+    this.setState((state) => {
+      if (!state.defendPrompt) return null;
+      const selected = new Set(state.defendPrompt.selectedDefenders);
+      if (selected.has(cardId)) {
+        selected.delete(cardId);
+        // Revert to blue highlight
+        const mesh = this.meshes.get(cardId);
+        if (mesh) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const mat of mats) {
+            if (mat.emissive) mat.emissive.setHex(0x2266cc);
+          }
+        }
+      } else {
+        selected.add(cardId);
+        // Switch to green highlight
+        const mesh = this.meshes.get(cardId);
+        if (mesh) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const mat of mats) {
+            if (mat.emissive) mat.emissive.setHex(0x22cc44);
+          }
+        }
+      }
+      return { defendPrompt: { ...state.defendPrompt, selectedDefenders: selected } };
+    });
+  };
+
+  submitDefendResponse = () => {
+    const { defendPrompt } = this.state;
+    if (!defendPrompt) return;
+
+    const defenders = [...defendPrompt.selectedDefenders];
+    this.clearDefendHighlights();
+
+    // Tap selected defenders
+    for (const defId of defenders) {
+      const mesh = this.meshes.get(defId);
+      if (mesh) {
+        const card = mesh.userData.cardInstance;
+        if (!card.tapped) {
+          card.tapped = true;
+          animateCardTap(mesh, card);
+          emitGameAction('card:tap', { cardId: card.id, tapped: true });
+        }
+      }
+    }
+
+    emitGameAction('combat:defendResponse', {
+      attackerId: defendPrompt.attackerId,
+      targetId: defendPrompt.targetId,
+      defenders,
+      keepTarget: defendPrompt.keepOriginalTarget,
+    });
+
+    this.setState({ defendPrompt: null });
+  };
+
+  passDefend = () => {
+    const { defendPrompt } = this.state;
+    if (!defendPrompt) return;
+
+    this.clearDefendHighlights();
+    emitGameAction('combat:defendResponse', {
+      attackerId: defendPrompt.attackerId,
+      targetId: defendPrompt.targetId,
+      defenders: [],
+      keepTarget: true,
+    });
+    this.setState({ defendPrompt: null });
+  };
+
+  handleRemoteDefendResponse = (data) => {
+    const { attackerId, targetId, defenders, keepTarget } = data;
+    const attackerMesh = this.meshes.get(attackerId);
+    const targetMesh = this.meshes.get(targetId);
+    if (!attackerMesh || !targetMesh) {
+      this.setState({ pendingAttack: null, waitingForDefense: false });
+      return;
+    }
+
+    const attackerInstance = attackerMesh.userData.cardInstance;
+    const targetInstance = targetMesh.userData.cardInstance;
+
+    this.setState({ waitingForDefense: false, pendingAttack: null });
+
+    if (!defenders || defenders.length === 0) {
+      // No defense — resolve direct combat
+      this.resolveDirectCombat(attackerInstance, attackerMesh, targetInstance, targetMesh);
+      return;
+    }
+
+    // Collect all combatants: defenders + optionally the original target
+    const allDefenderInstances = [];
+    for (const defId of defenders) {
+      const mesh = this.meshes.get(defId);
+      if (mesh) allDefenderInstances.push(mesh.userData.cardInstance);
+    }
+    if (keepTarget) {
+      allDefenderInstances.push(targetInstance);
+    }
+
+    if (allDefenderInstances.length === 0) {
+      this.resolveDirectCombat(attackerInstance, attackerMesh, targetInstance, targetMesh);
+      return;
+    }
+
+    // Resolve multi-combat with abilities
+    const attackerAbilities = this.getCardAbilities(attackerInstance);
+    const defenderAbilitiesList = allDefenderInstances.map((d) => this.getCardAbilities(d));
+    const result = resolveMultiCombat(attackerInstance, allDefenderInstances, { attackerAbilities, defenderAbilitiesList });
+
+    // Apply attacker damage
+    attackerInstance.currentLife = result.attackerNewLife;
+    const atkHud = this.lifeHUDs.get(attackerInstance.id);
+    if (atkHud) updateLifeHUD(atkHud.hpSprite, attackerInstance.currentLife, 'hp');
+    if (result.attackerDamage > 0) {
+      this.showDamageNumber(attackerMesh, result.attackerDamage, 'damage');
+    }
+
+    // Apply defender damage
+    for (const defResult of result.defenderResults) {
+      const defMesh = this.meshes.get(defResult.id);
+      if (!defMesh) continue;
+      const defInstance = defMesh.userData.cardInstance;
+      defInstance.currentLife = defResult.newLife;
+      const defHud = this.lifeHUDs.get(defResult.id);
+      if (defHud) updateLifeHUD(defHud.hpSprite, defInstance.currentLife, 'hp');
+      if (defResult.damage > 0) {
+        this.showDamageNumber(defMesh, defResult.damage, 'damage');
+      }
+    }
+
+    playSound('cardPlace');
+
+    // Handle deaths
+    setTimeout(() => {
+      const deadCells = [];
+      for (const defResult of result.defenderResults) {
+        if (defResult.dead) {
+          const defMesh = this.meshes.get(defResult.id);
+          if (defMesh) {
+            const defInstance = defMesh.userData.cardInstance;
+            deadCells.push({ col: defInstance._gridCol, row: defInstance._gridRow });
+            this.animateCardDeath(defInstance, defMesh);
+          }
+        }
+      }
+      if (result.attackerDead) {
+        deadCells.push({ col: attackerInstance._gridCol, row: attackerInstance._gridRow });
+        this.animateCardDeath(attackerInstance, attackerMesh);
+      }
+
+      setTimeout(() => {
+        for (const { col, row } of deadCells) {
+          if (col != null) this.arrangeCardsInCell(col, row);
+        }
+      }, 600);
+    }, 400);
+
+    // Broadcast multi-combat result to opponent
+    emitGameAction('combat:multiResolve', {
+      attackerId: attackerInstance.id,
+      attackerDamage: result.attackerDamage,
+      attackerNewLife: result.attackerNewLife,
+      attackerDead: result.attackerDead,
+      defenderResults: result.defenderResults,
+    });
+  };
+
+  applyRemoteMultiCombatResolve = (data) => {
+    const attackerMesh = this.meshes.get(data.attackerId);
+    if (attackerMesh) {
+      const attacker = attackerMesh.userData.cardInstance;
+      attacker.currentLife = data.attackerNewLife;
+      const atkHud = this.lifeHUDs.get(data.attackerId);
+      if (atkHud) updateLifeHUD(atkHud.hpSprite, attacker.currentLife, 'hp');
+      if (data.attackerDamage > 0) {
+        this.showDamageNumber(attackerMesh, data.attackerDamage, 'damage');
+      }
+    }
+
+    for (const defResult of data.defenderResults) {
+      const defMesh = this.meshes.get(defResult.id);
+      if (!defMesh) continue;
+      const defInstance = defMesh.userData.cardInstance;
+      defInstance.currentLife = defResult.newLife;
+      const defHud = this.lifeHUDs.get(defResult.id);
+      if (defHud) updateLifeHUD(defHud.hpSprite, defInstance.currentLife, 'hp');
+      if (defResult.damage > 0) {
+        this.showDamageNumber(defMesh, defResult.damage, 'damage');
+      }
+    }
+
+    playSound('cardPlace');
+
+    setTimeout(() => {
+      const deadCells = [];
+      for (const defResult of data.defenderResults) {
+        if (defResult.dead) {
+          const defMesh = this.meshes.get(defResult.id);
+          if (defMesh) {
+            const defInstance = defMesh.userData.cardInstance;
+            deadCells.push({ col: defInstance._gridCol, row: defInstance._gridRow });
+            this.animateCardDeath(defInstance, defMesh);
+          }
+        }
+      }
+      if (data.attackerDead && attackerMesh) {
+        const attacker = attackerMesh.userData.cardInstance;
+        deadCells.push({ col: attacker._gridCol, row: attacker._gridRow });
+        this.animateCardDeath(attacker, attackerMesh);
+      }
+
+      setTimeout(() => {
+        for (const { col, row } of deadCells) {
+          if (col != null) this.arrangeCardsInCell(col, row);
+        }
+      }, 600);
+    }, 400);
+  };
+
+  // --- Intercept System ---
+
+  broadcastMoveComplete = (cardInstance, col, row) => {
+    if (this.state.connectionStatus !== 'connected') return;
+    emitGameAction('combat:moveComplete', {
+      cardId: cardInstance.id,
+      cell: { col, row },
+    });
+  };
+
+  handleRemoteMoveComplete = (data) => {
+    const { cardId, cell } = data;
+    const cardMesh = this.meshes.get(cardId);
+    if (!cardMesh) return;
+
+    const movedCard = cardMesh.userData.cardInstance;
+    // The intercepting player is the opponent of whoever moved
+    const interceptingPlayerRotated = !movedCard.rotated;
+    const allGridCards = this.getAllGridCards();
+    const moverAbilities = this.getCardAbilities(movedCard);
+    const validInterceptors = getInterceptors(cell.col, cell.row, allGridCards, interceptingPlayerRotated, { moverAbilities });
+
+    if (validInterceptors.length === 0) return;
+
+    // Highlight interceptors
+    this._interceptHighlightedMeshes = [];
+    for (const ic of validInterceptors) {
+      const mats = Array.isArray(ic.mesh.material) ? ic.mesh.material : [ic.mesh.material];
+      for (const mat of mats) {
+        mat._prevEmissive = mat.emissive ? mat.emissive.clone() : null;
+        mat._prevEmissiveIntensity = mat.emissiveIntensity ?? 0;
+        if (mat.emissive) {
+          mat.emissive.setHex(0xcc8822);
+          mat.emissiveIntensity = 0.5;
+        }
+      }
+      this._interceptHighlightedMeshes.push(ic.mesh);
+    }
+    this._interceptHighlightPulse = this.startInterceptHighlightPulse();
+
+    this.setState({
+      interceptPrompt: {
+        arrivedCardId: cardId,
+        arrivedCardName: movedCard.name || 'Enemy unit',
+        cell,
+        validInterceptors: validInterceptors.map((ic) => ic.cardInstance.id),
+        selectedInterceptors: new Set(),
+      },
+    });
+  };
+
+  startInterceptHighlightPulse = () => {
+    let frame = 0;
+    const tick = () => {
+      if (!this._interceptHighlightedMeshes?.length) return;
+      frame++;
+      const intensity = 0.3 + Math.sin(frame * 0.06) * 0.2;
+      for (const mesh of this._interceptHighlightedMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat.emissive) mat.emissiveIntensity = intensity;
+        }
+      }
+      this._interceptHighlightPulse = requestAnimationFrame(tick);
+    };
+    return requestAnimationFrame(tick);
+  };
+
+  clearInterceptHighlights = () => {
+    if (this._interceptHighlightPulse) {
+      cancelAnimationFrame(this._interceptHighlightPulse);
+      this._interceptHighlightPulse = null;
+    }
+    if (this._interceptHighlightedMeshes) {
+      for (const mesh of this._interceptHighlightedMeshes) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of mats) {
+          if (mat._prevEmissive) {
+            mat.emissive.copy(mat._prevEmissive);
+            mat.emissiveIntensity = mat._prevEmissiveIntensity ?? 0;
+            delete mat._prevEmissive;
+            delete mat._prevEmissiveIntensity;
+          }
+        }
+      }
+      this._interceptHighlightedMeshes = null;
+    }
+  };
+
+  toggleInterceptor = (cardId) => {
+    this.setState((state) => {
+      if (!state.interceptPrompt) return null;
+      const selected = new Set(state.interceptPrompt.selectedInterceptors);
+      if (selected.has(cardId)) {
+        selected.delete(cardId);
+        const mesh = this.meshes.get(cardId);
+        if (mesh) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const mat of mats) {
+            if (mat.emissive) mat.emissive.setHex(0xcc8822);
+          }
+        }
+      } else {
+        selected.add(cardId);
+        const mesh = this.meshes.get(cardId);
+        if (mesh) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const mat of mats) {
+            if (mat.emissive) mat.emissive.setHex(0x22cc44);
+          }
+        }
+      }
+      return { interceptPrompt: { ...state.interceptPrompt, selectedInterceptors: selected } };
+    });
+  };
+
+  submitInterceptResponse = () => {
+    const { interceptPrompt } = this.state;
+    if (!interceptPrompt) return;
+
+    const interceptors = [...interceptPrompt.selectedInterceptors];
+    this.clearInterceptHighlights();
+
+    // Tap selected interceptors
+    for (const icId of interceptors) {
+      const mesh = this.meshes.get(icId);
+      if (mesh) {
+        const card = mesh.userData.cardInstance;
+        if (!card.tapped) {
+          card.tapped = true;
+          animateCardTap(mesh, card);
+          emitGameAction('card:tap', { cardId: card.id, tapped: true });
+        }
+      }
+    }
+
+    emitGameAction('combat:interceptResponse', {
+      arrivedCardId: interceptPrompt.arrivedCardId,
+      interceptors,
+    });
+
+    this.setState({ interceptPrompt: null });
+  };
+
+  passIntercept = () => {
+    const { interceptPrompt } = this.state;
+    if (!interceptPrompt) return;
+
+    this.clearInterceptHighlights();
+    emitGameAction('combat:interceptResponse', {
+      arrivedCardId: interceptPrompt.arrivedCardId,
+      interceptors: [],
+    });
+    this.setState({ interceptPrompt: null });
+  };
+
+  handleRemoteInterceptResponse = (data) => {
+    const { arrivedCardId, interceptors } = data;
+    if (!interceptors || interceptors.length === 0) return;
+
+    const arrivedMesh = this.meshes.get(arrivedCardId);
+    if (!arrivedMesh) return;
+    const arrivedCard = arrivedMesh.userData.cardInstance;
+
+    const interceptorInstances = [];
+    for (const icId of interceptors) {
+      const mesh = this.meshes.get(icId);
+      if (mesh) interceptorInstances.push(mesh.userData.cardInstance);
+    }
+
+    if (interceptorInstances.length === 0) return;
+
+    // Resolve intercept combat: arrived card vs all interceptors (with abilities)
+    const arrivedAbilities = this.getCardAbilities(arrivedCard);
+    const interceptorAbilitiesList = interceptorInstances.map((ic) => this.getCardAbilities(ic));
+    const result = resolveMultiCombat(arrivedCard, interceptorInstances, { attackerAbilities: arrivedAbilities, defenderAbilitiesList: interceptorAbilitiesList });
+
+    arrivedCard.currentLife = result.attackerNewLife;
+    const atkHud = this.lifeHUDs.get(arrivedCardId);
+    if (atkHud) updateLifeHUD(atkHud.hpSprite, arrivedCard.currentLife, 'hp');
+    if (result.attackerDamage > 0) {
+      this.showDamageNumber(arrivedMesh, result.attackerDamage, 'damage');
+    }
+
+    for (const defResult of result.defenderResults) {
+      const defMesh = this.meshes.get(defResult.id);
+      if (!defMesh) continue;
+      const defInstance = defMesh.userData.cardInstance;
+      defInstance.currentLife = defResult.newLife;
+      const defHud = this.lifeHUDs.get(defResult.id);
+      if (defHud) updateLifeHUD(defHud.hpSprite, defInstance.currentLife, 'hp');
+      if (defResult.damage > 0) {
+        this.showDamageNumber(defMesh, defResult.damage, 'damage');
+      }
+    }
+
+    playSound('cardPlace');
+
+    setTimeout(() => {
+      const deadCells = [];
+      for (const defResult of result.defenderResults) {
+        if (defResult.dead) {
+          const defMesh = this.meshes.get(defResult.id);
+          if (defMesh) {
+            const defInstance = defMesh.userData.cardInstance;
+            deadCells.push({ col: defInstance._gridCol, row: defInstance._gridRow });
+            this.animateCardDeath(defInstance, defMesh);
+          }
+        }
+      }
+      if (result.attackerDead) {
+        deadCells.push({ col: arrivedCard._gridCol, row: arrivedCard._gridRow });
+        this.animateCardDeath(arrivedCard, arrivedMesh);
+      }
+
+      setTimeout(() => {
+        for (const { col, row } of deadCells) {
+          if (col != null) this.arrangeCardsInCell(col, row);
+        }
+      }, 600);
+    }, 400);
+
+    emitGameAction('combat:multiResolve', {
+      attackerId: arrivedCardId,
+      attackerDamage: result.attackerDamage,
+      attackerNewLife: result.attackerNewLife,
+      attackerDead: result.attackerDead,
+      defenderResults: result.defenderResults,
+    });
+  };
+
+  // --- Artifact Pick Up / Drop ---
+
+  pickUpArtifacts = (cardInstance) => {
+    const col = cardInstance._gridCol;
+    const row = cardInstance._gridRow;
+    if (col == null || row == null) return;
+
+    const cardsInCell = this.getCardsInCell(col, row);
+    const artifacts = cardsInCell.filter(({ cardInstance: ci }) =>
+      ci.type === 'Artifact' && ci.id !== cardInstance.id && !ci._carriedBy
+    );
+
+    if (artifacts.length === 0) {
+      toast('No artifacts to pick up');
+      this.setState({ contextMenu: null });
+      return;
+    }
+
+    if (!cardInstance.carriedArtifacts) cardInstance.carriedArtifacts = [];
+
+    for (const { cardInstance: artifact } of artifacts) {
+      artifact._carriedBy = cardInstance.id;
+      cardInstance.carriedArtifacts.push(artifact.id);
+      // Hide the artifact mesh
+      const artifactMesh = this.meshes.get(artifact.id);
+      if (artifactMesh) artifactMesh.visible = false;
+    }
+
+    toast(`Picked up ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''}`);
+    this.setState({ contextMenu: null });
+  };
+
+  dropArtifacts = (cardInstance) => {
+    if (!cardInstance.carriedArtifacts || cardInstance.carriedArtifacts.length === 0) {
+      toast('No artifacts to drop');
+      this.setState({ contextMenu: null });
+      return;
+    }
+
+    const col = cardInstance._gridCol;
+    const row = cardInstance._gridRow;
+    const count = cardInstance.carriedArtifacts.length;
+
+    for (const artifactId of cardInstance.carriedArtifacts) {
+      const artifactMesh = this.meshes.get(artifactId);
+      if (artifactMesh) {
+        const artifact = artifactMesh.userData.cardInstance;
+        artifact._carriedBy = undefined;
+        artifact._gridCol = col;
+        artifact._gridRow = row;
+        artifactMesh.visible = true;
+      }
+    }
+
+    cardInstance.carriedArtifacts = [];
+    if (col != null && row != null) this.arrangeCardsInCell(col, row);
+    toast(`Dropped ${count} artifact${count > 1 ? 's' : ''}`);
+    this.setState({ contextMenu: null });
+  };
+
+  changeCardLevel = (cardInstance, newLevel) => {
+    const oldLevel = cardInstance._level || LEVELS.SURFACE;
+    cardInstance._level = newLevel;
+
+    // Update the visual indicator
+    const mesh = this.meshes.get(cardInstance.id);
+    if (mesh) this.updateLevelIndicator(cardInstance, mesh);
+
+    const labels = {
+      [LEVELS.SURFACE]: 'surfaced',
+      [LEVELS.UNDERGROUND]: 'burrowed underground',
+      [LEVELS.UNDERWATER]: 'submerged underwater',
+    };
+    toast(`${cardInstance.name} ${labels[newLevel] || newLevel}`);
+    emitGameAction('card:level', { cardId: cardInstance.id, level: newLevel });
+    this.setState({ contextMenu: null });
+  };
+
+  updateLevelIndicator = (cardInstance, mesh) => {
+    // Remove old indicator
+    const oldIndicator = mesh.children.find((c) => c.userData?.type === 'levelIndicator');
+    if (oldIndicator) {
+      mesh.remove(oldIndicator);
+      oldIndicator.geometry?.dispose();
+      oldIndicator.material?.dispose();
+    }
+
+    const level = cardInstance._level || LEVELS.SURFACE;
+    if (level === LEVELS.SURFACE) return; // No indicator for surface
+
+    // Create a small icon sprite above the card
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    // Background circle
+    ctx.beginPath();
+    ctx.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx.fillStyle = level === LEVELS.UNDERGROUND ? 'rgba(180, 120, 50, 0.9)' : 'rgba(30, 120, 200, 0.9)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Arrow icon pointing down
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('↓', 32, 34);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(2.5, 2.5, 1);
+    sprite.position.set(0, CARD_HEIGHT / 2 - 1.5, CARD_THICKNESS / 2 + 0.2);
+    sprite.userData = { type: 'levelIndicator' };
+    mesh.add(sprite);
+  };
+
+  showDamageNumber = (mesh, amount, type = 'damage') => {
+    if (!this.scene?.camera || !this.canvasRef.current) return;
+
+    const pos = mesh.position.clone();
+    pos.y += 3;
+    pos.project(this.scene.camera);
+    const canvas = this.canvasRef.current;
+    const screenX = ((pos.x + 1) / 2) * canvas.clientWidth;
+    const screenY = ((-pos.y + 1) / 2) * canvas.clientHeight;
+
+    const container = canvas.parentElement;
+    if (!container) return;
+
+    const el = document.createElement('div');
+    el.textContent = `-${amount}`;
+    el.style.cssText = `
+      position: absolute; z-index: 200; pointer-events: none;
+      left: ${screenX}px; top: ${screenY}px;
+      transform: translate(-50%, -50%);
+      font-size: 28px; font-weight: 900; font-family: system-ui, sans-serif;
+      color: ${type === 'damage' ? '#ef4444' : '#eab308'};
+      text-shadow: 0 2px 8px rgba(0,0,0,0.7), 0 0 12px ${type === 'damage' ? 'rgba(239,68,68,0.5)' : 'rgba(234,179,8,0.5)'};
+      opacity: 1;
+      transition: transform 1.5s ease-out, opacity 1.2s ease-in;
+    `;
+    container.appendChild(el);
+
+    // Force reflow then animate
+    el.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      el.style.transform = 'translate(-50%, -50%) translateY(-60px)';
+      el.style.opacity = '0';
+    });
+
+    setTimeout(() => el.remove(), 1600);
+  };
+
+  animateCardDeath = (cardInstance, mesh) => {
+    const col = cardInstance._gridCol;
+    const row = cardInstance._gridRow;
+
+    // Drop carried artifacts at current location
+    if (cardInstance.carriedArtifacts && cardInstance.carriedArtifacts.length > 0) {
+      for (const artifactId of cardInstance.carriedArtifacts) {
+        const artifactMesh = this.meshes.get(artifactId);
+        if (artifactMesh) {
+          const artifact = artifactMesh.userData.cardInstance;
+          artifact._carriedBy = undefined;
+          artifact._gridCol = col;
+          artifact._gridRow = row;
+          artifactMesh.visible = true;
+        }
+      }
+      cardInstance.carriedArtifacts = [];
+    }
+
+    // Clear grid tracking
+    cardInstance._gridCol = undefined;
+    cardInstance._gridRow = undefined;
+
+    // Brief shake
+    const origX = mesh.position.x;
+    const shakeFrames = 8;
+    let shakeCount = 0;
+    const shake = () => {
+      if (shakeCount >= shakeFrames) {
+        mesh.position.x = origX;
+        // Fade out
+        this.animateCardFadeOut(cardInstance, mesh);
+        return;
+      }
+      mesh.position.x = origX + (Math.random() - 0.5) * 0.4;
+      shakeCount++;
+      requestAnimationFrame(shake);
+    };
+    requestAnimationFrame(shake);
+  };
+
+  animateCardFadeOut = (cardInstance, mesh) => {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mat of mats) {
+      mat.transparent = true;
+    }
+
+    const duration = 500;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const opacity = 1 - t;
+      for (const mat of mats) {
+        mat.opacity = opacity;
+      }
+      // Also fade HUD sprites
+      const hud = this.lifeHUDs.get(cardInstance.id);
+      if (hud) {
+        if (hud.sprite?.material) hud.sprite.material.opacity = opacity;
+        if (hud.hpSprite?.material) hud.hpSprite.material.opacity = opacity;
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        // Send to cemetery and clean up
+        this.sendDeadCardToCemetery(cardInstance);
+      }
+    };
+    requestAnimationFrame(tick);
+  };
+
+  sendDeadCardToCemetery = (cardInstance) => {
+    // Guard against double-sends
+    if (cardInstance._sentToCemetery) return;
+    cardInstance._sentToCemetery = true;
+
+    // Reset opacity on materials before sending to pile
+    const mesh = this.meshes.get(cardInstance.id);
+    if (mesh) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of mats) {
+        mat.opacity = 1;
+        mat.transparent = false;
+      }
+    }
+
+    const pile = this.findPileByName('Cemetery');
+    if (pile) {
+      pile.cards.push(cardInstance);
+      this.removeCardFromTable(cardInstance);
+      this.updatePileMeshes();
+    } else {
+      // Create cemetery pile if it doesn't exist
+      const { spawnConfig } = this.state;
+      const point = getSpawnPoint(spawnConfig, 'cemetery');
+      const newPile = {
+        id: `pile-${Date.now()}`,
+        name: 'Cemetery',
+        cards: [cardInstance],
+        x: point.x,
+        z: point.z,
+        rotated: cardInstance.rotated || false,
+      };
+      this.state.gameState.piles.push(newPile);
+      const pileMesh = createPileMesh(newPile);
+      if (pileMesh) {
+        this.scene.scene.add(pileMesh);
+        this.pileMeshes.set(newPile.id, pileMesh);
+      }
+      this.removeCardFromTable(cardInstance);
+    }
+    emitGameAction('pile:update', {});
+  };
+
   deleteDice = (diceInstance) => {
     const mesh = this.diceMeshes.get(diceInstance.id);
     if (mesh) {
@@ -2485,11 +4201,98 @@ export default class GameBoard extends Component {
     const menuLeave = (e) => { e.currentTarget.style.background = 'transparent'; };
     const divider = <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />;
 
+    if (contextMenu.type === 'moveAction') {
+      const { cardInstance, mesh } = contextMenu;
+      const abilities = this.getCardAbilities(cardInstance);
+      const isImmobile = abilities.immobile;
+      const attackSteps = 1 + abilities.movementBonus;
+      const abilityTags = [];
+      if (abilities.airborne) abilityTags.push('Airborne');
+      if (abilities.stealth) abilityTags.push('Stealth');
+      if (abilities.lethal) abilityTags.push('Lethal');
+      if (abilities.charge) abilityTags.push('Charge');
+      if (abilities.movementBonus > 0) abilityTags.push(`Movement +${abilities.movementBonus}`);
+
+      return (
+        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+          <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: ACCENT_GOLD }}>
+            {cardInstance.name || 'Unit'}
+          </div>
+          {abilityTags.length > 0 ? (
+            <div className="px-3 pb-1 flex flex-wrap gap-1">
+              {abilityTags.map((tag) => (
+                <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: `${GOLD} 0.1)`, color: ACCENT_GOLD }}>{tag}</span>
+              ))}
+            </div>
+          ) : null}
+          {divider}
+          <button type="button" className={menuCls}
+            style={{ color: isImmobile ? TEXT_MUTED : TEXT_BODY, opacity: isImmobile ? 0.4 : 1 }}
+            onMouseEnter={isImmobile ? undefined : menuHover} onMouseLeave={menuLeave}
+            onClick={() => {
+              if (isImmobile) return;
+              this.setState({ contextMenu: null });
+              this.startPathMode(cardInstance, mesh, 'move');
+            }}>
+            <span className="mr-2">&#9814;</span> Move
+            {isImmobile ? <span className="ml-auto text-[10px] opacity-60">Immobile</span> : null}
+          </button>
+          <button type="button" className={menuCls}
+            style={{ color: isImmobile ? TEXT_MUTED : '#c45050', opacity: isImmobile ? 0.4 : 1 }}
+            onMouseEnter={isImmobile ? undefined : menuHover} onMouseLeave={menuLeave}
+            onClick={() => {
+              if (isImmobile) return;
+              this.setState({ contextMenu: null });
+              this.startPathMode(cardInstance, mesh, 'attack');
+            }}>
+            <span className="mr-2">&#9876;</span> Move &amp; Attack
+            <span className="ml-auto text-[10px] opacity-60">{attackSteps} step{attackSteps !== 1 ? 's' : ''}</span>
+          </button>
+          {divider}
+          <button type="button" className={menuCls} style={{ color: TEXT_MUTED }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
+            onClick={() => { this._pendingPathCard = null; this.setState({ contextMenu: null }); }}>
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
     if (contextMenu.type === 'card') {
       const { cardInstance, mesh } = contextMenu;
       return (
         <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
           <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
+          {/* Move & Attack option for grid cards */}
+          {(() => {
+            const isOnGrid = cardInstance._gridCol != null && cardInstance._gridRow != null;
+            const isSite = cardInstance.isSite;
+            if (!isOnGrid || isSite) return null;
+            const abilities = this.getCardAbilities(cardInstance);
+            if (abilities?.immobile) return null;
+            const steps = 1 + (abilities?.movementBonus || 0);
+            return (
+              <>
+                <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
+                  onClick={() => {
+                    this.setState({ contextMenu: null });
+                    // Tap and attack in place — enter target selection at current cell
+                    if (!cardInstance.tapped) {
+                      cardInstance.tapped = true;
+                      animateCardTap(mesh, cardInstance);
+                      emitGameAction('card:tap', { cardId: cardInstance.id, tapped: true });
+                    }
+                    this.enterTargetSelection(cardInstance, mesh);
+                  }}>
+                  &#9876; Attack
+                </button>
+                <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
+                  onClick={() => { this.setState({ contextMenu: null }); this.startPathMode(cardInstance, mesh, 'attack'); }}>
+                  &#9876; Move &amp; Attack <span className="ml-auto text-[10px] opacity-60">{steps} step{steps !== 1 ? 's' : ''}</span>
+                </button>
+                {divider}
+              </>
+            );
+          })()}
           <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.tapCard(cardInstance, mesh)}>
             {cardInstance.tapped ? 'Untap' : 'Tap'}
           </button>
@@ -2517,6 +4320,48 @@ export default class GameBoard extends Component {
           <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Atlas', false)}>
             Atlas (bottom)
           </button>
+          {!cardInstance.isSite && cardInstance._gridCol != null ? (() => {
+            const cellCards = this.getCardsInCell(cardInstance._gridCol, cardInstance._gridRow);
+            const hasUncarriedArtifacts = cellCards.some(({ cardInstance: ci }) =>
+              ci.type === 'Artifact' && ci.id !== cardInstance.id && !ci._carriedBy
+            );
+            const hasCarried = cardInstance.carriedArtifacts && cardInstance.carriedArtifacts.length > 0;
+            if (!hasUncarriedArtifacts && !hasCarried) return null;
+            return (
+              <>
+                {divider}
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Artifacts</div>
+                {hasUncarriedArtifacts ? (
+                  <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.pickUpArtifacts(cardInstance)}>
+                    Pick Up Artifacts
+                  </button>
+                ) : null}
+                {hasCarried ? (
+                  <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.dropArtifacts(cardInstance)}>
+                    Drop Artifacts ({cardInstance.carriedArtifacts.length})
+                  </button>
+                ) : null}
+              </>
+            );
+          })() : null}
+          {/* Level options (Burrow / Submerge) */}
+          {(() => {
+            const abilities = this.getCardAbilities(cardInstance);
+            const levelOpts = abilities ? getLevelOptions(abilities, cardInstance._level || LEVELS.SURFACE) : [];
+            if (levelOpts.length === 0) return null;
+            return (
+              <>
+                {divider}
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Level</div>
+                {levelOpts.map((opt) => (
+                  <button key={opt.level} type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
+                    onClick={() => this.changeCardLevel(cardInstance, opt.level)}>
+                    {opt.icon} {opt.label}
+                  </button>
+                ))}
+              </>
+            );
+          })()}
           {divider}
           <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteCard(cardInstance)}>
             Delete
@@ -3059,6 +4904,127 @@ export default class GameBoard extends Component {
           />
 
           {this.renderContextMenu()}
+
+          {/* Waiting for opponent defense/intercept */}
+          {this.state.waitingForDefense ? (
+            <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 flex items-center gap-3" style={{ ...POPOVER_STYLE, borderRadius: '10px', border: `1px solid ${GOLD} 0.3)` }}>
+              <div className="size-3 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-sm font-semibold" style={{ color: TEXT_PRIMARY }}>Waiting for opponent to respond...</span>
+            </div>
+          ) : null}
+
+          {/* Defend Prompt */}
+          {this.state.defendPrompt ? (() => {
+            const dp = this.state.defendPrompt;
+            const selectedCount = dp.selectedDefenders.size;
+            return (
+              <div className="absolute bottom-0 left-0 right-0 z-[60]" style={{ background: 'linear-gradient(to top, rgba(8,6,4,0.95) 0%, rgba(8,6,4,0.85) 70%, transparent 100%)' }}>
+                <div className="max-w-2xl mx-auto px-6 py-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="size-2.5 rounded-full bg-red-400 animate-pulse" />
+                    <span className="text-sm font-bold" style={{ color: '#c45050' }}>ATTACK DECLARED</span>
+                  </div>
+                  <p className="text-sm mb-3" style={{ color: TEXT_BODY }}>
+                    <span style={{ color: TEXT_PRIMARY }}>{dp.attackerName}</span> is attacking your <span style={{ color: TEXT_PRIMARY }}>{dp.targetName}</span>! Click adjacent units on the board to assign defenders, or pass.
+                  </p>
+                  {selectedCount > 0 ? (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {[...dp.selectedDefenders].map((defId) => {
+                        const mesh = this.meshes.get(defId);
+                        const name = mesh?.userData?.cardInstance?.name || defId;
+                        return (
+                          <span key={defId} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer" style={{ background: `rgba(34,204,68,0.15)`, border: '1px solid rgba(34,204,68,0.3)', color: '#6fd87a' }} onClick={() => this.toggleDefender(defId)}>
+                            {name} &times;
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none" style={{ color: TEXT_MUTED }}>
+                      <input
+                        type="checkbox"
+                        checked={dp.keepOriginalTarget}
+                        onChange={(e) => this.setState((s) => ({ defendPrompt: { ...s.defendPrompt, keepOriginalTarget: e.target.checked } }))}
+                        className="accent-amber-500"
+                      />
+                      <span className="text-xs">Keep {dp.targetName} in fight</span>
+                    </label>
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer"
+                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                      onClick={this.passDefend}
+                    >
+                      Pass
+                    </button>
+                    <button
+                      type="button"
+                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer disabled:opacity-40"
+                      style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                      disabled={selectedCount === 0}
+                      onClick={this.submitDefendResponse}
+                    >
+                      Defend ({selectedCount})
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })() : null}
+
+          {/* Intercept Prompt */}
+          {this.state.interceptPrompt ? (() => {
+            const ip = this.state.interceptPrompt;
+            const selectedCount = ip.selectedInterceptors.size;
+            return (
+              <div className="absolute bottom-0 left-0 right-0 z-[60]" style={{ background: 'linear-gradient(to top, rgba(8,6,4,0.95) 0%, rgba(8,6,4,0.85) 70%, transparent 100%)' }}>
+                <div className="max-w-2xl mx-auto px-6 py-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="size-2.5 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-sm font-bold" style={{ color: ACCENT_GOLD }}>ENEMY ARRIVED</span>
+                  </div>
+                  <p className="text-sm mb-3" style={{ color: TEXT_BODY }}>
+                    <span style={{ color: TEXT_PRIMARY }}>{ip.arrivedCardName}</span> has moved into your territory! Click units on the board to intercept, or pass.
+                  </p>
+                  {selectedCount > 0 ? (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {[...ip.selectedInterceptors].map((icId) => {
+                        const mesh = this.meshes.get(icId);
+                        const name = mesh?.userData?.cardInstance?.name || icId;
+                        return (
+                          <span key={icId} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer" style={{ background: `rgba(34,204,68,0.15)`, border: '1px solid rgba(34,204,68,0.3)', color: '#6fd87a' }} onClick={() => this.toggleInterceptor(icId)}>
+                            {name} &times;
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer"
+                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                      onClick={this.passIntercept}
+                    >
+                      Pass
+                    </button>
+                    <button
+                      type="button"
+                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer disabled:opacity-40"
+                      style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                      disabled={selectedCount === 0}
+                      onClick={this.submitInterceptResponse}
+                    >
+                      Intercept ({selectedCount})
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })() : null}
 
           {/* Life & Mana HUD */}
           {(() => {

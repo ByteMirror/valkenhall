@@ -83,9 +83,10 @@ export function resolveAppHotkey({ event, state, isEditableTarget, leftPanelTabs
     !state.isSaveDialogOpen &&
     !state.isDeckMenuOpen &&
     !state.deckCardContextMenu &&
-    !isInteractiveTarget &&
+    !isEditable &&
     (
       state.selectedDeckEntryIndices?.length > 0 ||
+      state.hoveredDeckEntryIndex !== null ||
       state.previewedDeckEntryIndex !== null ||
       state.previewedArchiveCard !== null ||
       isFocusedArchivePreviewTarget

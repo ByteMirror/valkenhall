@@ -1,6 +1,6 @@
 import { Component } from 'preact';
-import { Mail, Users } from 'lucide-react';
 import RuneSpinner from './RuneSpinner';
+import AppHeader from './AppHeader';
 import { UI } from '../utils/arena/uiSounds';
 import { xpProgressInLevel } from '../utils/arena/profileDefaults';
 import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievements';
@@ -11,7 +11,7 @@ import {
   BEVELED_BTN, CONTENT_BG_DEFAULT, CONTENT_BG_HOVER, CONTENT_BG_ACTIVE,
   BTN_BORDER, BTN_BORDER_HOVER, BTN_CORNER, BTN_CORNER_HOVER,
   DIALOG_STYLE, DIALOG_BORDER, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
-  adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners,
+  adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners, TAB_ACTIVE, TAB_INACTIVE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 import AmbientParticles from './AmbientParticles';
@@ -126,13 +126,19 @@ export default class ArenaHub extends Component {
         <AmbientParticles />
 
         {/* ─── TOP BAR ─────────────────────────────────────── */}
-        <div className="relative z-20 flex items-center px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.15)`, background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', zoom: this.state.hubScale }}>
-          <img src="/valkenhall-logo.png" alt="Valkenhall" className="h-10" draggable={false} />
-
+        <AppHeader
+          profile={profile}
+          onToggleMailbox={onToggleMailbox}
+          mailboxUnreadCount={mailboxUnreadCount}
+          mailboxDropdown={this.props.mailboxDropdown}
+          onToggleFriends={onToggleFriends}
+          friendListData={friendListData}
+          zoom={this.state.hubScale}
+        >
           {this.props.isAdmin && (
             <button
               type="button"
-              className="ml-4 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-[1.05] active:scale-[0.97]"
+              className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-[1.05] active:scale-[0.97]"
               style={{
                 background: 'linear-gradient(180deg, rgba(180,60,60,0.15) 0%, rgba(120,30,30,0.1) 100%)',
                 border: '1px solid rgba(180,60,60,0.35)',
@@ -145,62 +151,14 @@ export default class ArenaHub extends Component {
               Admin
             </button>
           )}
-
-          <div className="ml-auto flex items-center gap-5">
-            {/* Gold display */}
-            <div className="flex items-center gap-1.5">
-              <span style={{ color: '#f0d060', fontSize: '14px', textShadow: '0 0 8px rgba(240,208,96,0.3)' }}>●</span>
-              <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
-              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
-            </div>
-
-            {/* Mailbox button + dropdown anchor */}
-            <div className="relative">
-              <button
-                type="button"
-                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
-                onClick={onToggleMailbox}
-              >
-                <Mail size={14} />
-                Mailbox
-                {(mailboxUnreadCount || 0) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
-                    {mailboxUnreadCount}
-                  </span>
-                )}
-              </button>
-              {this.props.mailboxDropdown}
-            </div>
-
-            {/* Friends button */}
-            <button
-              type="button"
-              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; e.currentTarget.style.boxShadow = BEVELED_BTN.boxShadow; }}
-              onClick={onToggleFriends}
-            >
-              <Users size={14} />
-              Friends
-              {(friendListData?.pendingCount || 0) > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
-                  {friendListData.pendingCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+        </AppHeader>
 
         {/* ─── MAIN CONTENT ────────────────────────────────── */}
         <div className="relative z-10 flex-1 flex flex-col overflow-hidden" style={{ zoom: this.state.hubScale }}>
           <div className="mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
 
             {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2 w-[60%] mx-auto" style={{ background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2 w-[60%] mx-auto" style={{ background: `url("/tex-noise-panel.webp"), linear-gradient(rgba(12, 10, 8, 0.6), rgba(12, 10, 8, 0.6))`, backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
               <CornerPlating position="top-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
@@ -328,7 +286,8 @@ export default class ArenaHub extends Component {
               {/* ── LEFT COLUMN: VERTICAL MENU ──────────────── */}
               <div className="w-[280px] shrink-0 flex flex-col overflow-visible py-1 pl-1">
 
-                {/* FIND MATCH — hero button */}
+                <img src="/valkenhall-logo.png" alt="Valkenhall" className="w-full mb-3" draggable={false} />
+
                 <MenuButton title="Find Match" onClick={onFindMatch} />
                 <MenuButton title="Casual Play" onClick={onPlayMatch} />
                 <MenuButton title="Store" onClick={onOpenStore} />
@@ -382,7 +341,7 @@ export default class ArenaHub extends Component {
                 <div
                   className="relative flex-1 flex flex-col"
                   style={{
-                    background: 'rgba(12, 10, 8, 0.94)',
+                    background: `url("/tex-noise-panel.webp"), linear-gradient(rgba(12, 10, 8, 0.6), rgba(12, 10, 8, 0.6))`,
                     backdropFilter: 'blur(8px)',
                     border: `1px solid ${GOLD} 0.18)`,
                     borderRadius: '8px',
@@ -403,12 +362,7 @@ export default class ArenaHub extends Component {
                           key={t.value}
                           type="button"
                           className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide transition-all"
-                          style={{
-                            color: leaderboardFilter === t.value ? '#e8d5a0' : 'rgba(166,160,155,0.5)',
-                            background: leaderboardFilter === t.value ? `${GOLD} 0.12)` : 'transparent',
-                            border: `1px solid ${leaderboardFilter === t.value ? `${GOLD} 0.3)` : 'rgba(166,160,155,0.1)'}`,
-                            borderRadius: '4px',
-                          }}
+                          style={leaderboardFilter === t.value ? TAB_ACTIVE : TAB_INACTIVE}
                           onClick={() => this.setState({ leaderboardFilter: t.value })}
                         >
                           {t.label}
@@ -479,7 +433,7 @@ export default class ArenaHub extends Component {
                 <div
                   className="relative flex-1 flex flex-col min-h-0"
                   style={{
-                    background: 'rgba(12, 10, 8, 0.94)',
+                    background: `url("/tex-noise-panel.webp"), linear-gradient(rgba(12, 10, 8, 0.6), rgba(12, 10, 8, 0.6))`,
                     backdropFilter: 'blur(8px)',
                     border: `1px solid ${GOLD} 0.18)`,
                     borderRadius: '8px',

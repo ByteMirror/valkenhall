@@ -8,8 +8,8 @@ describe('cardsApi', () => {
   });
 
   it('resolves the Bun renderer cards asset under the app base path', () => {
-    expect(getCardsAssetUrl({ pathname: '/flesh-and-blood-proxies' })).toBe('/flesh-and-blood-proxies/cards.json');
-    expect(getCardsAssetUrl({ pathname: '/flesh-and-blood-proxies/metrics' })).toBe('/flesh-and-blood-proxies/cards.json');
+    expect(getCardsAssetUrl({ pathname: '' })).toBe('/cards.json');
+    expect(getCardsAssetUrl({ pathname: '/metrics' })).toBe('/cards.json');
   });
 
   it('resolves the plain web cards asset at the root path', () => {
