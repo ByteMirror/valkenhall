@@ -1,5 +1,5 @@
 import { ApplicationMenu, BrowserWindow } from 'electrobun/bun';
-import { startProxyServer, registerUpdateApi } from '../../server/proxy.js';
+import { startProxyServer, registerUpdateApi, registerWindowApi } from '../../server/proxy.js';
 import { getDesktopHost, shouldStartEmbeddedProxy } from './devServerConfig.js';
 import { registerDesktopCleanup } from './lifecycle.js';
 import { buildApplicationMenu } from './menu.js';
@@ -56,7 +56,14 @@ const mainWindow = new BrowserWindow({
   },
 });
 
-mainWindow.setFullScreen(true);
+if (!IS_DEV) {
+  mainWindow.setFullScreen(true);
+}
+
+registerWindowApi({
+  isFullScreen: () => mainWindow.isFullScreen(),
+  setFullScreen: (fs) => mainWindow.setFullScreen(fs),
+});
 
 let isCleanedUp = false;
 

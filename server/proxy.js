@@ -733,6 +733,32 @@ app.delete('/api/auth/token', async (_req, res) => {
   }
 });
 
+// --- Display mode endpoints ---
+
+let windowApi = null;
+
+export function registerWindowApi(api) {
+  windowApi = api;
+}
+
+app.get('/api/display/mode', (_req, res) => {
+  if (!windowApi) return res.json({ mode: 'fullscreen' });
+  res.json({ mode: windowApi.isFullScreen() ? 'fullscreen' : 'windowed' });
+});
+
+app.put('/api/display/mode', (req, res) => {
+  const { mode } = req.body;
+  if (!windowApi) return res.status(503).json({ error: 'Window API not available' });
+  if (mode === 'fullscreen') {
+    windowApi.setFullScreen(true);
+  } else if (mode === 'windowed') {
+    windowApi.setFullScreen(false);
+  } else {
+    return res.status(400).json({ error: 'Invalid mode. Use "fullscreen" or "windowed".' });
+  }
+  res.json({ mode });
+});
+
 // --- Auto-update endpoints ---
 
 let updateApi = null;

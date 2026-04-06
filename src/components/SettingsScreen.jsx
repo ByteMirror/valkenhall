@@ -3,6 +3,7 @@ import RuneSpinner from './RuneSpinner';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
 import { UI } from '../utils/arena/uiSounds';
+import { getLocalApiOrigin } from '../utils/localApi';
 import {
   GOLD, GOLD_TEXT, BG_ATMOSPHERE, VIGNETTE,
   TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, PARCHMENT, PANEL_BG,
@@ -11,6 +12,7 @@ import {
 } from '../lib/medievalTheme';
 
 const SECTIONS = [
+  { key: 'display', label: 'Display', icon: '\u25A3' },
   { key: 'sound', label: 'Sound', icon: '\u266B' },
   { key: 'profile', label: 'Profile', icon: '\u2726' },
   { key: 'updates', label: 'Updates', icon: '\u2B06' },
@@ -27,8 +29,9 @@ export default class SettingsScreen extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      activeSection: 'sound',
+      activeSection: 'display',
       soundSettings: getSoundSettings(),
+      displayMode: 'fullscreen',
       showResetConfirm: false,
       checking: false,
       retrying: false,
@@ -38,7 +41,29 @@ export default class SettingsScreen extends Component {
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+    this.loadDisplayMode();
   }
+
+  loadDisplayMode = async () => {
+    try {
+      const res = await fetch(`${getLocalApiOrigin()}/api/display/mode`);
+      if (res.ok) {
+        const { mode } = await res.json();
+        this.setState({ displayMode: mode });
+      }
+    } catch {}
+  };
+
+  setDisplayMode = async (mode) => {
+    this.setState({ displayMode: mode });
+    try {
+      await fetch(`${getLocalApiOrigin()}/api/display/mode`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+    } catch {}
+  };
 
   componentWillUnmount() {
     this.unsubScale?.();
@@ -90,6 +115,44 @@ export default class SettingsScreen extends Component {
               <button type="button" className="rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer transition-colors" style={ss.sfxEnabled ? TOGGLE_ON : TOGGLE_OFF} onClick={() => this.updateSound('sfxEnabled', !ss.sfxEnabled)}>{ss.sfxEnabled ? 'On' : 'Off'}</button>
               <input type="range" min="0" max="100" value={Math.round(ss.sfxVolume * 100)} className="w-24 h-1 accent-amber-500 cursor-pointer" disabled={!ss.sfxEnabled} onInput={(e) => this.updateSound('sfxVolume', parseInt(e.target.value, 10) / 100)} />
               <span className="text-xs w-8 text-right tabular-nums" style={{ color: TEXT_MUTED }}>{Math.round(ss.sfxVolume * 100)}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  renderDisplaySection() {
+    const { displayMode } = this.state;
+
+    return (
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_LABEL}>Display</div>
+        <div className="flex flex-col overflow-hidden" style={PANEL}>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <span className="text-sm" style={{ color: TEXT_PRIMARY }}>Window Mode</span>
+              <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>How the game window is displayed</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-md px-3 py-1 text-[10px] font-medium cursor-pointer transition-colors"
+                style={displayMode === 'fullscreen' ? TOGGLE_ON : TOGGLE_OFF}
+                data-sound={UI.CLICK}
+                onClick={() => this.setDisplayMode('fullscreen')}
+              >
+                Fullscreen
+              </button>
+              <button
+                type="button"
+                className="rounded-md px-3 py-1 text-[10px] font-medium cursor-pointer transition-colors"
+                style={displayMode === 'windowed' ? TOGGLE_ON : TOGGLE_OFF}
+                data-sound={UI.CLICK}
+                onClick={() => this.setDisplayMode('windowed')}
+              >
+                Windowed
+              </button>
             </div>
           </div>
         </div>
@@ -367,6 +430,7 @@ export default class SettingsScreen extends Component {
 
             {/* Content */}
             <div className="flex-1 min-w-0 overflow-y-auto">
+              {activeSection === 'display' ? this.renderDisplaySection() : null}
               {activeSection === 'sound' ? this.renderSoundSection() : null}
               {activeSection === 'profile' ? this.renderProfileSection() : null}
               {activeSection === 'updates' ? this.renderUpdatesSection() : null}
