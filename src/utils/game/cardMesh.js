@@ -40,11 +40,25 @@ function createCardBoxGeometry(w, h) {
 export function createCardMesh(cardInstance) {
   // Always use portrait dimensions — sites get rotated to appear landscape
   const geometry = createCardBoxGeometry(CARD_WIDTH, CARD_HEIGHT);
-  const edgeMat = new THREE.MeshStandardMaterial({ color: CARD_EDGE_COLOR });
+  const foiling = cardInstance.foiling || 'S';
+  const isFoil = foiling === 'F' || foiling === 'R';
+
+  const edgeColor = isFoil
+    ? (foiling === 'R' ? 0x6644aa : 0x8b7520)
+    : CARD_EDGE_COLOR;
+  const edgeMat = new THREE.MeshStandardMaterial({ color: edgeColor });
+
   const frontMat = new THREE.MeshStandardMaterial({
     map: loadTexture(cardInstance.imageUrl),
     transparent: true,
+    ...(isFoil ? {
+      metalness: foiling === 'R' ? 0.35 : 0.25,
+      roughness: foiling === 'R' ? 0.4 : 0.5,
+      emissive: new THREE.Color(foiling === 'R' ? 0x221133 : 0x1a1408),
+      emissiveIntensity: foiling === 'R' ? 0.3 : 0.2,
+    } : {}),
   });
+
   const backTexture = getBackTexture(cardInstance.isSite);
   const backMat = backTexture
     ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
