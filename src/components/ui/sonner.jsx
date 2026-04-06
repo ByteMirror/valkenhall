@@ -2,15 +2,15 @@ import { Toaster as Sonner } from 'sonner';
 import { getViewportScale } from '../../lib/medievalTheme';
 
 function Toaster(props) {
+  const scale = getViewportScale();
   return (
+    <div style={{ zoom: scale }}>
     <Sonner
       closeButton
       position="bottom-right"
       theme="dark"
       duration={3000}
-      expand
       visibleToasts={5}
-      style={{ zoom: getViewportScale() }}
       toastOptions={{
         style: {
           background: 'rgba(12, 10, 8, 0.95)',
@@ -45,6 +45,7 @@ function Toaster(props) {
       }}
       {...props}
     />
+    </div>
   );
 }
 
