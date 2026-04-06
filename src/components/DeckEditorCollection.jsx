@@ -348,14 +348,8 @@ export default class DeckEditorCollection extends Component {
   }
 
   renderOwnershipDotsForPrinting(owned, inUse, flash = false) {
-    const filledFilter = flash
-      ? 'sepia(1) saturate(6) brightness(1.3) hue-rotate(-20deg)'
-      : 'sepia(1) saturate(5) brightness(1.2) hue-rotate(15deg)';
-    const emptyFilter = flash
-      ? 'sepia(1) saturate(4) brightness(0.9) hue-rotate(-20deg)'
-      : 'sepia(1) saturate(2) brightness(1.0) hue-rotate(15deg)';
-    const filledShadow = flash ? '0 0 6px rgba(200,50,50,0.6)' : `0 0 3px ${ACCENT_GOLD}`;
-    const emptyOutline = flash ? '1px solid rgba(200,60,60,0.5)' : '1px solid rgba(180,150,80,0.3)';
+    const filled = { opacity: 1, filter: 'sepia(1) saturate(5) brightness(1.2) hue-rotate(15deg)', dropShadow: `0 0 3px ${ACCENT_GOLD}` };
+    const empty = { opacity: 0.6, filter: 'sepia(1) saturate(2) brightness(1.0) hue-rotate(15deg)' };
 
     if (owned > 6) {
       return (
@@ -383,13 +377,13 @@ export default class DeckEditorCollection extends Component {
           return (
             <div
               key={i}
+              className="relative"
               style={{
                 width: 16,
                 height: 16,
                 borderRadius: 3,
-                outline: active ? 'none' : emptyOutline,
-                filter: active ? `drop-shadow(${filledShadow})` : undefined,
-                transition: 'filter 0.2s, outline 0.2s',
+                outline: active ? 'none' : `1px solid ${flash ? 'rgba(200,60,60,0.5)' : 'rgba(180,150,80,0.3)'}`,
+                filter: active ? `drop-shadow(${flash ? '0 0 6px rgba(200,50,50,0.6)' : filled.dropShadow})` : undefined,
               }}
             >
               <img
@@ -399,11 +393,20 @@ export default class DeckEditorCollection extends Component {
                 style={{
                   width: '100%',
                   height: '100%',
-                  opacity: active ? 1 : 0.6,
-                  filter: active ? filledFilter : emptyFilter,
-                  transition: 'filter 0.2s, opacity 0.2s',
+                  opacity: active ? filled.opacity : empty.opacity,
+                  filter: active ? filled.filter : empty.filter,
                 }}
               />
+              {flash && (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    borderRadius: 3,
+                    background: 'rgba(200, 50, 50, 0.6)',
+                    mixBlendMode: 'multiply',
+                  }}
+                />
+              )}
             </div>
           );
         })}
