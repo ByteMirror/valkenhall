@@ -1266,9 +1266,17 @@ export default class App extends Component {
         cards: payload.cards,
         previewUrl: savedSummary.previewUrl || null,
       };
-      const updatedDecks = currentDecks.some((d) => d.id === savedSummary.id)
+      // Replace existing deck or add new one, then deduplicate by ID
+      const exists = currentDecks.some((d) => d.id === savedSummary.id);
+      const merged = exists
         ? currentDecks.map((d) => d.id === savedSummary.id ? deckEntry : d)
         : [...currentDecks, deckEntry];
+      const seen = new Set();
+      const updatedDecks = merged.filter((d) => {
+        if (seen.has(d.id)) return false;
+        seen.add(d.id);
+        return true;
+      });
       return { arenaProfile: { ...arenaProfile, decks: updatedDecks } };
     }, () => {
       if (this.state.arenaProfile) {
