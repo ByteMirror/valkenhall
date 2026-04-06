@@ -91,7 +91,6 @@ const CARD_TILE_STYLE = {
 
 const SIDEBAR_PANEL = {
   background: PANEL_BG,
-  borderLeft: `1px solid ${GOLD} 0.25)`,
 };
 
 export default class AuctionHouse extends Component {
