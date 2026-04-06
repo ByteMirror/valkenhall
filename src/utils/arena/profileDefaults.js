@@ -7,13 +7,13 @@ export function isArenaDebugMode() {
 }
 
 export const CURRENCY = {
-  WIN_REWARD: 400,
-  LOSS_REWARD: 100,
-  SELL_ORDINARY: 10,
-  SELL_EXCEPTIONAL: 25,
-  SELL_ELITE: 75,
-  SELL_UNIQUE: 200,
-  PACK_PRICE: 500,
+  WIN_REWARD: 100,
+  LOSS_REWARD: 50,
+  SELL_ORDINARY: 2,
+  SELL_EXCEPTIONAL: 5,
+  SELL_ELITE: 10,
+  SELL_UNIQUE: 25,
+  PACK_PRICE: 50,
 };
 
 export const XP = {

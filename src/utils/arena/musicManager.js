@@ -94,17 +94,34 @@ export function playMusic(track, { fadeInDuration = 3000 } = {}) {
   allAudios.add(audio);
 
   audio.play().catch(() => {
+    // Autoplay blocked — retry on user gesture AND periodically.
+    // Desktop CEF sometimes allows play after a short delay even
+    // without a visible click (e.g. after initial page load settles).
+    let retryTimer = null;
     const resume = () => {
-      if (currentAudio === audio && audio.paused) {
-        audio.play().catch(() => {});
+      if (currentAudio !== audio) {
+        cleanup();
+        return;
       }
+      if (audio.paused) {
+        audio.play().then(cleanup).catch(() => {});
+      } else {
+        cleanup();
+      }
+    };
+    const cleanup = () => {
+      clearInterval(retryTimer);
+      retryTimer = null;
       document.removeEventListener('click', resume);
       document.removeEventListener('keydown', resume);
       document.removeEventListener('pointerdown', resume);
+      document.removeEventListener('mousemove', resume);
     };
+    retryTimer = setInterval(resume, 500);
     document.addEventListener('click', resume, { once: true });
     document.addEventListener('keydown', resume, { once: true });
     document.addEventListener('pointerdown', resume, { once: true });
+    document.addEventListener('mousemove', resume, { once: true });
   });
 
   // Fade in
