@@ -69,6 +69,21 @@ jobs:
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
           ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
           ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
+      - name: Ad-hoc codesign macOS app
+        if: matrix.target_id == 'darwin-arm64'
+        run: |
+          APP=$(find artifacts/ -name "*.app" -maxdepth 2 2>/dev/null | head -1)
+          if [ -n "$APP" ]; then
+            echo "Ad-hoc signing: $APP"
+            codesign --force --deep --sign - "$APP"
+          else
+            echo "No .app found in artifacts/, checking build/"
+            APP=$(find build/ -name "*.app" -maxdepth 3 2>/dev/null | head -1)
+            if [ -n "$APP" ]; then
+              echo "Ad-hoc signing: $APP"
+              codesign --force --deep --sign - "$APP"
+            fi
+          fi
       - name: List build output
         if: always()
         shell: bash
