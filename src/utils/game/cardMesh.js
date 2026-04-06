@@ -142,9 +142,9 @@ export function createCardMesh(cardInstance) {
   const edgeMat = new THREE.MeshStandardMaterial({ color: edgeColor });
 
   // Resolve image URL locally — remote card instances may have a different player's port
-  const imageUrl = cardInstance.imagePath
-    ? `${getLocalApiOrigin()}${cardInstance.imagePath}`
-    : cardInstance.imageUrl;
+  const rawUrl = cardInstance.imageUrl || '';
+  const pathPart = cardInstance.imagePath || rawUrl.replace(/^https?:\/\/[^/]+/, '');
+  const imageUrl = pathPart.startsWith('/') ? `${getLocalApiOrigin()}${pathPart}` : rawUrl;
 
   const frontMat = new THREE.MeshStandardMaterial({
     map: loadTexture(imageUrl),
