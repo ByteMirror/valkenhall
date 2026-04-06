@@ -865,7 +865,7 @@ export default class AuctionHouse extends Component {
                     </div>
                     <OrnamentalDivider className="mb-3" />
                     <div className="flex flex-col gap-1.5">
-                      {sold.map((listing) => {
+                      {sold.slice(0, 5).map((listing) => {
                         const card = findCard(sorceryCards, listing.cardId);
                         return (
                           <div
