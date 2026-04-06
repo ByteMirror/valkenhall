@@ -5763,7 +5763,12 @@ export default class GameBoard extends Component {
                   transform: `scale(${scale})`,
                 }}
               >
-                <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
+                <div
+                  className={cn('w-full h-full overflow-hidden rounded-md card-mask', isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES)}
+                  data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
+                >
+                  <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
+                </div>
               </div>
             );
           }
@@ -5808,14 +5813,18 @@ export default class GameBoard extends Component {
                 bottom: '0px',
                 width: `${cardW}px`,
                 height: `${cardH}px`,
-                overflow: 'hidden',
                 zIndex,
                 transformOrigin: 'bottom center',
                 transition: 'transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
                 transform: `translateX(calc(-50% + ${x}px)) translateY(${y}px) rotate(${rotation}deg) scale(${scale})`,
               }}
             >
-              <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
+              <div
+                className={cn('w-full h-full overflow-hidden rounded-lg card-mask', isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES)}
+                data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
+              >
+                <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]" draggable={false} />
+              </div>
             </div>
           );
         })}
