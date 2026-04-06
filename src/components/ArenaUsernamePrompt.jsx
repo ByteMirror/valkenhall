@@ -90,7 +90,7 @@ export default class ArenaUsernamePrompt extends Component {
                 onMouseLeave={(e) => { if (username.trim() && !loading) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = GOLD_BTN.boxShadow; } }}
                 onClick={this.handleSubmit}
               >
-                {loading ? <RuneSpinner size={18} className="inline-block" /> : 'Confirm Username'}
+                {loading ? <><RuneSpinner size={18} dark className="inline-block" /><span className="invisible">Confirm Username</span></> : 'Confirm Username'}
               </button>
             </div>
           </div>

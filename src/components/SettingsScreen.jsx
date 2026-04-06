@@ -202,12 +202,12 @@ export default class SettingsScreen extends Component {
           <div className="flex items-center justify-end gap-2 px-4 py-3">
             {status.state === 'DOWNLOAD_FAILED' ? (
               <button type="button" className="px-4 py-1.5 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px', opacity: retrying ? 0.6 : 1 }} disabled={retrying} onClick={this.handleRetry}>
-                {retrying ? <RuneSpinner size={14} className="inline-block" /> : 'Retry Download'}
+                {retrying ? <><RuneSpinner size={14} className="inline-block" /><span className="invisible">Retry Download</span></> : 'Retry Download'}
               </button>
             ) : null}
             {status.state === 'UP_TO_DATE' || status.state === 'DOWNLOAD_FAILED' ? (
               <button type="button" className="px-4 py-1.5 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px', opacity: checking ? 0.6 : 1 }} disabled={checking} onClick={this.handleCheck}>
-                {checking ? <RuneSpinner size={14} className="inline-block" /> : 'Check for Updates'}
+                {checking ? <><RuneSpinner size={14} className="inline-block" /><span className="invisible">Check for Updates</span></> : 'Check for Updates'}
               </button>
             ) : null}
             {status.state === 'READY_TO_INSTALL' ? (

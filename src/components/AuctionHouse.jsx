@@ -588,7 +588,7 @@ export default class AuctionHouse extends Component {
                       style={GOLD_BTN}
                       onClick={() => this.handleBuy(previewListing)}
                     >
-                      {buyingId === previewListing.id ? <RuneSpinner size={16} className="inline-block" /> : 'Buy Now'}
+                      {buyingId === previewListing.id ? <><RuneSpinner size={16} dark className="inline-block" /><span className="invisible">Buy Now</span></> : 'Buy Now'}
                     </button>
                   )}
                 </div>
@@ -867,7 +867,7 @@ export default class AuctionHouse extends Component {
                       style={GOLD_BTN}
                       onClick={this.handleCreateListing}
                     >
-                      {sellLoading ? <RuneSpinner size={14} className="inline-block" /> : sellQuantity > 1 ? `List ${sellQuantity} for Sale` : 'List for Sale'}
+                      {sellLoading ? <><RuneSpinner size={14} dark className="inline-block" /><span className="invisible">List for Sale</span></> : sellQuantity > 1 ? `List ${sellQuantity} for Sale` : 'List for Sale'}
                     </button>
                     <button
                       type="button"
@@ -953,7 +953,7 @@ export default class AuctionHouse extends Component {
                               data-sound={UI.CANCEL}
                               onClick={() => this.handleCancel(listing)}
                             >
-                              {cancellingId === listing.id ? <RuneSpinner size={12} className="inline-block" /> : 'Cancel'}
+                              {cancellingId === listing.id ? <><RuneSpinner size={12} className="inline-block" /><span className="invisible">Cancel</span></> : 'Cancel'}
                             </button>
                           </div>
                         );

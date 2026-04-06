@@ -1,4 +1,4 @@
-export default function RuneSpinner({ size = 48, useViewportUnits = false, className = '' }) {
+export default function RuneSpinner({ size = 48, useViewportUnits = false, dark = false, className = '' }) {
   const dim = useViewportUnits ? `${size / 10}vmin` : `${size}px`;
   return (
     <img
@@ -9,8 +9,10 @@ export default function RuneSpinner({ size = 48, useViewportUnits = false, class
       style={{
         width: dim,
         height: dim,
-        opacity: 0.35,
-        filter: 'sepia(1) saturate(3) brightness(0.6) hue-rotate(15deg)',
+        opacity: dark ? 0.5 : 0.35,
+        filter: dark
+          ? 'sepia(1) saturate(2) brightness(0.3) hue-rotate(15deg)'
+          : 'sepia(1) saturate(3) brightness(0.6) hue-rotate(15deg)',
       }}
     />
   );
