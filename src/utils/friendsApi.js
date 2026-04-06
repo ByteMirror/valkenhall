@@ -14,7 +14,10 @@ export async function searchPlayers(query) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-search?q=${encodeURIComponent(query)}`, {
     headers: await authHeaders(),
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    console.warn(`Friends search failed: ${res.status} ${res.statusText}`);
+    return [];
+  }
   return res.json();
 }
 
