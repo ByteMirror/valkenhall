@@ -1,6 +1,10 @@
-# Valkenhall
+<p align="center">
+  <img src="assets/Icon-iOS-Default-1024x1024@1x.png" width="128" height="128" alt="Valkenhall" />
+</p>
 
-A desktop card game arena built with Electrobun, Bun, and Preact. Play Sorcery TCG with deck building, ranked matchmaking, collection management, and a 3D game board.
+<h1 align="center">Valkenhall</h1>
+
+<p align="center">A desktop card game arena built with Electrobun, Bun, and Preact. Play Sorcery TCG with deck building, ranked matchmaking, collection management, and a 3D game board.</p>
 
 Runs natively on macOS, Linux, and Windows.
 
