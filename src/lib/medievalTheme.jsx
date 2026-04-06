@@ -159,7 +159,7 @@ function handleScaleResize() {
 }
 
 if (typeof window !== 'undefined') {
-  document.documentElement.style.setProperty('--viewport-scale', getViewportScale());
+  document.documentElement.style.setProperty('--viewport-scale', String(getViewportScale()));
   window.addEventListener('resize', handleScaleResize);
 }
 

@@ -286,10 +286,9 @@ input[type="tel"], textarea, [contenteditable] {
   cursor: text !important;
 }
 
-/* Scale sonner toasts with viewport using transform (preserves stacking) */
+/* Scale sonner toasts with viewport */
 [data-sonner-toaster] {
-  transform: scale(var(--viewport-scale, 1));
-  transform-origin: top center;
+  zoom: var(--viewport-scale, 1) !important;
 }
 
 /* Hide native number input spinners */
