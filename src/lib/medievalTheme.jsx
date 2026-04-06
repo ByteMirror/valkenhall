@@ -2,6 +2,7 @@
  * Shared medieval theme constants and components used across the Valkenhall UI.
  * Single source of truth for the dark-gold medieval aesthetic.
  */
+import { playUI, UI } from '../utils/arena/uiSounds';
 
 /* ── Color tokens ──────────────────────────────────────── */
 export const GOLD = 'rgba(180, 140, 60,';
@@ -152,11 +153,13 @@ function handleScaleResize() {
   scaleRafId = requestAnimationFrame(() => {
     scaleRafId = null;
     const scale = getViewportScale();
+    document.documentElement.style.setProperty('--viewport-scale', scale);
     for (const fn of scaleListeners) fn(scale);
   });
 }
 
 if (typeof window !== 'undefined') {
+  document.documentElement.style.setProperty('--viewport-scale', getViewportScale());
   window.addEventListener('resize', handleScaleResize);
 }
 
@@ -202,9 +205,48 @@ export function OrnamentalDivider({ className }) {
   return (
     <div className={`flex items-center gap-3 select-none ${className || ''}`}>
       <div className="flex-1 h-px" style={{ background: DIVIDER_GRADIENT }} />
-      <img src="/rune-divider.svg" alt="" className="h-5" draggable={false} style={{ opacity: 0.25, filter: 'sepia(1) saturate(3) brightness(0.6) hue-rotate(15deg)' }} />
+      <img src="/rune-divider.webp" alt="" className="h-5" draggable={false} style={{ opacity: 0.25, filter: 'sepia(1) saturate(3) brightness(0.6) hue-rotate(15deg)' }} />
       <div className="flex-1 h-px" style={{ background: DIVIDER_GRADIENT }} />
     </div>
+  );
+}
+
+/* ── Medieval button component ────────────────────────── */
+const VARIANT_SOUND = {
+  default: UI.CLICK,
+  confirm: UI.CONFIRM,
+  cancel: UI.CANCEL,
+  danger: UI.CANCEL,
+  gold: UI.CONFIRM,
+};
+
+const VARIANT_STYLE = {
+  default: 'BEVELED_BTN',
+  confirm: 'GOLD_BTN',
+  cancel: 'BEVELED_BTN',
+  danger: 'DANGER_BTN',
+  gold: 'GOLD_BTN',
+};
+
+export function MedievalBtn({ variant = 'default', sound, onClick, className = '', style: extraStyle, children, ...props }) {
+  const baseStyle = variant === 'gold' || variant === 'confirm' ? GOLD_BTN
+    : variant === 'danger' ? DANGER_BTN
+    : BEVELED_BTN;
+  const soundFile = sound === 'none' ? null : (sound || VARIANT_SOUND[variant] || UI.CLICK);
+
+  return (
+    <button
+      type="button"
+      className={`transition-all duration-200 hover:scale-[1.03] active:scale-[0.98] ${className}`}
+      style={{ ...baseStyle, ...extraStyle }}
+      onClick={(e) => {
+        if (soundFile) playUI(soundFile);
+        onClick?.(e);
+      }}
+      {...props}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -213,7 +255,7 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
   return (
     <button
       type="button"
-      className="relative group w-full text-left cursor-pointer transition-all duration-200 mb-2"
+      className="relative group w-full text-center cursor-pointer transition-all duration-200 mb-2"
       style={{ transform: 'scale(1)', ...extraStyle }}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
@@ -239,14 +281,14 @@ export function MenuButton({ title, onClick, style: extraStyle }) {
         e.currentTarget.style.transform = 'scale(1.02)';
         e.currentTarget.querySelector('[data-content]').style.background = `${CONTENT_BG_HOVER}, rgba(12, 10, 8, 0.92)`;
       }}
-      onClick={onClick}
+      onClick={(e) => { playUI(UI.CLICK); onClick?.(e); }}
     >
       <div data-frame="" className="absolute inset-0 pointer-events-none" style={{ border: `1px solid ${BTN_BORDER}`, borderRadius: '6px', transition: 'border-color 0.2s ease' }} />
       <CornerPlating position="top-left" color={BTN_CORNER} />
       <CornerPlating position="top-right" color={BTN_CORNER} />
       <CornerPlating position="bottom-left" color={BTN_CORNER} />
       <CornerPlating position="bottom-right" color={BTN_CORNER} />
-      <div data-content="" className="relative px-5 py-3.5 flex items-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(8px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.12), inset 0 0 8px rgba(0,0,0,0.1)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
+      <div data-content="" className="relative px-5 py-3.5 flex items-center justify-center" style={{ background: `${CONTENT_BG_DEFAULT}, rgba(12, 10, 8, 0.92)`, backdropFilter: 'blur(8px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.12), inset 0 0 8px rgba(0,0,0,0.1)', textShadow: '0 1px 3px rgba(0,0,0,0.6)', borderRadius: '6px', transition: 'background 0.2s ease' }}>
         <span className="text-lg font-bold arena-heading" style={{ color: TEXT_BODY }}>{title}</span>
       </div>
     </button>

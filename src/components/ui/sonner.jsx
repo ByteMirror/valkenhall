@@ -1,10 +1,7 @@
 import { Toaster as Sonner } from 'sonner';
-import { getViewportScale } from '../../lib/medievalTheme';
 
 function Toaster(props) {
-  const scale = getViewportScale();
   return (
-    <div style={{ zoom: scale }}>
     <Sonner
       closeButton
       position="bottom-right"
@@ -45,7 +42,6 @@ function Toaster(props) {
       }}
       {...props}
     />
-    </div>
   );
 }
 
