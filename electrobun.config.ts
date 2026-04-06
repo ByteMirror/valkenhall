@@ -20,6 +20,7 @@ export default {
     mac: {
       bundleCEF: true,
       defaultRenderer: 'cef',
+      codesign: true,
       icons: 'assets/app-icons/icon.iconset',
     },
     linux: {
