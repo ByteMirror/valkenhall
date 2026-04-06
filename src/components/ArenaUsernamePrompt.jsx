@@ -32,6 +32,10 @@ export default class ArenaUsernamePrompt extends Component {
       this.setState({ error: 'Username must be 2-24 characters' });
       return;
     }
+    if (name.toLowerCase() === 'player') {
+      this.setState({ error: 'Please choose a unique username' });
+      return;
+    }
     this.setState({ loading: true, error: null });
     try {
       await this.props.onRegister(name);

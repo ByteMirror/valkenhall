@@ -642,6 +642,11 @@ export default class App extends Component {
     });
   };
 
+  hasValidUsername = () => {
+    const name = this.state.arenaProfile?.name;
+    return Boolean(name && name.trim() && name !== 'Player');
+  };
+
   registerArenaUsername = async (username) => {
     const { arenaProfile } = this.state;
     const updatedProfile = {
@@ -1511,13 +1516,13 @@ export default class App extends Component {
             onStarterChosen={this.handleStarterChosen}
           />
         ) : null}
-        {showArena && this.state.arenaProfile?.starterDeck && !this.state.arenaProfile?.name ? (
+        {showArena && this.state.arenaProfile?.starterDeck && !this.hasValidUsername() ? (
           <ArenaUsernamePrompt
             currentName={this.state.arenaProfile.name}
             onRegister={this.registerArenaUsername}
           />
         ) : null}
-        {showArena && this.state.arenaProfile?.starterDeck && this.state.arenaProfile?.name && this.state.arenaView === 'hub' ? (
+        {showArena && this.state.arenaProfile?.starterDeck && this.hasValidUsername() && this.state.arenaView === 'hub' ? (
           <ArenaHub
             profile={this.state.arenaProfile}
             sorceryCards={this.state.sorceryCards}

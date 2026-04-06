@@ -82,7 +82,7 @@ export function xpProgressInLevel(xp) {
 export function createDefaultProfile() {
   return {
     id: `arena-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: 'Player',
+    name: null,
     coins: 0,
     xp: 0,
     starterDeck: null,
