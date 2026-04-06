@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CARD_THICKNESS } from './cardMesh';
+import { CARD_THICKNESS, updateFoilSheens } from './cardMesh';
 import { addTween, updateTweens } from './animations';
 
 const TABLE_WIDTH = 200;
@@ -744,6 +744,7 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
     }
 
     updateTweens();
+    updateFoilSheens(1 / 60);
     renderer.render(scene, camera);
   }
 
