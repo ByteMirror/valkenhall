@@ -5,8 +5,8 @@ function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
 function spawnBurst(cx, cy, particles) {
   // Sparks — fast radial explosion
-  for (let i = 0; i < 70; i++) {
-    const angle = (Math.PI * 2 * i) / 70 + (Math.random() - 0.5) * 0.4;
+  for (let i = 0; i < 35; i++) {
+    const angle = (Math.PI * 2 * i) / 35 + (Math.random() - 0.5) * 0.4;
     const speed = lerp(350, 700, Math.random());
     particles.push({
       x: cx, y: cy,
@@ -24,7 +24,7 @@ function spawnBurst(cx, cy, particles) {
     });
   }
   // Embers — slower, float upward
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 25; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = lerp(60, 180, Math.random());
     particles.push({
@@ -44,7 +44,7 @@ function spawnBurst(cx, cy, particles) {
     });
   }
   // Dust motes — linger and float
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 20; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = lerp(15, 50, Math.random());
     particles.push({
@@ -186,7 +186,7 @@ function renderLightRays(ctx, w, h, elapsed) {
 
     // Smoke/dust motes along the ray — static noise blobs that pulse gently
     const midAngle = angle;
-    for (let m = 0; m < 10; m++) {
+    for (let m = 0; m < 5; m++) {
       const seed = ray.phase * 100 + m * 13.7;
       // Fixed position along ray, seeded deterministically (no random per frame)
       const distFrac = 0.08 + ((seed * 7.31) % 1) * 0.5;

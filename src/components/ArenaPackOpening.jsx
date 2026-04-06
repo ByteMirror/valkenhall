@@ -263,8 +263,9 @@ export default class ArenaPackOpening extends Component {
                                 width: cardWidth,
                                 height: cardHeight,
                                 borderRadius: 14,
-                                boxShadow: isHovered ? RARITY_GLOW_HOVER[rarity] : RARITY_GLOW[rarity],
-                                transition: 'box-shadow 0.2s ease',
+                                boxShadow: RARITY_GLOW[rarity],
+                                filter: isHovered ? `brightness(1.15)` : 'none',
+                                transition: 'filter 0.2s ease',
                               }}
                             >
                               <DeckCardTile

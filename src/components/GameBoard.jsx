@@ -1884,6 +1884,14 @@ export default class GameBoard extends Component {
         this.setHudVisibility(c.cardId, i === p2Cards.length - 1);
       }
     }
+
+    // Update carried artifact visuals for all cards in this cell
+    const allCardsInCell = [...(sites || []), ...(p1Cards || []), ...(p2Cards || [])];
+    for (const c of allCardsInCell) {
+      if (c.cardInstance.carriedArtifacts?.length > 0) {
+        this.updateCarriedArtifactVisuals(c.cardInstance);
+      }
+    }
   };
 
   expandCellOnHover = (col, row) => {
@@ -3816,12 +3824,13 @@ export default class GameBoard extends Component {
 
     for (const { cardInstance: artifact } of artifacts) {
       artifact._carriedBy = cardInstance.id;
+      artifact._gridCol = undefined;
+      artifact._gridRow = undefined;
       cardInstance.carriedArtifacts.push(artifact.id);
-      // Hide the artifact mesh
-      const artifactMesh = this.meshes.get(artifact.id);
-      if (artifactMesh) artifactMesh.visible = false;
     }
 
+    this.updateCarriedArtifactVisuals(cardInstance);
+    if (col != null && row != null) this.arrangeCardsInCell(col, row);
     toast(`Picked up ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''}`);
     this.setState({ contextMenu: null });
   };
@@ -3844,14 +3853,97 @@ export default class GameBoard extends Component {
         artifact._carriedBy = undefined;
         artifact._gridCol = col;
         artifact._gridRow = row;
+        // Reset position to be independent
+        artifactMesh.position.x = cardInstance.x || 0;
+        artifactMesh.position.z = cardInstance.z || 0;
+        artifactMesh.position.y = this.scene.CARD_REST_Y;
         artifactMesh.visible = true;
       }
     }
 
+    this.removeArtifactBadge(cardInstance);
     cardInstance.carriedArtifacts = [];
     if (col != null && row != null) this.arrangeCardsInCell(col, row);
     toast(`Dropped ${count} artifact${count > 1 ? 's' : ''}`);
     this.setState({ contextMenu: null });
+  };
+
+  /**
+   * Position carried artifact meshes so they peek out above the carrier card,
+   * stacked vertically with the top portion visible. Also adds/updates a badge.
+   */
+  updateCarriedArtifactVisuals = (carrierInstance) => {
+    const carrierMesh = this.meshes.get(carrierInstance.id);
+    if (!carrierMesh) return;
+    const artifacts = carrierInstance.carriedArtifacts || [];
+
+    for (let i = 0; i < artifacts.length; i++) {
+      const artifactMesh = this.meshes.get(artifacts[i]);
+      if (!artifactMesh) continue;
+
+      // Position peeking above the carrier: offset upward in Z (toward top of card) and stacked in Y
+      artifactMesh.visible = true;
+      artifactMesh.position.x = carrierMesh.position.x + (i - (artifacts.length - 1) / 2) * 2;
+      artifactMesh.position.z = carrierMesh.position.z - CARD_HEIGHT * 0.4;
+      artifactMesh.position.y = carrierMesh.position.y + CARD_THICKNESS * (i + 1) + 0.15;
+      // Scale down slightly so artifacts are visibly smaller than the carrier
+      artifactMesh.scale.set(0.6, 0.6, 0.6);
+    }
+
+    // Add/update artifact count badge on the carrier
+    this.updateArtifactBadge(carrierInstance, carrierMesh);
+  };
+
+  updateArtifactBadge = (cardInstance, mesh) => {
+    // Remove old badge
+    this.removeArtifactBadge(cardInstance);
+
+    const count = (cardInstance.carriedArtifacts || []).length;
+    if (count === 0) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    // Gold circle badge
+    ctx.beginPath();
+    ctx.arc(32, 32, 26, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(200, 160, 50, 0.95)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 220, 100, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Artifact icon (gem shape) + count
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${count}`, 32, 28);
+
+    // Small label
+    ctx.font = '10px sans-serif';
+    ctx.fillText('ART', 32, 48);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(2.2, 2.2, 1);
+    sprite.position.set(CARD_WIDTH / 2 - 0.5, -CARD_HEIGHT / 2 + 1.5, CARD_THICKNESS / 2 + 0.2);
+    sprite.userData = { type: 'artifactBadge' };
+    mesh.add(sprite);
+  };
+
+  removeArtifactBadge = (cardInstance) => {
+    const mesh = this.meshes.get(cardInstance.id);
+    if (!mesh) return;
+    const badge = mesh.children.find((c) => c.userData?.type === 'artifactBadge');
+    if (badge) {
+      mesh.remove(badge);
+      badge.material?.map?.dispose();
+      badge.material?.dispose();
+    }
   };
 
   changeCardLevel = (cardInstance, newLevel) => {
