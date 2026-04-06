@@ -1,17 +1,30 @@
 import { Toaster as Sonner } from 'sonner';
+import { getViewportScale } from '../../lib/medievalTheme';
 
 function Toaster(props) {
+  const scale = getViewportScale();
+  const width = Math.round(356 * scale);
+  const fontSize = Math.round(14 * scale);
+  const descFontSize = Math.round(12 * scale);
+  const padding = Math.round(16 * scale);
+  const btnPadX = Math.round(12 * scale);
+  const btnPadY = Math.round(6 * scale);
+  const btnFont = Math.round(12 * scale);
+  const gap = Math.round(8 * scale);
+
   return (
     <Sonner
       theme="dark"
       position="top-center"
       className="toaster group"
       visibleToasts={5}
+      gap={gap}
       style={{
         '--normal-bg': 'rgba(12, 10, 8, 0.95)',
         '--normal-text': '#e8d5a0',
         '--normal-border': 'rgba(180, 140, 60, 0.25)',
         '--border-radius': '8px',
+        '--width': `${width}px`,
       }}
       toastOptions={{
         style: {
@@ -20,21 +33,29 @@ function Toaster(props) {
           borderRadius: '8px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 20px rgba(180,140,60,0.04)',
           color: '#e8d5a0',
+          fontSize: `${fontSize}px`,
+          padding: `${padding}px`,
+          width: `${width}px`,
         },
         descriptionStyle: {
           color: 'rgba(166, 160, 155, 0.5)',
+          fontSize: `${descFontSize}px`,
         },
         actionButtonStyle: {
           background: 'linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)',
           border: '1px solid rgba(228,200,100,0.6)',
           color: '#1a1408',
           borderRadius: '6px',
+          fontSize: `${btnFont}px`,
+          padding: `${btnPadY}px ${btnPadX}px`,
         },
         cancelButtonStyle: {
           background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(0,0,0,0.12) 100%)',
           border: '1px solid rgba(180, 140, 60, 0.3)',
           color: '#A6A09B',
           borderRadius: '6px',
+          fontSize: `${btnFont}px`,
+          padding: `${btnPadY}px ${btnPadX}px`,
         },
       }}
       {...props}

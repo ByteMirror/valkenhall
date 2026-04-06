@@ -500,9 +500,10 @@ export default class App extends Component {
       }
       if (n.type === 'new-mail') {
         playUI(UI.MAIL_RECEIVE);
+        const nc = n.newCount || 1;
         this.addToast({
           title: 'New Mail',
-          message: 'You have new mail in your mailbox!',
+          message: nc > 1 ? `You have ${nc} new messages in your mailbox!` : 'You have new mail in your mailbox!',
           actions: [{ label: 'Open', key: 'open-mailbox', primary: true }],
         });
       }

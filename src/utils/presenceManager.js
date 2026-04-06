@@ -107,8 +107,9 @@ async function pollFriends() {
       if (onMailCountUpdate) onMailCountUpdate(mailCounts);
 
       if (mailCounts.count > lastMailCount && lastMailCount >= 0) {
+        const newCount = mailCounts.count - lastMailCount;
         if (onNewNotifications) {
-          onNewNotifications([{ type: 'new-mail', count: mailCounts.count }]);
+          onNewNotifications([{ type: 'new-mail', count: mailCounts.count, newCount }]);
         }
       }
       lastMailCount = mailCounts.count;
