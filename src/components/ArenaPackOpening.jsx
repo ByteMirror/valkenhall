@@ -7,6 +7,7 @@ import PackOpeningFX from './PackOpeningFX';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 import { getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
+import { playUI, UI } from '../utils/arena/uiSounds';
 
 const BOOSTER_SCALE = { gothic: 1, arthurian: 1.4, beta: 1 };
 
@@ -251,14 +252,22 @@ export default class ArenaPackOpening extends Component {
                               zIndex: { duration: 0 },
                             }}
                           >
-                            <div style={{ width: cardWidth, height: cardHeight }}>
+                            <div
+                              style={{
+                                width: cardWidth,
+                                height: cardHeight,
+                                borderRadius: 14,
+                                boxShadow: isHovered ? RARITY_GLOW_HOVER[rarity] : RARITY_GLOW[rarity],
+                                transition: 'box-shadow 0.2s ease',
+                              }}
+                            >
                               <DeckCardTile
                                 entry={{ card: entry.card, printing: entry.printing || {}, zone: 'spellbook', entryIndex: i }}
                                 isSelected={false}
                                 onClick={() => this.setState({ inspectedEntry: inspectedEntry === entry ? null : entry })}
                                 onHoverChange={(hovered) => {
                                   this.setState({ hoveredIndex: hovered ? i : -1 });
-                                  if (hovered && rarity === 'Unique') playSound('snd-card-place-1.ogg', 0.3);
+                                  if (hovered) playUI(UI.HOVER, { volume: 0.4 });
                                 }}
                               />
                             </div>
