@@ -138,7 +138,8 @@ export default class GameBoard extends Component {
     this.initSession().then(() => {
       // Auto-spawn deck for ranked matchmaking
       if (this.props.arenaSelectedDeckId) {
-        this.doSpawnDeck(this.props.arenaSelectedDeckId, 1).catch(() => {});
+        const localPlayerNum = this.state.isHost ? 1 : 2;
+        this.doSpawnDeck(this.props.arenaSelectedDeckId, localPlayerNum).catch(() => {});
       }
       // Give textures a moment to upload to GPU
       setTimeout(() => {
@@ -4312,6 +4313,11 @@ export default class GameBoard extends Component {
 
     this.createTrackerTokens();
     this.createTrackerButtons();
+
+    // Broadcast deck spawn to the other player
+    if (!this.suppressBroadcast) {
+      emitGameAction('deck:spawn', { deck, playerNum });
+    }
   };
 
   updatePileMeshes = () => {
