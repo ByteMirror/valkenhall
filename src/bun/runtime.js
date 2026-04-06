@@ -6,8 +6,13 @@ export const APP_BASE_PATH = '';
 const DEFAULT_RENDERER_HOST = '127.0.0.1';
 const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
-export function getRendererUrl({ staticServerPort, host = DEFAULT_RENDERER_HOST }) {
-  return process.env.ELECTROBUN_RENDERER_URL || `http://${host}:${staticServerPort}${APP_BASE_PATH}`;
+export function getRendererUrl({ staticServerPort, host = DEFAULT_RENDERER_HOST, apiPort } = {}) {
+  if (process.env.ELECTROBUN_RENDERER_URL) {
+    return process.env.ELECTROBUN_RENDERER_URL;
+  }
+
+  const base = `http://${host}:${staticServerPort}${APP_BASE_PATH}`;
+  return apiPort ? `${base}?apiPort=${apiPort}` : base;
 }
 
 export function resolveDistDirectory() {

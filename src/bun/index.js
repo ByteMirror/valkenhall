@@ -7,7 +7,8 @@ import { getRendererUrl, startRendererServer } from './runtime.js';
 import { initUpdater, getStatus, manualCheck, retryDownload, applyUpdate } from './updater.js';
 
 const DESKTOP_HOST = getDesktopHost();
-const DEFAULT_PROXY_PORT = Number(process.env.ELECTROBUN_PROXY_PORT || 3001);
+const IS_DEV = Boolean(process.env.ELECTROBUN_RENDERER_URL);
+const DEFAULT_PROXY_PORT = IS_DEV ? Number(process.env.ELECTROBUN_PROXY_PORT || 3001) : 0;
 const DEFAULT_STATIC_PORT = Number(process.env.ELECTROBUN_STATIC_PORT || 0);
 const SHOULD_START_EMBEDDED_PROXY = shouldStartEmbeddedProxy();
 
@@ -27,6 +28,8 @@ const proxyServer = SHOULD_START_EMBEDDED_PROXY
     })
   : null;
 
+const proxyPort = proxyServer?.address?.()?.port || DEFAULT_PROXY_PORT;
+
 registerUpdateApi({ getStatus, manualCheck, retryDownload, applyUpdate });
 initUpdater().catch((err) => {
   console.error('Auto-updater initialization failed:', err);
@@ -35,6 +38,7 @@ initUpdater().catch((err) => {
 const rendererUrl = getRendererUrl({
   host: DESKTOP_HOST,
   staticServerPort: rendererServer?.port,
+  apiPort: proxyPort,
 });
 
 ApplicationMenu.setApplicationMenu(buildApplicationMenu());
@@ -52,6 +56,8 @@ const mainWindow = new BrowserWindow({
   },
 });
 
+mainWindow.setFullScreen(true);
+
 let isCleanedUp = false;
 
 function cleanup() {
@@ -67,5 +73,6 @@ function cleanup() {
 registerDesktopCleanup(process, cleanup);
 
 console.log(`Electrobun desktop shell started at ${rendererUrl}`);
+console.log(`Proxy server on port ${proxyPort}`);
 
 export { mainWindow };

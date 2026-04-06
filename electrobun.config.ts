@@ -1,6 +1,6 @@
 export default {
   app: {
-    name: 'valkenhall',
+    name: 'Valkenhall',
     identifier: 'dev.fabianurbanek.valkenhall',
     version: '0.1.0',
   },
