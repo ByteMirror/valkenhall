@@ -55,11 +55,16 @@ export function shuffleArray(array) {
 }
 
 export function createCardInstance(card, printing, rotated = false) {
+  // Store the image path (not full URL) so it works across different local proxy ports
+  const fullUrl = printing?.image_url || card.printings?.[0]?.image_url || '';
+  const imagePath = fullUrl.replace(/^https?:\/\/[^/]+/, '');
+
   return {
     id: uid(),
     cardId: card.unique_id,
     name: card.name,
-    imageUrl: printing?.image_url || card.printings?.[0]?.image_url || '',
+    imageUrl: fullUrl,
+    imagePath,
     foiling: printing?.foiling || 'S',
     type: card.type || card.types?.[0] || '',
     isSite: card.played_horizontally || card.type === 'Site',
