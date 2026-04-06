@@ -7,6 +7,9 @@ function Toaster(props) {
       closeButton
       position="bottom-right"
       theme="dark"
+      duration={3000}
+      expand
+      visibleToasts={5}
       style={{ zoom: getViewportScale() }}
       toastOptions={{
         style: {
