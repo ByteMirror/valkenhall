@@ -298,7 +298,6 @@ export default class App extends Component {
     try {
       const savedDecks = await listSavedDecks('sorcery');
       this.setState({ savedDecks, isSavedDecksLoading: false });
-      this.syncArenaProfileDecks(savedDecks);
     } catch (error) {
       console.error('Failed to load saved decks:', error);
       this.setState({
@@ -1212,8 +1211,8 @@ export default class App extends Component {
     });
   };
 
-  // Single source of truth: local deck storage API.
-  // After any deck mutation, sync arenaProfile.decks from the canonical data.
+  // Legacy sync — only used by handleStarterChosen for initial deck setup.
+  // Normal save/delete operations update the server profile directly.
   syncArenaProfileDecks = (savedDecks, extraDeckData) => {
     this.setState((state) => {
       const { arenaProfile } = state;
@@ -1256,9 +1255,26 @@ export default class App extends Component {
       },
     });
 
-    // Sync arena profile decks with the just-saved card data
-    const extraData = new Map([[savedSummary.id, { cards: payload.cards }]]);
-    this.syncArenaProfileDecks(nextSavedDecks, extraData);
+    // Update this deck in the server profile (don't rebuild from local storage)
+    this.setState((state) => {
+      const { arenaProfile } = state;
+      if (!arenaProfile) return null;
+      const currentDecks = arenaProfile.decks || [];
+      const deckEntry = {
+        id: savedSummary.id,
+        name: savedSummary.name,
+        cards: payload.cards,
+        previewUrl: savedSummary.previewUrl || null,
+      };
+      const updatedDecks = currentDecks.some((d) => d.id === savedSummary.id)
+        ? currentDecks.map((d) => d.id === savedSummary.id ? deckEntry : d)
+        : [...currentDecks, deckEntry];
+      return { arenaProfile: { ...arenaProfile, decks: updatedDecks } };
+    }, () => {
+      if (this.state.arenaProfile) {
+        saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to save profile:', e));
+      }
+    });
 
     return savedSummary;
   };
@@ -1281,7 +1297,16 @@ export default class App extends Component {
       await deleteSavedDeckById(deckId, 'sorcery');
       const nextSavedDecks = this.state.savedDecks.filter((d) => d.id !== deckId);
       this.setState({ savedDecks: nextSavedDecks });
-      this.syncArenaProfileDecks(nextSavedDecks);
+      // Remove from server profile directly
+      this.setState((state) => {
+        const { arenaProfile } = state;
+        if (!arenaProfile) return null;
+        return { arenaProfile: { ...arenaProfile, decks: (arenaProfile.decks || []).filter((d) => d.id !== deckId) } };
+      }, () => {
+        if (this.state.arenaProfile) {
+          saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to save profile:', e));
+        }
+      });
     } catch (error) {
       console.error('Failed to delete deck:', error);
     }
