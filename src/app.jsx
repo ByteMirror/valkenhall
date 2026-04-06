@@ -3,10 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import './app.css';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
-import {
-  selectPrintingNewestMeeting300,
-  selectPrintingNewestMeeting300Static,
-} from './utils/imageQuality';
+
 import { deleteSavedDeckById, listSavedDecks, loadSavedDeckById, saveSavedDeck } from './utils/deckStorageApi';
 import { createSavedDeckCardIndex, restoreSavedDeckCards } from './utils/savedDeckRestore';
 import { applyThemePreference, getStoredThemePreference } from './utils/themePreference';
@@ -80,12 +77,7 @@ function resolvePreferredPrintingStatic(card) {
     return card.printings[0];
   }
 
-  return (
-    selectPrintingNewestMeeting300Static(card) ||
-    card.printings?.[card.printings.length - 1] ||
-    card.printings?.[0] ||
-    null
-  );
+  return card.printings?.[card.printings.length - 1] || card.printings?.[0] || null;
 }
 
 export default class App extends Component {
@@ -1215,10 +1207,7 @@ export default class App extends Component {
       return null;
     }
 
-    return (
-      (await selectPrintingNewestMeeting300(card)) ||
-      resolvePreferredPrintingStatic(card)
-    );
+    return resolvePreferredPrintingStatic(card);
   };
 
   getSavedDeckCardIndex = (cards = this.getActiveCards()) => {

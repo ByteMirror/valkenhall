@@ -173,46 +173,4 @@ describe('deck storage', () => {
     expect(storedDeck.previewVersion).toBe('v4-2026-03-08T10:00:00.000Z');
   });
 
-  it('preserves persisted upscaled card metadata when saving and loading decks', async () => {
-    const baseDir = await makeTempDir();
-
-    const summary = await saveDeck({
-      baseDir,
-      deck: {
-        name: 'Upscaled Deck',
-        cards: [
-          {
-            cardId: 'card-1',
-            cardName: 'Command and Conquer',
-            printingId: 'printing-1',
-            upscaledVersion: {
-              imageUrl: makeSvgDataUrl('Upscaled', '#15803d'),
-              sourceImageUrl: 'https://example.com/card-1.png',
-              imageWidth: 1600,
-              imageHeight: 2240,
-            },
-          },
-        ],
-        previewCards: [{ name: 'Command and Conquer', imageUrl: makeSvgDataUrl('Upscaled', '#15803d') }],
-      },
-      previewBaseUrl: 'http://127.0.0.1:3001',
-    });
-
-    const storedDeck = await loadDeck({ baseDir, deckId: summary.id });
-
-    expect(storedDeck.cards).toEqual([
-      {
-        cardId: 'card-1',
-        cardName: 'Command and Conquer',
-        printingId: 'printing-1',
-        isSideboard: false,
-        upscaledVersion: {
-          imageUrl: makeSvgDataUrl('Upscaled', '#15803d'),
-          sourceImageUrl: 'https://example.com/card-1.png',
-          imageWidth: 1600,
-          imageHeight: 2240,
-        },
-      },
-    ]);
-  });
 });

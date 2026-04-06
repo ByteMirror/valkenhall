@@ -102,18 +102,8 @@ function normalizeDeckCards(cards) {
           cardName: card?.cardName || '',
           printingId: card?.printingId || '',
           isSideboard: Boolean(card?.isSideboard),
-          upscaledVersion:
-            card?.upscaledVersion && typeof card.upscaledVersion === 'object' && card.upscaledVersion.imageUrl
-              ? {
-                  imageUrl: card.upscaledVersion.imageUrl,
-                  sourceImageUrl: card.upscaledVersion.sourceImageUrl || '',
-                  imageWidth: Number(card.upscaledVersion.imageWidth) || 0,
-                  imageHeight: Number(card.upscaledVersion.imageHeight) || 0,
-                }
-              : null,
         }))
         .filter((card) => card.cardId && card.printingId)
-        .map((card) => (card.upscaledVersion ? card : { ...card, upscaledVersion: undefined }))
     : [];
 }
 

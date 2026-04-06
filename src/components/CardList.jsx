@@ -5,9 +5,6 @@ export default function CardList({
   addCardToChosenCards = null,
   removeCardFromChosenCards = null,
   changeCardPrintingFromChosenCards = null,
-  upscaleChosenCardAtIndex = null,
-  revertChosenCardAtIndex = null,
-  restoreUpscaleFromCache = null,
   chosenList = false,
   addGapOnPrint = false,
   extraItems = [],
@@ -22,7 +19,6 @@ export default function CardList({
           key={`${entry.card.unique_id}-${entry.printing?.unique_id || 'none'}-${entry.entryIndex ?? idx}`}
           card={entry.card}
           printing={entry.printing}
-          isUpscaling={Boolean(entry.isUpscaling)}
           chosenList={true}
           entryIndex={entry.entryIndex ?? idx}
           changeCardPrintingFromChosenCards={changeCardPrintingFromChosenCards}
@@ -30,9 +26,6 @@ export default function CardList({
           onChosenCardContextMenu={onChosenCardContextMenu}
           onChosenCardSelect={onChosenCardSelect}
           removeCardFromChosenCards={removeCardFromChosenCards}
-          upscaleChosenCardAtIndex={upscaleChosenCardAtIndex}
-          revertChosenCardAtIndex={revertChosenCardAtIndex}
-          restoreUpscaleFromCache={restoreUpscaleFromCache}
         />
       ))
     : cards.map((card) => (

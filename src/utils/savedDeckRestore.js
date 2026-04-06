@@ -9,28 +9,6 @@ function getPersistentPrintingId(printing) {
   return printing?._source_printing_id || printing?.unique_id || null;
 }
 
-function replacePrintingInCard(card, sourcePrintingId, nextPrinting) {
-  if (!card || !sourcePrintingId || !nextPrinting) {
-    return card;
-  }
-
-  const currentPrintings = Array.isArray(card.printings) ? card.printings : [];
-  let didReplace = false;
-  const nextPrintings = currentPrintings.map((printing) => {
-    if (getPersistentPrintingId(printing) !== sourcePrintingId) {
-      return printing;
-    }
-
-    didReplace = true;
-    return nextPrinting;
-  });
-
-  return {
-    ...card,
-    printings: didReplace ? nextPrintings : [...nextPrintings, nextPrinting],
-  };
-}
-
 export function createSavedDeckCardIndex(cards = []) {
   const cardsById = new Map();
   const cardsByNormalizedName = new Map();
@@ -69,42 +47,6 @@ export function findSavedDeckPrinting(card, savedEntry) {
   );
 }
 
-function restoreUpscaledPrinting(card, savedEntry) {
-  const upscaledVersion = savedEntry?.upscaledVersion;
-
-  if (!card || !upscaledVersion?.imageUrl) {
-    return null;
-  }
-
-  const sourcePrinting =
-    findSavedDeckPrinting(card, { printingId: savedEntry.printingId }) ||
-    card.printings?.find((printing) => printing.unique_id === savedEntry.printingId) ||
-    null;
-
-  if (!sourcePrinting) {
-    return null;
-  }
-
-  const sourcePrintingId = getPersistentPrintingId(sourcePrinting) || savedEntry.printingId;
-
-  const cachedUpscale = {
-    sourceImageUrl: upscaledVersion.sourceImageUrl || sourcePrinting.image_url,
-  };
-
-  return {
-    ...sourcePrinting,
-    unique_id: `${sourcePrintingId}-upscaled-restored`,
-    image_url: upscaledVersion.imageUrl,
-    image_width: upscaledVersion.imageWidth || sourcePrinting.image_width,
-    image_height: upscaledVersion.imageHeight || sourcePrinting.image_height,
-    _source_image_url: upscaledVersion.sourceImageUrl || sourcePrinting.image_url,
-    _source_printing_id: sourcePrintingId,
-    _source_printing: { ...sourcePrinting, _cachedUpscale: cachedUpscale },
-    _persisted_image_url: upscaledVersion.imageUrl,
-    _upscaled: true,
-  };
-}
-
 function findSavedDeckCard(cardIndex, savedEntry) {
   if (!cardIndex || !savedEntry) {
     return null;
@@ -140,54 +82,12 @@ export async function restoreSavedDeckCards({ savedEntries = [], cardIndex, reso
     return [];
   }
 
-  const restoredUpscaledCards = new Map();
-
   const restoredCards = await Promise.all(
     savedEntries.map(async (savedEntry) => {
       const baseCard = findSavedDeckCard(cardIndex, savedEntry);
 
       if (!baseCard) {
         return null;
-      }
-
-      if (savedEntry?.cachedUpscale && !savedEntry?.upscaledVersion?.imageUrl) {
-        const basePrinting =
-          findSavedDeckPrinting(baseCard, savedEntry) ||
-          (await getPreferredPrinting(cardIndex, baseCard, resolvePreferredPrinting));
-
-        if (basePrinting) {
-          return {
-            card: baseCard,
-            printing: { ...basePrinting, _cachedUpscale: savedEntry.cachedUpscale },
-            isSideboard: Boolean(savedEntry?.isSideboard),
-          };
-        }
-      }
-
-      if (savedEntry?.upscaledVersion?.imageUrl) {
-        const cacheKey = `${baseCard.unique_id}:${savedEntry.printingId}:${savedEntry.upscaledVersion.imageUrl}`;
-
-        if (!restoredUpscaledCards.has(cacheKey)) {
-          const upscaledPrinting = restoreUpscaledPrinting(baseCard, savedEntry);
-
-          if (upscaledPrinting) {
-            restoredUpscaledCards.set(cacheKey, {
-              card: replacePrintingInCard(baseCard, savedEntry.printingId, upscaledPrinting),
-              printing: upscaledPrinting,
-            });
-          }
-        }
-
-        const restoredUpscaledEntry = restoredUpscaledCards.get(cacheKey);
-
-        if (restoredUpscaledEntry) {
-          return {
-            card: restoredUpscaledEntry.card,
-            printing: restoredUpscaledEntry.printing,
-            isSideboard: Boolean(savedEntry?.isSideboard),
-            zone: savedEntry?.isSideboard ? 'collection' : undefined,
-          };
-        }
       }
 
       const restoredPrinting =

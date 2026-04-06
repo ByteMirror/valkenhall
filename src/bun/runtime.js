@@ -14,6 +14,7 @@ export function resolveDistDirectory() {
   const candidates = [
     process.env.ELECTROBUN_DIST_DIR,
     path.resolve(process.cwd(), 'dist'),
+    path.resolve(runtimeDir, '../dist'),
     path.resolve(runtimeDir, '../../dist'),
   ].filter(Boolean);
 

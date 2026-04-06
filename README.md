@@ -110,6 +110,4 @@ The first release after enabling the update system (`v0.2.0`) only has full down
 
 - Electrobun bundles the Chromium Embedded Framework (CEF) for rendering
 - The proxy server (`server/proxy.js`) runs embedded in the app on port 3001
-- Upscaling binaries are bundled per-platform from `server/upscaling/bin/{platform}/`
-- Dev and release builds bootstrap the upscaling binary from the official Upscayl archive when missing
 - Stop any standalone `bun run dev` session before launching the desktop app to avoid port conflicts on 3001

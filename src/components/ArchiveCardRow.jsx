@@ -1,10 +1,6 @@
-import { useEffect, useState } from 'preact/hooks';
-import { rankPrintingsByResolution } from '../utils/imageQuality';
 import { cn } from '../lib/utils';
 import { getPitchLabel } from '../utils/deckMetrics';
 import { Button } from './ui/button';
-import PrintingSelector from './PrintingSelector';
-import { buildPrintingOptions, resolveDefaultPrinting } from './printingOptions';
 import { isFoilFinish, FOIL_LABEL_COLOR } from '../utils/sorcery/foil.js';
 
 function getPitchTone(pitchLabel) {
@@ -39,48 +35,10 @@ export default function ArchiveCardRow({
   visiblePrintings = null,
   arenaAvailability = null,
 }) {
-  const [rankedByResolution, setRankedByResolution] = useState([]);
-  const [selectedPrinting, setSelectedPrinting] = useState(null);
   const pitchLabel = getPitchLabel(card);
   const archiveVisiblePrintings = Array.isArray(visiblePrintings) && visiblePrintings.length > 0 ? visiblePrintings : card?.printings || [];
-  const visiblePrintingIds = archiveVisiblePrintings.map((printing) => printing.unique_id).join('|');
-  const archiveCard = archiveVisiblePrintings === card?.printings ? card : { ...card, printings: archiveVisiblePrintings };
-  const printingOptions = buildPrintingOptions(archiveCard, rankedByResolution);
-  const previewUrl = selectedPrinting?.image_url || archiveCard?.printings?.[archiveCard.printings.length - 1]?.image_url || '';
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function loadPrintingData() {
-      if (!card) {
-        return;
-      }
-
-      const nextVisiblePrintings =
-        Array.isArray(visiblePrintings) && visiblePrintings.length > 0 ? visiblePrintings : card?.printings || [];
-      const nextArchiveCard = nextVisiblePrintings === card?.printings ? card : { ...card, printings: nextVisiblePrintings };
-      const ranked = await rankPrintingsByResolution(nextArchiveCard);
-
-      if (isCancelled) {
-        return;
-      }
-
-      const defaultPrintingState = resolveDefaultPrinting(nextArchiveCard, ranked);
-
-      setRankedByResolution(ranked);
-      setSelectedPrinting((current) =>
-        nextArchiveCard.printings.some((printing) => printing.unique_id === current?.unique_id)
-          ? current
-          : defaultPrintingState.printing
-      );
-    }
-
-    loadPrintingData();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [card, visiblePrintingIds]);
+  const selectedPrinting = archiveVisiblePrintings[archiveVisiblePrintings.length - 1] || null;
+  const previewUrl = selectedPrinting?.image_url || '';
 
   const handleRowClick = (event) => {
     if (isInteractiveArchiveTarget(event.target)) {
@@ -116,7 +74,7 @@ export default function ArchiveCardRow({
         src={previewUrl}
         alt={card.name}
       />
-      <div className={cn('grid min-w-0 gap-3', !arenaAvailability && 'sm:grid-cols-[minmax(0,1fr)_minmax(170px,220px)] sm:items-center')}>
+      <div className={cn('grid min-w-0 gap-3', !arenaAvailability && 'sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center')}>
         <div className="min-w-0">
           <strong className="block truncate text-sm text-card-foreground">
             {card.name}
@@ -156,17 +114,9 @@ export default function ArchiveCardRow({
           )}
         </div>
         {!arenaAvailability && (
-          <div data-testid="archive-actions" className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <PrintingSelector
-              cardName={card.name}
-              onSelect={(printing) => addCardToChosenCards(card, printing)}
-              printingOptions={printingOptions}
-              selectedPrinting={selectedPrinting}
-            />
-            <Button type="button" size="sm" variant="secondary" onClick={() => addCardToChosenCards(card, selectedPrinting)}>
-              Add
-            </Button>
-          </div>
+          <Button type="button" size="sm" variant="secondary" onClick={() => addCardToChosenCards(card, selectedPrinting)}>
+            Add
+          </Button>
         )}
       </div>
     </article>

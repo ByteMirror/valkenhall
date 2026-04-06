@@ -50,23 +50,10 @@ jobs:
           sed -i.bak "s/version: '0.1.0'/version: '${VERSION}'/" electrobun.config.ts
           rm -f electrobun.config.ts.bak
           echo "Injected version: ${VERSION}"
-      - name: Prepare bundled upscaling binary
-        run: bun run release:prepare-assets ${{ matrix.target_id }}
-        env:
-          UPSCAYL_BIN_URL_DARWIN_ARM64: ${{ vars.UPSCAYL_BIN_URL_DARWIN_ARM64 }}
-          UPSCAYL_BIN_URL_LINUX_X64: ${{ vars.UPSCAYL_BIN_URL_LINUX_X64 }}
-          UPSCAYL_BIN_URL_WIN32_X64: ${{ vars.UPSCAYL_BIN_URL_WIN32_X64 }}
-      - name: Validate bundled upscaling assets
-        run: bun run release:validate-assets ${{ matrix.target_id }}
       - name: Build web renderer
         run: bun run build
       - name: Build desktop app
         run: bunx electrobun build --env=stable
-        env:
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
-          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
-          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
       - name: List build output
         if: always()
         shell: bash
