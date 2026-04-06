@@ -6,6 +6,7 @@ import { getMaxCopies } from '../utils/sorcery/deckRules';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, INPUT_STYLE, ACCENT_GOLD,
+  TAB_ACTIVE, TAB_INACTIVE,
 } from '../lib/medievalTheme';
 
 function SorceryElementIcon({ element, className = 'size-3.5' }) {
@@ -48,9 +49,7 @@ const TOGGLE_BASE = {
 function toggleStyle(active) {
   return {
     ...TOGGLE_BASE,
-    background: active ? `${GOLD} 0.12)` : 'transparent',
-    border: active ? `1px solid ${GOLD} 0.35)` : '1px solid rgba(166,160,155,0.15)',
-    color: active ? TEXT_PRIMARY : TEXT_MUTED,
+    ...(active ? TAB_ACTIVE : TAB_INACTIVE),
   };
 }
 
@@ -67,6 +66,7 @@ export default class DeckEditorCollection extends Component {
       hoveredCard: null,
       inspectedEntry: null,
       visibleCount: 40,
+      flashCardKey: null,
     };
   }
 
@@ -346,13 +346,15 @@ export default class DeckEditorCollection extends Component {
     );
   }
 
-  renderOwnershipDotsForPrinting(owned, inUse) {
+  renderOwnershipDotsForPrinting(owned, inUse, flash = false) {
+    const flashStyle = flash ? { animation: 'flashRed 0.6s ease-out' } : {};
+
     if (owned > 6) {
       return (
-        <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontSize: '10px' }}>
-          <span style={{ color: ACCENT_GOLD }}>{inUse}</span>
+        <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontSize: '10px', ...flashStyle }}>
+          <span style={{ color: flash ? '#c45050' : ACCENT_GOLD }}>{inUse}</span>
           <span style={{ color: TEXT_MUTED }}>/</span>
-          <span style={{ color: TEXT_MUTED }}>{owned}</span>
+          <span style={{ color: flash ? '#c45050' : TEXT_MUTED }}>{owned}</span>
         </div>
       );
     }
@@ -361,7 +363,7 @@ export default class DeckEditorCollection extends Component {
     const empty = { opacity: 0.6, filter: 'sepia(1) saturate(2) brightness(1.0) hue-rotate(15deg)' };
 
     return (
-      <div className="flex items-center justify-center gap-1 mt-1.5">
+      <div className="flex items-center justify-center gap-1 mt-1.5" style={flashStyle}>
         {Array.from({ length: owned }, (_, i) => {
           const active = i < inUse;
           return (
@@ -461,9 +463,16 @@ export default class DeckEditorCollection extends Component {
                 onClick={() => {
                   if (unowned) return;
                   if (available <= 0) {
-                    const reason = `All ${printingOwnedQty} owned ${printingOwnedQty === 1 ? 'copy' : 'copies'} of ${card.name}${isFoilEntry ? ` (${FOIL_LABEL[foiling]})` : ''} already in this deck`;
+                    let reason;
+                    if (remainingByRarity <= 0) {
+                      reason = `${card.rarity || 'This'} cards are limited to ${maxCopies} ${maxCopies === 1 ? 'copy' : 'copies'} per deck`;
+                    } else {
+                      reason = `All ${printingOwnedQty} owned ${printingOwnedQty === 1 ? 'copy' : 'copies'} of ${card.name}${isFoilEntry ? ` (${FOIL_LABEL[foiling]})` : ''} already in this deck`;
+                    }
                     playUI(UI.ERROR);
                     this.props.onShowToast?.(reason);
+                    this.setState({ flashCardKey: key });
+                    setTimeout(() => this.setState({ flashCardKey: null }), 600);
                     return;
                   }
                   playUI(UI.EQUIP);
@@ -478,7 +487,7 @@ export default class DeckEditorCollection extends Component {
                 }}
                 onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { key, card, printing } : null })}
               />
-              {printingOwnedQty > 0 && this.renderOwnershipDotsForPrinting(printingOwnedQty, inDeckWithPrinting)}
+              {printingOwnedQty > 0 && this.renderOwnershipDotsForPrinting(printingOwnedQty, inDeckWithPrinting, this.state.flashCardKey === key)}
               <div
                 className="text-center mt-0.5 truncate px-1"
                 style={{ fontSize: '10px', color: isFoilEntry ? (foiling === 'R' ? '#d98eff' : '#6dd5ed') : TEXT_MUTED, lineHeight: 1.3 }}

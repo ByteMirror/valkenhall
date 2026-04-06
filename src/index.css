@@ -297,6 +297,16 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Flash red animation for deck limit indicators */
+@keyframes flashRed {
+  0% { filter: brightness(1); }
+  15% { filter: brightness(1.5) hue-rotate(-30deg) saturate(3); }
+  30% { filter: brightness(1); }
+  45% { filter: brightness(1.4) hue-rotate(-30deg) saturate(2.5); }
+  60% { filter: brightness(1); }
+  100% { filter: brightness(1); }
+}
+
 .cursor-grab, [draggable="true"] {
   cursor: url('../public/cursors/grab.png') 24 14, grab;
 }
