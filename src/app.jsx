@@ -17,7 +17,7 @@ import ArenaStarterPicker from './components/ArenaStarterPicker';
 import ArenaStore from './components/ArenaStore';
 import AuctionHouse from './components/AuctionHouse';
 import ArenaPackOpening from './components/ArenaPackOpening';
-import { saveArenaProfile } from './utils/arena/profileApi';
+import { loadArenaProfile, saveArenaProfile } from './utils/arena/profileApi';
 import { playMusic, stopMusic } from './utils/arena/musicManager';
 import { playUI, UI, preloadUISounds } from './utils/arena/uiSounds';
 import { createDefaultProfile, CURRENCY, isArenaDebugMode } from './utils/arena/profileDefaults';
@@ -25,6 +25,7 @@ import { checkAchievements, getAchievement } from './utils/arena/achievements';
 import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from './utils/arena/collectionUtils';
 import { generatePack } from './utils/arena/packGenerator';
 import { resolveStarterDeck } from './utils/arena/starterDecks';
+import { generateSeason, createDefaultSeasonProgress, initializeQuests, processMatchResult } from './utils/arena/seasonPass';
 import ArenaMatchmaking from './components/ArenaMatchmaking';
 import ArenaDeckSelect from './components/ArenaDeckSelect';
 import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
@@ -130,6 +131,7 @@ export default class App extends Component {
       tradeRoomCode: null,
       gameMenuOpen: false,
       updateStatus: null,
+      currentSeason: null,
       settingsOpen: false,
       mailboxOpen: false,
       mailboxUnreadCount: 0,
@@ -215,10 +217,13 @@ export default class App extends Component {
       try {
         const result = await validateToken(token);
         if (result.valid) {
+          // Validate returns a minimal profile; load the full one from the server
+          const fullProfile = await loadArenaProfile(token).catch(() => null);
+          const serverProfile = fullProfile || result.profile;
           this.setState({
             authChecking: false,
             loggedIn: true,
-            arenaProfile: this.profileFromServer(result.profile, token),
+            arenaProfile: this.profileFromServer(serverProfile, token),
             arenaLoading: false,
           });
           this.postLoginInit();
@@ -321,8 +326,11 @@ export default class App extends Component {
     };
   };
 
-  handleLogin = (result) => {
-    const profile = this.profileFromServer(result.profile, result.token);
+  handleLogin = async (result) => {
+    // Verify returns a minimal profile; load the full one from the server
+    const fullProfile = await loadArenaProfile(result.token).catch(() => null);
+    const serverProfile = fullProfile || result.profile;
+    const profile = this.profileFromServer(serverProfile, result.token);
     this.setState({
       loggedIn: true,
       authChecking: false,
@@ -332,8 +340,25 @@ export default class App extends Component {
     this.postLoginInit();
   };
 
+  initSeason = () => {
+    if (!this.state.sorceryCards?.length) return;
+    const season = generateSeason(this.state.sorceryCards);
+    let progress = this.state.arenaProfile?.seasonProgress;
+    if (!progress || progress.seasonId !== season.seasonId) {
+      progress = createDefaultSeasonProgress(season.seasonId);
+    }
+    progress = initializeQuests(progress, season);
+    this.setState({ currentSeason: season });
+    if (this.state.arenaProfile) {
+      const updatedProfile = { ...this.state.arenaProfile, seasonProgress: progress };
+      this.setState({ arenaProfile: updatedProfile });
+      saveArenaProfile(updatedProfile).catch(() => {});
+    }
+  };
+
   postLoginInit = () => {
     preloadUISounds();
+    this.initSeason();
     playMusic('arena-hub', { fadeInDuration: 3000 });
     startPresence('hub', {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
@@ -798,6 +823,7 @@ export default class App extends Component {
 
     this.setState({ arenaProfile: updatedProfile });
     await saveArenaProfile(updatedProfile).catch((e) => console.error('Failed to save profile:', e));
+    await this.refreshSavedDecks();
   };
 
   handleArenaPlayMatch = () => {
@@ -914,7 +940,11 @@ export default class App extends Component {
       ],
     };
 
-    const withAchievements = this.processAchievements(updatedProfile);
+    let withAchievements = this.processAchievements(updatedProfile);
+    if (this.state.currentSeason && withAchievements.seasonProgress) {
+      const seasonResult = processMatchResult(withAchievements.seasonProgress, this.state.currentSeason, reward.won);
+      withAchievements = { ...withAchievements, seasonProgress: seasonResult.progress };
+    }
     this.setState({ arenaProfile: withAchievements });
     await saveArenaProfile(withAchievements).catch((e) => console.error('Failed to save profile:', e));
 
