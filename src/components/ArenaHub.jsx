@@ -477,7 +477,7 @@ export default class ArenaHub extends Component {
               {/* ── RIGHT COLUMN: ACHIEVEMENTS ─────────────── */}
               <div className="w-[320px] shrink-0 flex flex-col min-h-0">
                 <div
-                  className="relative flex-1 flex flex-col min-h-0 overflow-hidden"
+                  className="relative flex-1 flex flex-col min-h-0"
                   style={{
                     background: 'rgba(12, 10, 8, 0.94)',
                     backdropFilter: 'blur(8px)',
