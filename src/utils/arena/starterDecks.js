@@ -207,11 +207,24 @@ export function resolveStarterDeck(starterDeck, sorceryCards) {
   for (const entry of starterDeck.cards) {
     const card = nameIndex.get(entry.name.toLowerCase());
     if (!card) continue;
-    const printing = card.printings?.[0];
+
+    let printing = card.printings?.[0];
+    let foiling = 'S';
+
+    // Avatars get the foil version
+    if (card.type === 'Avatar') {
+      const foilPrinting = card.printings?.find((p) => p.foiling === 'F');
+      if (foilPrinting) {
+        printing = foilPrinting;
+      }
+      foiling = 'F';
+    }
+
     for (let i = 0; i < entry.qty; i++) {
       resolved.push({
         cardId: card.unique_id,
         printingId: printing?.unique_id || '',
+        foiling,
       });
     }
   }
