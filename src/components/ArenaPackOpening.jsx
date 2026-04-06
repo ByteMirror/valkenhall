@@ -6,7 +6,11 @@ import DeckCardTile from './DeckCardTile';
 import PackOpeningFX from './PackOpeningFX';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
-import { getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
+import {
+  GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, PANEL_BG,
+  BEVELED_BTN, GOLD_BTN,
+  getViewportScale, onViewportScaleChange,
+} from '../lib/medievalTheme';
 import { playUI, UI } from '../utils/arena/uiSounds';
 
 const BOOSTER_SCALE = { gothic: 1, arthurian: 1.4, beta: 1 };
@@ -119,17 +123,18 @@ export default class ArenaPackOpening extends Component {
 
         {/* Light rays and ambient glow are now rendered by PackOpeningFX canvas */}
 
-        <div className="flex items-center gap-4 px-6 py-3 border-b border-white/10 bg-black/80 backdrop-blur-sm relative z-10">
+        <div className="flex items-center gap-4 px-6 py-3 relative z-10" style={{ background: PANEL_BG, borderBottom: `1px solid ${GOLD} 0.15)`, backdropFilter: 'blur(8px)' }}>
           <button
             type="button"
-            className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+            className="px-3 py-1.5 text-xs font-medium cursor-pointer transition-all"
+            style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
             onClick={onDone}
           >
             Back to Store
           </button>
-          <div className="text-sm font-semibold text-white">{pack.setLabel} Pack</div>
-          {remainingPacks > 0 ? <div className="text-xs text-muted-foreground">{remainingPacks} more to open</div> : null}
-          {phase === 'summary' ? <div className="ml-auto text-xs text-muted-foreground">Space to inspect</div> : null}
+          <div className="text-sm font-semibold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{pack.setLabel} Pack</div>
+          {remainingPacks > 0 ? <div className="text-xs" style={{ color: TEXT_MUTED }}>{remainingPacks} more to open</div> : null}
+          {phase === 'summary' ? <div className="ml-auto text-xs" style={{ color: TEXT_MUTED }}>Space to inspect</div> : null}
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center relative z-10">
@@ -139,7 +144,7 @@ export default class ArenaPackOpening extends Component {
             <div className="flex flex-col items-center gap-8">
               {phase === 'sealed' ? (
                 <>
-                  <h2 className="text-xl font-bold text-white">Choose a Pack to Open</h2>
+                  <h2 className="text-xl font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Choose a Pack to Open</h2>
                   <div className="flex items-end justify-center gap-10">
                     {(() => {
                       const allPending = [pack, ...(this.props.allPendingPacks || [])];
@@ -169,13 +174,14 @@ export default class ArenaPackOpening extends Component {
                               draggable={false}
                             />
                           </div>
-                          <div className="text-sm font-semibold text-white">{count}x</div>
+                          <div className="text-sm font-semibold" style={{ color: TEXT_PRIMARY }}>{count}x</div>
                         </motion.button>
                       ));
                     })()}
                   </div>
                   <motion.p
-                    className="text-sm text-muted-foreground"
+                    className="text-sm"
+                    style={{ color: TEXT_MUTED }}
                     animate={{ opacity: [0.4, 0.8, 0.4] }}
                     transition={{ repeat: Infinity, duration: 2 }}
                   >
@@ -192,7 +198,7 @@ export default class ArenaPackOpening extends Component {
                       <img src={boosterImg} alt="" className="max-w-[240px] max-h-[360px] object-contain drop-shadow-[0_25px_70px_rgba(0,0,0,0.8)]" draggable={false} />
                     </div>
                   </motion.div>
-                  <motion.p className="text-sm text-amber-400" animate={{ opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8 }}>Opening...</motion.p>
+                  <motion.p className="text-sm" style={{ color: ACCENT_GOLD }} animate={{ opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 0.8 }}>Opening...</motion.p>
                 </motion.div>
               )}
             </div>
@@ -304,15 +310,15 @@ export default class ArenaPackOpening extends Component {
                 transition={{ delay: 0.8 }}
               >
                 {remainingPacks > 0 ? (
-                  <button type="button" className="rounded-xl px-6 py-2.5 text-sm font-semibold bg-amber-500 text-black hover:bg-amber-400 shadow-lg" onClick={onOpenAnother}>
+                  <button type="button" className="px-6 py-2.5 text-sm font-semibold cursor-pointer transition-all" style={{ ...GOLD_BTN, borderRadius: '8px' }} onClick={onOpenAnother}>
                     Open Next Pack ({remainingPacks} remaining)
                   </button>
                 ) : canAffordAnother ? (
-                  <button type="button" className="rounded-xl px-6 py-2.5 text-sm font-semibold bg-amber-500 text-black hover:bg-amber-400 shadow-lg" onClick={onOpenAnother}>
+                  <button type="button" className="px-6 py-2.5 text-sm font-semibold cursor-pointer transition-all" style={{ ...GOLD_BTN, borderRadius: '8px' }} onClick={onOpenAnother}>
                     Buy &amp; Open Another
                   </button>
                 ) : null}
-                <button type="button" className="rounded-xl px-6 py-2.5 text-sm font-semibold border border-white/30 text-white hover:bg-white/10" onClick={onDone}>
+                <button type="button" className="px-6 py-2.5 text-sm font-semibold cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '8px' }} onClick={onDone}>
                   Back to Store
                 </button>
               </motion.div>
