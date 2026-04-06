@@ -286,6 +286,12 @@ input[type="tel"], textarea, [contenteditable] {
   cursor: text !important;
 }
 
+/* Scale sonner toasts with viewport using transform (preserves stacking) */
+[data-sonner-toaster] {
+  transform: scale(var(--viewport-scale, 1));
+  transform-origin: top center;
+}
+
 /* Hide native number input spinners */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
