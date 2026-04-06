@@ -356,8 +356,8 @@ export default class DeckEditorCollection extends Component {
         <motion.div
           className="flex items-center justify-center gap-1 mt-1.5"
           style={{ fontSize: '10px' }}
-          animate={flash ? { scale: [1, 1.2, 1, 1.15, 1], x: [0, -3, 3, -2, 0] } : { scale: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
+          animate={flash ? { scale: [1, 1.15, 1, 1.1, 1], x: [0, -2, 2, -1, 0] } : { scale: 1, x: 0 }}
+          transition={{ duration: 0.4 }}
         >
           <span style={{ color: flash ? '#c45050' : ACCENT_GOLD }}>{inUse}</span>
           <span style={{ color: TEXT_MUTED }}>/</span>
@@ -369,44 +369,31 @@ export default class DeckEditorCollection extends Component {
     return (
       <motion.div
         className="flex items-center justify-center gap-1 mt-1.5"
-        animate={flash ? { scale: [1, 1.2, 1, 1.15, 1], x: [0, -3, 3, -2, 0] } : { scale: 1, x: 0 }}
-        transition={{ duration: 0.5 }}
+        animate={flash ? { scale: [1, 1.15, 1, 1.1, 1], x: [0, -2, 2, -1, 0] } : { scale: 1, x: 0 }}
+        transition={{ duration: 0.4 }}
       >
         {Array.from({ length: owned }, (_, i) => {
           const active = i < inUse;
           return (
             <div
               key={i}
-              className="relative"
               style={{
                 width: 16,
                 height: 16,
                 borderRadius: 3,
-                outline: active ? 'none' : `1px solid ${flash ? 'rgba(200,60,60,0.5)' : 'rgba(180,150,80,0.3)'}`,
-                filter: active ? `drop-shadow(${flash ? '0 0 6px rgba(200,50,50,0.6)' : filled.dropShadow})` : undefined,
+                outline: active ? 'none' : `1px solid rgba(180,150,80,0.3)`,
+                filter: active ? `drop-shadow(${filled.dropShadow})` : undefined,
               }}
             >
               <img
                 src="/rune-divider.webp"
                 alt=""
                 draggable={false}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  opacity: active ? filled.opacity : empty.opacity,
-                  filter: active ? filled.filter : empty.filter,
-                }}
+                style={active
+                  ? { width: '100%', height: '100%', opacity: filled.opacity, filter: filled.filter }
+                  : { width: '100%', height: '100%', opacity: empty.opacity, filter: empty.filter }
+                }
               />
-              {flash && (
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    borderRadius: 3,
-                    background: 'rgba(200, 50, 50, 0.6)',
-                    mixBlendMode: 'multiply',
-                  }}
-                />
-              )}
             </div>
           );
         })}
