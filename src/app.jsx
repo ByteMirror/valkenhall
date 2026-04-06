@@ -194,7 +194,7 @@ export default class App extends Component {
           loading: false,
           loadingMessage: '',
           loadingDetail: '',
-        });
+        }, () => this.initSeason());
       });
 
     // Check for existing auth token
@@ -343,19 +343,16 @@ export default class App extends Component {
   };
 
   initSeason = () => {
-    if (!this.state.sorceryCards?.length) return;
+    if (!this.state.sorceryCards?.length || !this.state.arenaProfile) return;
     const season = generateSeason(this.state.sorceryCards);
-    let progress = this.state.arenaProfile?.seasonProgress;
+    let progress = this.state.arenaProfile.seasonProgress;
     if (!progress || progress.seasonId !== season.seasonId) {
       progress = createDefaultSeasonProgress(season.seasonId);
     }
     progress = initializeQuests(progress, season);
-    this.setState({ currentSeason: season });
-    if (this.state.arenaProfile) {
-      const updatedProfile = { ...this.state.arenaProfile, seasonProgress: progress };
-      this.setState({ arenaProfile: updatedProfile });
-      saveArenaProfile(updatedProfile).catch(() => {});
-    }
+    const updatedProfile = { ...this.state.arenaProfile, seasonProgress: progress };
+    this.setState({ currentSeason: season, arenaProfile: updatedProfile });
+    saveArenaProfile(updatedProfile).catch(() => {});
   };
 
   postLoginInit = () => {
@@ -906,6 +903,7 @@ export default class App extends Component {
 
   openArcaneTrials = () => {
     playUI(UI.OPEN);
+    if (!this.state.currentSeason) this.initSeason();
     this.setState({ arenaView: 'arcane-trials' });
   };
 

@@ -94,5 +94,6 @@ export function createDefaultProfile() {
     decks: [],
     matchHistory: [],
     achievements: [],
+    seasonProgress: null,
   };
 }

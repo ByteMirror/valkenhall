@@ -2,6 +2,11 @@
   to { transform: rotate(360deg); }
 }
 
+@keyframes shimmer-slide {
+  0%, 100% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+}
+
 .animate-spin-slow {
   animation: spin-slow 3s linear infinite;
 }

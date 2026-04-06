@@ -80,7 +80,7 @@ export default class ArenaHub extends Component {
   }
 
   render() {
-    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends, onToggleMailbox, mailboxUnreadCount } = this.props;
+    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenArcaneTrials, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends, onToggleMailbox, mailboxUnreadCount } = this.props;
     const { showAvatarPicker, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;
@@ -293,6 +293,7 @@ export default class ArenaHub extends Component {
                 <MenuButton title="Store" onClick={onOpenStore} />
                 <MenuButton title="Deck Builder" onClick={onOpenDeckBuilder} />
                 <MenuButton title="Auction House" onClick={onOpenAuctionHouse} />
+                <MenuButton title="Arcane Trials" onClick={onOpenArcaneTrials} />
                 <div className="relative">
                   <MenuButton title="Settings" onClick={onOpenSettings} />
                   {updateStatus && (updateStatus.state === 'READY_TO_INSTALL' || updateStatus.state === 'DOWNLOADING' || updateStatus.state === 'DOWNLOAD_FAILED') ? (
