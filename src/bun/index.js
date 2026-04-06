@@ -56,9 +56,7 @@ const mainWindow = new BrowserWindow({
   },
 });
 
-if (!IS_DEV) {
-  mainWindow.setFullScreen(true);
-}
+mainWindow.setFullScreen(true);
 
 registerWindowApi({
   isFullScreen: () => mainWindow.isFullScreen(),
