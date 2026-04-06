@@ -26,19 +26,31 @@ export default class DeckCardTile extends Component {
     this.ref = createRef();
   }
 
+  componentWillUnmount() {
+    if (this._moveRaf) cancelAnimationFrame(this._moveRaf);
+  }
+
   handleMouseMove = (e) => {
-    const el = this.ref.current;
-    if (!el) return;
+    // Store raw event coords and throttle to one update per frame
+    this._pendingX = e.clientX;
+    this._pendingY = e.clientY;
 
-    const rect = el.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    if (this._moveRaf) return;
+    this._moveRaf = requestAnimationFrame(() => {
+      this._moveRaf = null;
+      const el = this.ref.current;
+      if (!el) return;
 
-    this.setState({
-      rotateY: (x - 0.5) * 2 * TILT_MAX_DEG,
-      rotateX: (0.5 - y) * 2 * TILT_MAX_DEG,
-      mx: x * 100,
-      my: y * 100,
+      const rect = el.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (this._pendingX - rect.left) / rect.width));
+      const y = Math.max(0, Math.min(1, (this._pendingY - rect.top) / rect.height));
+
+      this.setState({
+        rotateY: (x - 0.5) * 2 * TILT_MAX_DEG,
+        rotateX: (0.5 - y) * 2 * TILT_MAX_DEG,
+        mx: x * 100,
+        my: y * 100,
+      });
     });
   };
 

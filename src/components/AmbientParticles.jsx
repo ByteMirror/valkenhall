@@ -13,7 +13,7 @@ import { useRef, useEffect, useCallback } from 'preact/hooks';
 
 const PRESETS = {
   hub: {
-    maxParticles: 800,
+    maxParticles: 400,
     emberRatio: 0.35, dustRatio: 0.55, sparkRatio: 0.10,
     emberColors: [[212,160,67],[200,140,50],[255,140,40],[220,170,80]],
     dustColors: [[180,140,60],[160,130,70],[140,120,80]],
@@ -30,8 +30,24 @@ const PRESETS = {
     sparkLifeScale: 1.8,
     speedScale: 0.6,
   },
+  deckbuilder: {
+    maxParticles: 300,
+    emberRatio: 0.10, dustRatio: 0.85, sparkRatio: 0.05,
+    emberColors: [[200,160,80],[180,140,60],[160,120,50]],
+    dustColors: [[180,155,100],[160,140,90],[140,120,80],[155,135,95]],
+    sparkColors: [[220,190,100],[200,170,80]],
+    emberLifeScale: 1.8,
+    dustLifeScale: 2.0,
+    sparkLifeScale: 1.5,
+    speedScale: 0.35,
+    dustAlphaMax: 0.15,
+    emberAlphaMax: 0.20,
+    sparkAlphaMax: 0.25,
+    dustSizeMax: 3.5,
+    emberSizeMax: 2.5,
+  },
   auction: {
-    maxParticles: 900,
+    maxParticles: 600,
     emberRatio: 0.10, dustRatio: 0.85, sparkRatio: 0.05,
     // Warm, earthy tones — thick dust caught in torchlight
     emberColors: [[200,160,80],[180,140,60],[160,120,50]],
@@ -249,8 +265,12 @@ export default function AmbientParticles({ preset: presetName = 'hub' }) {
     requestAnimationFrame(tick);
 
     return () => {
-      stateRef.current.running = false;
-      stateRef.current = null;
+      if (stateRef.current) {
+        stateRef.current.running = false;
+        stateRef.current.pool = null;
+        stateRef.current.glowSprite = null;
+        stateRef.current = null;
+      }
       window.removeEventListener('resize', resize);
     };
   }, [tick]);
