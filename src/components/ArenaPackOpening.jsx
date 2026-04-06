@@ -2,6 +2,7 @@ import { Component } from 'preact';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import CardInspector, { RARITY_LABEL_COLOR } from './CardInspector';
+import DeckCardTile from './DeckCardTile';
 import PackOpeningFX from './PackOpeningFX';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
@@ -226,13 +227,13 @@ export default class ArenaPackOpening extends Component {
                         return (
                           <motion.div
                             key={i}
-                            className="cursor-pointer relative"
+                            className="relative"
                             initial={{ opacity: 0, y: 120, scale: 0.3, rotate: (Math.random() - 0.5) * 30 }}
                             animate={{
                               opacity: 1,
-                              y: isHovered ? -40 + fanY : fanY,
-                              scale: isHovered ? (isSite ? 1.5 : 1.3) : 1,
-                              rotate: isHovered ? (isSite ? 90 : 0) : fanRotate,
+                              y: fanY,
+                              scale: 1,
+                              rotate: fanRotate,
                               zIndex: isHovered ? 100 : i + 1,
                             }}
                             transition={isEntryDone ? {
@@ -249,41 +250,18 @@ export default class ArenaPackOpening extends Component {
                               delay: i * 0.06,
                               zIndex: { duration: 0 },
                             }}
-                            onMouseEnter={() => {
-                              this.setState({ hoveredIndex: i });
-                              if (rarity === 'Unique') playSound('snd-card-place-1.ogg', 0.3);
-                            }}
-                            onMouseLeave={() => this.setState({ hoveredIndex: -1 })}
-                            onClick={() => this.setState({ inspectedEntry: inspectedEntry === entry ? null : entry })}
                           >
-                            <motion.div
-                              className={cn('card-mask', entryFoil && FOIL_OVERLAY_CLASSES)}
-                              data-foil={entryFoil ? entry.printing?.foiling : undefined}
-                              style={{
-                                width: cardWidth,
-                                height: cardHeight,
-                                borderRadius: 10,
-                                overflow: 'hidden',
-                                border: `2px solid ${RARITY_BORDER_COLOR[rarity]}`,
-                              }}
-                              animate={rarity !== 'Ordinary' && !isHovered ? {
-                                boxShadow: [RARITY_GLOW[rarity], RARITY_GLOW_HOVER[rarity], RARITY_GLOW[rarity]],
-                              } : {
-                                boxShadow: isHovered ? RARITY_GLOW_HOVER[rarity] : RARITY_GLOW[rarity],
-                              }}
-                              transition={rarity !== 'Ordinary' && !isHovered ? {
-                                duration: rarity === 'Unique' ? 2 : 3,
-                                repeat: Infinity,
-                                ease: 'easeInOut',
-                              } : { duration: 0.15 }}
-                            >
-                              <img
-                                src={entry.printing?.image_url || entry.card?.printings?.[0]?.image_url || ''}
-                                alt={entry.card?.name || ''}
-                                className="w-full h-full object-cover"
-                                draggable={false}
+                            <div style={{ width: cardWidth, height: cardHeight }}>
+                              <DeckCardTile
+                                entry={{ card: entry.card, printing: entry.printing || {}, zone: 'spellbook', entryIndex: i }}
+                                isSelected={false}
+                                onClick={() => this.setState({ inspectedEntry: inspectedEntry === entry ? null : entry })}
+                                onHoverChange={(hovered) => {
+                                  this.setState({ hoveredIndex: hovered ? i : -1 });
+                                  if (hovered && rarity === 'Unique') playSound('snd-card-place-1.ogg', 0.3);
+                                }}
                               />
-                            </motion.div>
+                            </div>
                             <AnimatePresence>
                               {isHovered ? (
                                 <motion.div
@@ -294,8 +272,8 @@ export default class ArenaPackOpening extends Component {
                                   exit={{ opacity: 0, y: 5 }}
                                   transition={{ duration: 0.12 }}
                                 >
-                                  <div className="bg-black/95 border border-white/15 rounded-lg px-3 py-1.5 backdrop-blur-xl text-center">
-                                    <div className="text-xs font-semibold text-white">{entry.card?.name}</div>
+                                  <div className="rounded-lg px-3 py-1.5 text-center" style={{ background: 'rgba(12,10,8,0.95)', border: '1px solid rgba(180,140,60,0.25)', backdropFilter: 'blur(12px)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+                                    <div className="text-xs font-semibold" style={{ color: '#e8d5a0' }}>{entry.card?.name}</div>
                                     <div className={cn('text-[10px]', RARITY_LABEL_COLOR[rarity])}>{rarity}</div>
                                   </div>
                                 </motion.div>

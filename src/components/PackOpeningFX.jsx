@@ -309,8 +309,9 @@ export default function PackOpeningFX({ active }) {
     if (!canvas) return;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const parent = canvas.parentElement;
+      canvas.width = parent?.clientWidth || window.innerWidth;
+      canvas.height = parent?.clientHeight || window.innerHeight;
     };
     resize();
     window.addEventListener('resize', resize);
@@ -345,7 +346,7 @@ export default function PackOpeningFX({ active }) {
   return (
     <canvas
       ref={canvasRef}
-      style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1 }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}
     />
   );
 }
