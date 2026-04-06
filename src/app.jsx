@@ -551,6 +551,12 @@ export default class App extends Component {
             { label: 'Decline', key: 'decline-invite' },
           ],
         });
+      } else if (n.type === 'invite-accepted') {
+        this.handleInviteAccepted({ roomCode: n.roomCode });
+        this.addToast({
+          title: 'Invite Accepted',
+          message: `${n.name || n.senderName || 'Your opponent'} accepted — choose your deck!`,
+        });
       } else if (n.type === 'spectate-request') {
         this.addToast({
           title: 'Spectate Request',
@@ -700,11 +706,29 @@ export default class App extends Component {
   };
 
   confirmDeckAndQueue = async (deckId) => {
-    const { arenaProfile } = this.state;
+    const { arenaProfile, isInviteMatch, pendingInviteRoomCode } = this.state;
     if (!arenaProfile?.serverToken) return;
 
     this._matchRewardApplied = false;
-    this.setState({ arenaSelectedDeckId: deckId, arenaMatchmaking: true, arenaMatchmakingOpponent: null, arenaView: 'matchmaking' });
+    this.setState({ arenaSelectedDeckId: deckId, arenaMatchmakingOpponent: null });
+
+    // Friend invite: skip public queue, join the private room directly
+    if (isInviteMatch && pendingInviteRoomCode) {
+      this.setState({
+        isGameBoardOpen: true,
+        isArenaMatch: true,
+        isRankedMatch: false,
+        sessionMode: 'join',
+        roomCode: pendingInviteRoomCode,
+        arenaView: 'hub',
+        pendingInviteRoomCode: null,
+        isInviteMatch: false,
+      });
+      return;
+    }
+
+    // Public matchmaking
+    this.setState({ arenaMatchmaking: true, arenaView: 'matchmaking' });
 
     try {
       await clearQueueState(arenaProfile.serverToken).catch(() => {});
