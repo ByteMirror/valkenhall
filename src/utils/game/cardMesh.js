@@ -37,6 +37,78 @@ function createCardBoxGeometry(w, h) {
   return new THREE.BoxGeometry(w, h, CARD_THICKNESS);
 }
 
+// Holographic sheen shader for foil cards
+const foilVertexShader = `
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+  void main() {
+    vUv = uv;
+    vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const foilFragmentShader = `
+  uniform float uTime;
+  uniform float uIsRainbow;
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+
+  vec3 hsv2rgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+  }
+
+  void main() {
+    float diagonal = (vUv.x + vUv.y) * 0.5;
+    float wave = sin(diagonal * 12.0 - uTime * 1.5) * 0.5 + 0.5;
+    float shimmer = sin(vUv.x * 8.0 + uTime * 0.7) * sin(vUv.y * 6.0 - uTime * 0.5) * 0.5 + 0.5;
+
+    vec3 color;
+    if (uIsRainbow > 0.5) {
+      float hue = fract(diagonal * 2.0 + uTime * 0.1);
+      color = hsv2rgb(vec3(hue, 0.6, 1.0));
+      color = mix(color, vec3(1.0), shimmer * 0.3);
+    } else {
+      color = mix(vec3(0.85, 0.65, 0.2), vec3(1.0, 0.9, 0.5), wave);
+      color = mix(color, vec3(1.0, 1.0, 0.8), shimmer * 0.2);
+    }
+
+    float alpha = mix(0.08, 0.18, wave * shimmer);
+    if (uIsRainbow > 0.5) alpha *= 1.4;
+
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+let foilSheenTime = 0;
+const foilSheenMaterials = [];
+
+function createFoilSheenMaterial(isRainbow) {
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: foilVertexShader,
+    fragmentShader: foilFragmentShader,
+    uniforms: {
+      uTime: { value: 0 },
+      uIsRainbow: { value: isRainbow ? 1.0 : 0.0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+    blending: THREE.AdditiveBlending,
+  });
+  foilSheenMaterials.push(mat);
+  return mat;
+}
+
+export function updateFoilSheens(dt) {
+  foilSheenTime += dt;
+  for (const mat of foilSheenMaterials) {
+    mat.uniforms.uTime.value = foilSheenTime;
+  }
+}
+
 export function createCardMesh(cardInstance) {
   // Always use portrait dimensions — sites get rotated to appear landscape
   const geometry = createCardBoxGeometry(CARD_WIDTH, CARD_HEIGHT);
@@ -51,12 +123,6 @@ export function createCardMesh(cardInstance) {
   const frontMat = new THREE.MeshStandardMaterial({
     map: loadTexture(cardInstance.imageUrl),
     transparent: true,
-    ...(isFoil ? {
-      metalness: foiling === 'R' ? 0.35 : 0.25,
-      roughness: foiling === 'R' ? 0.4 : 0.5,
-      emissive: new THREE.Color(foiling === 'R' ? 0x221133 : 0x1a1408),
-      emissiveIntensity: foiling === 'R' ? 0.3 : 0.2,
-    } : {}),
   });
 
   const backTexture = getBackTexture(cardInstance.isSite);
@@ -79,6 +145,16 @@ export function createCardMesh(cardInstance) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.userData = { type: 'card', cardInstance };
+
+  // Add holographic sheen overlay for foil cards
+  if (isFoil) {
+    const sheenGeo = new THREE.PlaneGeometry(CARD_WIDTH * 0.96, CARD_HEIGHT * 0.96);
+    const sheenMat = createFoilSheenMaterial(foiling === 'R');
+    const sheenPlane = new THREE.Mesh(sheenGeo, sheenMat);
+    // Position slightly above the card face (+Z in local space before rotation)
+    sheenPlane.position.set(0, 0, CARD_THICKNESS / 2 + 0.01);
+    mesh.add(sheenPlane);
+  }
 
   return mesh;
 }

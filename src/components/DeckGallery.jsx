@@ -1,5 +1,7 @@
 import { Component } from 'preact';
 import AppHeader from './AppHeader';
+import AmbientParticles from './AmbientParticles';
+import StoreTorchFX from './StoreTorchFX';
 import {
   GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   BEVELED_BTN, INPUT_STYLE, BG_ATMOSPHERE, VIGNETTE, PANEL_BG,
@@ -54,6 +56,8 @@ export default class DeckGallery extends Component {
     return (
       <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'url("/deck-builder-bg.webp") center no-repeat, #08080a', backgroundSize: '100% 100%' }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
+        <StoreTorchFX />
+        <AmbientParticles preset="auction" />
 
         <AppHeader
           profile={this.props.profile}

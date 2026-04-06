@@ -2,6 +2,8 @@ import { Component } from 'preact';
 import { Mail, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import RuneSpinner from './RuneSpinner';
+import AmbientParticles from './AmbientParticles';
+import StoreTorchFX from './StoreTorchFX';
 import AppHeader from './AppHeader';
 import DeckEditorCollection from './DeckEditorCollection';
 import DeckEditorSidebar from './DeckEditorSidebar';
@@ -365,10 +367,10 @@ export default class DeckEditor extends Component {
     const canSave = chosenCards.length > 0 && !isSaving;
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden select-none" style={{ background: 'url("/deck-builder-bg.webp") center no-repeat, #08080a', backgroundSize: '100% 100%' }}>
-        {/* Dim + vignette overlay */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'rgba(0,0,0,0.4)' }} />
+      <div className="fixed inset-0 z-50 flex flex-col overflow-hidden select-none" style={{ background: 'url("/deck-builder-bg-dimmed.webp") center no-repeat, #08080a', backgroundSize: '100% 100%' }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
+        <StoreTorchFX />
+        <AmbientParticles preset="auction" />
 
         {/* ─── TOOLBAR ──────────────────────────────────────── */}
         <AppHeader
