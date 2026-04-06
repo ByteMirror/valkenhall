@@ -325,17 +325,19 @@ export default class FriendsSidebar extends Component {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {pendingRequests.map((r) => (
-                      <div key={r.senderId} className="relative p-3" style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
+                    {pendingRequests.map((r) => {
+                      const displayName = r.senderName || r.name || 'Unknown Player';
+                      return (
+                      <div key={r.senderId || r.id} className="relative p-3" style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
                         <FourCorners />
                         <div className="flex items-center gap-3 mb-3">
-                          {r.senderAvatar ? (
-                            <img src={r.senderAvatar} alt="" className="w-10 h-10 rounded-lg object-cover object-top" style={{ border: `1px solid ${GOLD} 0.15)` }} />
+                          {r.senderAvatar || r.avatarUrl ? (
+                            <img src={r.senderAvatar || r.avatarUrl} alt="" className="w-10 h-10 rounded-lg object-cover object-top" style={{ border: `1px solid ${GOLD} 0.15)` }} />
                           ) : (
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium" style={{ background: `${GOLD} 0.08)`, border: `1px solid ${GOLD} 0.15)`, color: TEXT_MUTED }}>{(r.senderName || '?')[0].toUpperCase()}</div>
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium" style={{ background: `${GOLD} 0.08)`, border: `1px solid ${GOLD} 0.15)`, color: TEXT_MUTED }}>{displayName[0].toUpperCase()}</div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate" style={{ color: TEXT_PRIMARY }}>{r.senderName}</div>
+                            <div className="text-sm font-medium truncate" style={{ color: TEXT_PRIMARY }}>{displayName}</div>
                             <div className="text-[11px]" style={{ color: TEXT_MUTED }}>Wants to be your friend</div>
                           </div>
                         </div>
@@ -344,7 +346,7 @@ export default class FriendsSidebar extends Component {
                             type="button"
                             className="flex-1 py-2 text-xs font-semibold cursor-pointer transition-all"
                             style={GOLD_BTN}
-                            onClick={() => this.handleAccept(r.senderId)}
+                            onClick={() => this.handleAccept(r.senderId || r.id)}
                           >
                             Accept
                           </button>
@@ -352,13 +354,14 @@ export default class FriendsSidebar extends Component {
                             type="button"
                             className="flex-1 py-2 text-xs cursor-pointer transition-all"
                             style={{ ...BEVELED_BTN, color: TEXT_MUTED, borderRadius: '6px' }}
-                            onClick={() => this.handleDecline(r.senderId)}
+                            onClick={() => this.handleDecline(r.senderId || r.id)}
                           >
                             Decline
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
