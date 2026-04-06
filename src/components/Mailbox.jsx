@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollText } from 'lucide-react';
 import RuneSpinner from './RuneSpinner';
 import { fetchInbox, sendMail, claimMail, deleteMail } from '../utils/arena/mailApi';
+import { playUI, UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   PANEL_BG, DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, INPUT_STYLE,
@@ -151,16 +152,29 @@ export default class Mailbox extends Component {
     });
   };
 
+  handleSlotCollect = (mail, slotKey, animData, allCards, hasCoins) => {
+    const claimedSlots = new Set(this.state.claimedSlots || []);
+    claimedSlots.add(slotKey);
+
+    this.setState({ claimedSlots, collectAnim: animData });
+    clearTimeout(this._collectAnimTimer);
+    this._collectAnimTimer = setTimeout(() => this.setState({ collectAnim: null }), 1800);
+
+    // Check if all slots are now collected
+    const allCardsClaimed = allCards.every((_, i) => claimedSlots.has(`card-${i}`));
+    const coinsClaimed = !hasCoins || claimedSlots.has('coins');
+    if (allCardsClaimed && coinsClaimed) {
+      // Auto-claim after animation starts
+      setTimeout(() => {
+        this.handleClaim(mail);
+      }, 600);
+    }
+  };
+
   handleClaim = async (mail) => {
     this.setState({ claiming: true, error: null });
     try {
       const result = await claimMail(mail.id);
-      const updatedMail = this.state.mail.map(m =>
-        m.id === mail.id ? { ...m, claimed: true } : m
-      );
-      const updatedSelected = { ...mail, claimed: true };
-      this.setState({ mail: updatedMail, selectedMail: updatedSelected, claiming: false });
-
       if (this.props.onProfileUpdate) {
         const updates = {};
         if (result.newBalance != null) updates.coins = result.newBalance;
@@ -177,6 +191,19 @@ export default class Mailbox extends Component {
           updates.collection = collection;
         }
         this.props.onProfileUpdate({ ...this.props.profile, ...updates });
+      }
+
+      // Auto-delete auction mail immediately after claiming
+      const isAuction = mail.type === 'auction';
+      if (isAuction) {
+        await deleteMail(mail.id).catch(() => {});
+        const remaining = this.state.mail.filter(m => m.id !== mail.id);
+        this.setState({ mail: remaining, selectedMail: null, view: 'list', claiming: false, claimedSlots: new Set() });
+      } else {
+        const updatedMail = this.state.mail.map(m =>
+          m.id === mail.id ? { ...m, claimed: true } : m
+        );
+        this.setState({ mail: updatedMail, selectedMail: { ...mail, claimed: true }, claiming: false, claimedSlots: new Set() });
       }
     } catch (err) {
       this.setState({ claiming: false, error: err.message });
@@ -224,6 +251,7 @@ export default class Mailbox extends Component {
         });
       }
 
+      playUI(UI.MAIL_SEND);
       this.props.onSendComplete?.();
       this.setState({ sending: false, view: 'list' });
       this.loadInbox();
@@ -299,7 +327,7 @@ export default class Mailbox extends Component {
     return (
       <div className="flex flex-col">
         {filtered.map(m => {
-          const hasAttachments = !m.claimed && ((m.cards && m.cards.length > 0) || (m.coins && m.coins > 0));
+          const hasAttachments = !m.claimed && (((m.attachedCards || m.cards || []).length > 0) || ((m.attachedCoins || m.coins || 0) > 0));
           return (
             <button
               key={m.id}
@@ -352,9 +380,9 @@ export default class Mailbox extends Component {
                   {m.subject || '(no subject)'}
                 </div>
               </div>
-              {tab === 'auction' && m.coins > 0 && (
+              {tab === 'auction' && (m.attachedCoins || m.coins || 0) > 0 && (
                 <span className="text-[10px] font-bold shrink-0" style={{ color: COIN_COLOR }}>
-                  {m.coins}
+                  {m.attachedCoins || m.coins || 0}
                 </span>
               )}
               {hasAttachments && (
@@ -375,19 +403,26 @@ export default class Mailbox extends Component {
     const { selectedMail: m, claiming } = this.state;
     if (!m) return null;
 
-    const hasAttachments = (m.cards && m.cards.length > 0) || (m.coins && m.coins > 0);
+    const cards = m.attachedCards || m.cards || [];
+    const coins = m.attachedCoins || m.coins || 0;
+    const hasAttachments = cards.length > 0 || coins > 0;
     const canClaim = !m.claimed && hasAttachments;
     const isFriend = (m.type || 'friend') === 'friend';
 
+    const claimedSlots = this.state.claimedSlots || new Set();
+    const allSlotsClaimed = canClaim && cards.every((_, i) => claimedSlots.has(`card-${i}`)) && (coins <= 0 || claimedSlots.has('coins'));
+
     return (
-      <div className="flex flex-col h-full">
-        <div className="px-3 pt-3 pb-2">
+      <div className="relative flex flex-col h-full">
+        {/* Header */}
+        <div className="px-3 pt-3 pb-2 shrink-0">
           <button
             type="button"
             className="text-[11px] cursor-pointer transition-all mb-2"
             style={{ color: TEXT_MUTED }}
             onMouseEnter={e => { e.currentTarget.style.color = TEXT_PRIMARY; }}
             onMouseLeave={e => { e.currentTarget.style.color = TEXT_MUTED; }}
+            data-sound={UI.CANCEL}
             onClick={this.backToList}
           >
             &larr; Back
@@ -409,94 +444,232 @@ export default class Mailbox extends Component {
           )}
         </div>
 
-        <OrnamentalDivider className="px-3 my-1" />
+        <OrnamentalDivider className="px-3 my-1 shrink-0" />
 
-        <div className="flex-1 overflow-y-auto px-3 py-2">
+        {/* Body + Attachments (scrollable together) */}
+        <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
           {m.body && (
             <div className="text-xs leading-relaxed whitespace-pre-wrap mb-3" style={{ color: TEXT_BODY }}>
               {m.body}
             </div>
           )}
 
-          {m.cards && m.cards.length > 0 && (
-            <div className="mb-3">
-              <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.55)` }}>
-                Attached Cards
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {m.cards.map((cardId, i) => {
-                  const imgUrl = resolveCardImage(cardId, sorceryCards);
-                  const name = resolveCardName(cardId, sorceryCards);
-                  return (
-                    <div
-                      key={`${cardId}-${i}`}
-                      className="relative rounded-lg overflow-hidden"
-                      style={{ border: `1px solid ${GOLD} 0.15)`, width: 56 }}
-                    >
-                      {imgUrl ? (
-                        <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
-                      ) : (
-                        <div className="w-full aspect-[5/7] flex items-center justify-center text-[8px]" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
-                          {name}
-                        </div>
-                      )}
-                      <div
-                        className="absolute bottom-0 left-0 right-0 text-[7px] text-center py-0.5 truncate"
-                        style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_BODY }}
-                      >
+          {/* Attachment grid — inline after text */}
+          {hasAttachments && (
+            <div className="py-3 mt-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
+            <div className="text-[9px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.45)` }}>
+              {m.claimed ? 'Collected' : 'Attachments — click to collect'}
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {cards.map((cardId, i) => {
+                const resolvedId = typeof cardId === 'string' ? cardId : cardId?.cardId || '';
+                const imgUrl = resolveCardImage(resolvedId, sorceryCards);
+                const name = resolveCardName(resolvedId, sorceryCards);
+                const slotKey = `card-${i}`;
+                const collected = m.claimed || claimedSlots.has(slotKey);
+                return (
+                  <button
+                    key={`${resolvedId}-${i}`}
+                    type="button"
+                    disabled={m.claimed || collected}
+                    className="relative rounded-lg overflow-hidden transition-all duration-200"
+                    style={{
+                      border: `1px solid ${collected ? `${GOLD} 0.15)` : `${GOLD} 0.12)`}`,
+                      opacity: collected ? 0.3 : 1,
+                      cursor: (m.claimed || collected) ? 'default' : 'pointer',
+                      transform: collected && !m.claimed ? 'scale(0.85)' : 'scale(1)',
+                      filter: collected ? 'grayscale(0.8)' : 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!collected && !m.claimed) {
+                        e.currentTarget.style.transform = 'scale(1.08)';
+                        e.currentTarget.style.borderColor = ACCENT_GOLD;
+                        e.currentTarget.style.boxShadow = `0 0 12px ${GOLD} 0.3)`;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!collected && !m.claimed) {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.borderColor = `${GOLD} 0.12)`;
+                        e.currentTarget.style.boxShadow = 'none';
+                      }
+                    }}
+                    onClick={() => {
+                      if (m.claimed || collected) return;
+                      this.handleSlotCollect(m, slotKey, { type: 'card', name, imgUrl }, cards, coins > 0);
+                    }}
+                  >
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={name} className="w-full aspect-[63/88] object-cover" />
+                    ) : (
+                      <div className="w-full aspect-[63/88] flex items-center justify-center text-[8px]" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
                         {name}
                       </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 text-[7px] text-center py-0.5 truncate" style={{ background: 'rgba(0,0,0,0.8)', color: TEXT_BODY }}>
+                      {name}
                     </div>
-                  );
-                })}
+                    {collected && !m.claimed && (
+                      <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+                        <span className="text-sm" style={{ color: ACCENT_GOLD }}>✓</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {coins > 0 && (
+                <button
+                  type="button"
+                  disabled={m.claimed || claimedSlots.has('coins')}
+                  className="relative rounded-lg overflow-hidden flex flex-col items-center justify-center gap-1 transition-all duration-200"
+                  style={{
+                    border: `1px solid ${(m.claimed || claimedSlots.has('coins')) ? `${GOLD} 0.15)` : `${GOLD} 0.12)`}`,
+                    background: `${GOLD} 0.04)`,
+                    opacity: (m.claimed || claimedSlots.has('coins')) ? 0.3 : 1,
+                    cursor: (m.claimed || claimedSlots.has('coins')) ? 'default' : 'pointer',
+                    aspectRatio: '63 / 88',
+                    transform: (claimedSlots.has('coins') && !m.claimed) ? 'scale(0.85)' : 'scale(1)',
+                    filter: claimedSlots.has('coins') ? 'grayscale(0.8)' : 'none',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!claimedSlots.has('coins') && !m.claimed) {
+                      e.currentTarget.style.transform = 'scale(1.08)';
+                      e.currentTarget.style.borderColor = ACCENT_GOLD;
+                      e.currentTarget.style.boxShadow = `0 0 12px ${GOLD} 0.3)`;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!claimedSlots.has('coins') && !m.claimed) {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      e.currentTarget.style.borderColor = `${GOLD} 0.12)`;
+                      e.currentTarget.style.boxShadow = 'none';
+                    }
+                  }}
+                  onClick={() => {
+                    if (m.claimed || claimedSlots.has('coins')) return;
+                    this.handleSlotCollect(m, 'coins', { type: 'coins', amount: coins }, cards, true);
+                  }}
+                >
+                  <span
+                    className="w-6 h-6 rounded-full"
+                    style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 6px ${GOLD} 0.4)` }}
+                  />
+                  <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>{coins}</span>
+                  <span className="text-[7px]" style={{ color: TEXT_MUTED }}>gold</span>
+                  {claimedSlots.has('coins') && !m.claimed && (
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+                      <span className="text-sm" style={{ color: ACCENT_GOLD }}>✓</span>
+                    </div>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        </div>
+
+
+        {/* Collection animation overlay */}
+        <AnimatePresence>
+          {this.state.collectAnim && (
+            <motion.div
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              style={{ background: 'rgba(0,0,0,0.65)' }}
+            >
+              {this.state.collectAnim.type === 'card' && this.state.collectAnim.imgUrl ? (
+                <motion.img
+                  src={this.state.collectAnim.imgUrl}
+                  alt=""
+                  className="rounded-xl"
+                  initial={{ scale: 0.3, opacity: 0 }}
+                  animate={{ scale: [0.3, 1.15, 0.95, 1.05, 1], opacity: 1 }}
+                  exit={{ scale: 0.7, opacity: 0 }}
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                  style={{
+                    width: '40%',
+                    maxWidth: 160,
+                    aspectRatio: '63 / 88',
+                    objectFit: 'cover',
+                    boxShadow: `0 0 40px ${GOLD} 0.4), 0 20px 60px rgba(0,0,0,0.6)`,
+                    border: `2px solid ${ACCENT_GOLD}`,
+                  }}
+                />
+              ) : this.state.collectAnim.type === 'coins' ? (
+                <motion.span
+                  className="w-16 h-16 rounded-full"
+                  initial={{ scale: 0.3, opacity: 0 }}
+                  animate={{ scale: [0.3, 1.15, 0.95, 1.05, 1], opacity: 1 }}
+                  exit={{ scale: 0.7, opacity: 0 }}
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                  style={{
+                    background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`,
+                    boxShadow: `0 0 40px ${GOLD} 0.5), 0 20px 60px rgba(0,0,0,0.6)`,
+                    border: `2px solid ${ACCENT_GOLD}`,
+                  }}
+                />
+              ) : null}
+              <motion.div
+                className="mt-4 text-sm font-bold arena-heading tracking-wide"
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -8, opacity: 0 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                style={{
+                  color: ACCENT_GOLD,
+                  textShadow: `0 0 20px ${GOLD} 0.5), 0 2px 4px rgba(0,0,0,0.8)`,
+                }}
+              >
+                {this.state.collectAnim.type === 'coins'
+                  ? `+ ${this.state.collectAnim.amount} Gold`
+                  : `Received: ${this.state.collectAnim.name}`
+                }
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete confirmation modal */}
+        {this.state.confirmDeleteMail?.id === m.id && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', borderRadius: 'inherit' }}>
+            <div className="p-4 mx-4 rounded-lg" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.3)` }}>
+              <div className="text-xs font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>
+                This letter has uncollected attachments
+              </div>
+              <div className="text-[11px] mb-3" style={{ color: TEXT_MUTED }}>
+                {cards.length > 0 && `${cards.length} card${cards.length > 1 ? 's' : ''}`}
+                {cards.length > 0 && coins > 0 && ' and '}
+                {coins > 0 && `${coins} gold`}
+                {' will be lost forever. Are you sure?'}
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <button
+                  type="button"
+                  className="px-3 py-1 text-[10px] cursor-pointer transition-all"
+                  style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                  data-sound={UI.CANCEL}
+                  onClick={() => this.setState({ confirmDeleteMail: null })}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1 text-[10px] cursor-pointer transition-all"
+                  style={DANGER_BTN}
+                  onClick={() => {
+                    this.setState({ confirmDeleteMail: null });
+                    this.handleDelete(m);
+                  }}
+                >
+                  Delete Anyway
+                </button>
               </div>
             </div>
-          )}
-
-          {m.coins > 0 && (
-            <div className="flex items-center gap-2 mb-3 px-2.5 py-2 rounded-lg" style={{ background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.12)` }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: COIN_COLOR }}>
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
-              <span className="text-sm font-bold" style={{ color: COIN_COLOR }}>{m.coins}</span>
-              <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>coins</span>
-            </div>
-          )}
-        </div>
-
-        <div className="px-3 py-2.5 flex items-center gap-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
-          {canClaim && (
-            <button
-              type="button"
-              disabled={claiming}
-              className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-40"
-              style={GOLD_BTN}
-              onClick={() => this.handleClaim(m)}
-            >
-              {claiming ? 'Collecting...' : 'Collect'}
-            </button>
-          )}
-          {isFriend && (
-            <button
-              type="button"
-              className="px-3 py-1.5 text-[11px] font-medium cursor-pointer transition-all"
-              style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-              onClick={() => this.openReply(m)}
-            >
-              Reply
-            </button>
-          )}
-          {m.claimed && (
-            <button
-              type="button"
-              className="px-3 py-1.5 text-[10px] cursor-pointer transition-all ml-auto"
-              style={DANGER_BTN}
-              onClick={() => this.handleDelete(m)}
-            >
-              Delete
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -521,6 +694,7 @@ export default class Mailbox extends Component {
             style={{ color: TEXT_MUTED }}
             onMouseEnter={e => { e.currentTarget.style.color = TEXT_PRIMARY; }}
             onMouseLeave={e => { e.currentTarget.style.color = TEXT_MUTED; }}
+            data-sound={UI.CANCEL}
             onClick={this.backToList}
           >
             &larr; Back
@@ -729,6 +903,7 @@ export default class Mailbox extends Component {
               style={{ color: TEXT_MUTED }}
               onMouseEnter={e => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
               onMouseLeave={e => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
+              data-sound={UI.CANCEL}
               onClick={onClose}
             >
               <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
@@ -763,6 +938,41 @@ export default class Mailbox extends Component {
                 Compose
               </button>
             ) : null}
+            {view === 'detail' && this.state.selectedMail ? (() => {
+              const m = this.state.selectedMail;
+              const isFriend = (m.type || 'friend') === 'friend';
+              const cards = m.attachedCards || m.cards || [];
+              const coins = m.attachedCoins || m.coins || 0;
+              const hasAtt = cards.length > 0 || coins > 0;
+              return (
+                <>
+                  {isFriend && (
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-[11px] font-medium cursor-pointer transition-all"
+                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                      onClick={() => this.openReply(m)}
+                    >
+                      Reply
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-[10px] cursor-pointer transition-all ml-auto"
+                    style={DANGER_BTN}
+                    onClick={() => {
+                      if (hasAtt && !m.claimed) {
+                        this.setState({ confirmDeleteMail: m });
+                      } else {
+                        this.handleDelete(m);
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              );
+            })() : null}
             {view === 'compose' ? (
               <>
                 {this.state.error ? (
@@ -775,6 +985,7 @@ export default class Mailbox extends Component {
                   disabled={!(this.state.composeRecipient && (this.state.composeSubject.trim() || this.state.composeBody.trim())) || this.state.sending}
                   className="px-5 py-1.5 text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                  data-sound={UI.CONFIRM}
                   onClick={this.handleSend}
                 >
                   {this.state.sending ? 'Sending...' : 'Send'}
