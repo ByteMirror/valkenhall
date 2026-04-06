@@ -2400,6 +2400,41 @@ export default class GameBoard extends Component {
     return { col, row, centerX, centerZ, width, height, tl, tr, bl, br, totalRows: rowPositions.length - 1 };
   };
 
+  /**
+   * Find the nearest grid intersection (corner point) to an x,z position.
+   * Returns { col, row, x, z, adjacentCells } where col/row are the intersection indices
+   * (0..cols for columns, 0..rows for rows). adjacentCells lists the up-to-4 cells touching this corner.
+   */
+  getNearestGridIntersection = (x, z) => {
+    const grid = getGameGrid(this.state.spawnConfig);
+    if (!grid) return null;
+    const { colPositions, rowPositions } = this.computeGridPositions(grid);
+
+    let bestDist = Infinity;
+    let best = null;
+
+    for (let c = 0; c < colPositions.length; c++) {
+      for (let r = 0; r < rowPositions.length; r++) {
+        const pt = this.getGridPoint(grid, colPositions[c], rowPositions[r]);
+        const dx = pt.x - x;
+        const dz = pt.z - z;
+        const dist = dx * dx + dz * dz;
+        if (dist < bestDist) {
+          bestDist = dist;
+          // Adjacent cells: up to 4 cells that share this corner
+          const adjacent = [];
+          if (c > 0 && r > 0) adjacent.push({ col: c - 1, row: r - 1 });
+          if (c < colPositions.length - 1 && r > 0) adjacent.push({ col: c, row: r - 1 });
+          if (c > 0 && r < rowPositions.length - 1) adjacent.push({ col: c - 1, row: r });
+          if (c < colPositions.length - 1 && r < rowPositions.length - 1) adjacent.push({ col: c, row: r });
+          best = { col: c, row: r, x: pt.x, z: pt.z, adjacentCells: adjacent };
+        }
+      }
+    }
+
+    return best;
+  };
+
   showGridCellHighlight = (cell) => {
     if (!cell || !this.scene) {
       this.hideGridCellHighlight();
@@ -5533,11 +5568,7 @@ export default class GameBoard extends Component {
               return (
                 <div
                   key={card.id}
-                  className={cn(
-                    'absolute pointer-events-auto cursor-grab active:cursor-grabbing card-mask',
-                    isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES
-                  )}
-                  data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
+                  className="absolute pointer-events-auto cursor-grab active:cursor-grabbing"
                   onMouseDown={(e) => { if (e.button === 0) this.startHandCardDrag(e, card); }}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -5551,20 +5582,26 @@ export default class GameBoard extends Component {
                     bottom: '0px',
                     width: '120px',
                     height: '175px',
-                    overflow: 'hidden',
                     zIndex,
                     transformOrigin: 'bottom center',
                     transition: 'transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
                     transform: `translateX(calc(-50% + ${x}px)) translateY(${y - (card.isSite ? 30 : 0)}px) rotate(${rotation + (card.isSite ? 90 : 0)}deg) scale(${scale})`,
-                    borderRadius: '8px',
                   }}
                 >
-                  <img
-                    src={card.imageUrl}
-                    alt={card.name}
-                    className="w-full h-full object-cover rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
-                    draggable={false}
-                  />
+                  <div
+                    className={cn(
+                      'w-full h-full overflow-hidden rounded-lg card-mask',
+                      isFoilFinish(card.foiling) && FOIL_OVERLAY_CLASSES
+                    )}
+                    data-foil={isFoilFinish(card.foiling) ? card.foiling : undefined}
+                  >
+                    <img
+                      src={card.imageUrl}
+                      alt={card.name}
+                      className="w-full h-full object-cover shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+                      draggable={false}
+                    />
+                  </div>
                 </div>
               );
             })}
