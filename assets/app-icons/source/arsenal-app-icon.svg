@@ -1,8 +1,0 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <title>Arsenal App Icon</title>
-  <desc>Minimal black vector icon for Arsenal App with an abstract shield and monogram A.</desc>
-  <path d="M512 110C639 110 747 142 832 195V468C832 668 713 840 512 930C311 840 192 668 192 468V195C277 142 385 110 512 110Z" fill="black"/>
-  <path d="M512 262L372 690H457L489 586H535L567 690H652L512 262ZM512 409L543 510H481L512 409Z" fill="white"/>
-  <path d="M512 166C608 166 690 186 758 223V276C695 240 614 220 512 220C410 220 329 240 266 276V223C334 186 416 166 512 166Z" fill="white"/>
-  <path d="M494 332H530L558 418H542L522 359H502L482 418H466L494 332Z" fill="black"/>
-</svg>
