@@ -60,13 +60,23 @@ jobs:
           UPSCAYL_BIN_URL_WIN32_X64: ${{ vars.UPSCAYL_BIN_URL_WIN32_X64 }}
       - name: Validate bundled upscaling assets
         run: bun run release:validate-assets ${{ matrix.target_id }}
+      - name: Build web renderer
+        run: bun run build
       - name: Build desktop app
-        run: bun run desktop:build
+        run: electrobun build
         env:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
           ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
           ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
+      - name: List build output
+        if: always()
+        shell: bash
+        run: |
+          echo "=== artifacts/ ==="
+          ls -la artifacts/ 2>/dev/null || echo "artifacts/ not found"
+          echo "=== build/ ==="
+          ls -la build/ 2>/dev/null || echo "build/ not found"
       - name: Upload Electrobun build artifacts
         uses: actions/upload-artifact@v4
         with:

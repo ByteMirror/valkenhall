@@ -25,6 +25,7 @@ await fs.copyFile('./public/valkenhall-logo.png', './dist/valkenhall-logo.png');
 await fs.copyFile('./public/store-bg.png', './dist/store-bg.png').catch(() => {});
 await fs.copyFile('./public/hub-bg.png', './dist/hub-bg.png').catch(() => {});
 await fs.copyFile('./public/auction-bg.webp', './dist/auction-bg.webp').catch(() => {});
+await fs.copyFile('./public/deck-builder-bg.webp', './dist/deck-builder-bg.webp').catch(() => {});
 await fs.copyFile('./public/rune-divider.webp', './dist/rune-divider.webp').catch(() => {});
 for (const tex of ['tex-stone', 'tex-chisel', 'tex-scratches', 'tex-cracks', 'tex-noise', 'tex-noise-panel', 'tex-noise-gold']) {
   await fs.copyFile(`./public/${tex}.webp`, `./dist/${tex}.webp`).catch(() => {});

@@ -52,8 +52,7 @@ export default class DeckGallery extends Component {
     const filteredDecks = this.getFilteredDecks();
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#08080a' }}>
-        <div className="absolute inset-0 pointer-events-none" style={{ background: BG_ATMOSPHERE }} />
+      <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'url("/deck-builder-bg.webp") center no-repeat, #08080a', backgroundSize: '100% 100%' }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
 
         <AppHeader
