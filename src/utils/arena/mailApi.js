@@ -1,6 +1,6 @@
 import { getStoredToken } from '../authApi';
 
-const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
+const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
 async function authHeaders() {
   const token = await getStoredToken();
@@ -11,7 +11,7 @@ async function authHeaders() {
 }
 
 export async function fetchInbox() {
-  const res = await fetch(`${MATCHMAKING_URL}/api/mail/inbox`, {
+  const res = await fetch(`${MATCHMAKING_URL}/mail/inbox`, {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch inbox');
@@ -19,7 +19,7 @@ export async function fetchInbox() {
 }
 
 export async function sendMail({ recipientId, subject, body, cards, coins }) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/mail/send`, {
+  const res = await fetch(`${MATCHMAKING_URL}/mail/send`, {
     method: 'POST',
     headers: await authHeaders(),
     body: JSON.stringify({ recipientId, subject, body, cards, coins }),
@@ -32,7 +32,7 @@ export async function sendMail({ recipientId, subject, body, cards, coins }) {
 }
 
 export async function claimMail(mailId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/mail/claim`, {
+  const res = await fetch(`${MATCHMAKING_URL}/mail/claim`, {
     method: 'POST',
     headers: await authHeaders(),
     body: JSON.stringify({ mailId }),
@@ -42,17 +42,17 @@ export async function claimMail(mailId) {
 }
 
 export async function deleteMail(mailId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/mail/delete`, {
-    method: 'POST',
+  const res = await fetch(`${MATCHMAKING_URL}/mail/${encodeURIComponent(mailId)}`, {
+    method: 'DELETE',
     headers: await authHeaders(),
-    body: JSON.stringify({ mailId }),
   });
   if (!res.ok) throw new Error('Failed to delete mail');
-  return res.json();
+  if (res.status === 204) return null;
+  return res.json().catch(() => null);
 }
 
 export async function getUnreadCount() {
-  const res = await fetch(`${MATCHMAKING_URL}/api/mail/unread-count`, {
+  const res = await fetch(`${MATCHMAKING_URL}/mail/unread-count`, {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to get unread count');

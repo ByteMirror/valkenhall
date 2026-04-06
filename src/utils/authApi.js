@@ -1,9 +1,9 @@
 import { LOCAL_API_ORIGIN } from './localApi';
 
-const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
+const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
 export async function requestLoginCode(email) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/auth/login`, {
+  const res = await fetch(`${MATCHMAKING_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -16,7 +16,7 @@ export async function requestLoginCode(email) {
 }
 
 export async function verifyLoginCode(email, code) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/auth/verify`, {
+  const res = await fetch(`${MATCHMAKING_URL}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, code }),
@@ -29,7 +29,7 @@ export async function verifyLoginCode(email, code) {
 }
 
 export async function validateToken(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/auth/validate`, {
+  const res = await fetch(`${MATCHMAKING_URL}/auth/validate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

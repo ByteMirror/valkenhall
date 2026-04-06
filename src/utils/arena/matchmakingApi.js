@@ -1,4 +1,4 @@
-const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
+const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
 function authHeaders(token) {
   return {

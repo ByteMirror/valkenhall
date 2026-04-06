@@ -1,4 +1,4 @@
-const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
+const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
 function authHeaders(token) {
   return {
@@ -10,7 +10,7 @@ function authHeaders(token) {
 export async function loadArenaProfile(token) {
   if (!token) return null;
 
-  const res = await fetch(`${MATCHMAKING_URL}/api/profile/me`, {
+  const res = await fetch(`${MATCHMAKING_URL}/profile/me`, {
     headers: authHeaders(token),
   });
   if (!res.ok) return null;
@@ -35,8 +35,8 @@ export async function saveArenaProfile(profile) {
   if (profile.achievements) payload.achievements = profile.achievements;
   if (profile.seasonProgress !== undefined) payload.seasonProgress = profile.seasonProgress;
 
-  const res = await fetch(`${MATCHMAKING_URL}/api/profile/save`, {
-    method: 'POST',
+  const res = await fetch(`${MATCHMAKING_URL}/profile/me`, {
+    method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify(payload),
   });

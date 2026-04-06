@@ -1,4 +1,4 @@
-const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
+const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
 function authHeaders(token) {
   return {
@@ -8,7 +8,7 @@ function authHeaders(token) {
 }
 
 async function postAction(token, endpoint, body, fallbackError) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/auction/${endpoint}`, {
+  const res = await fetch(`${MATCHMAKING_URL}/auction/${endpoint}`, {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify(body),
@@ -29,13 +29,13 @@ export async function fetchListings({ cardId, search, sortBy, sortOrder, limit, 
   if (limit != null) params.set('limit', limit);
   if (offset != null) params.set('offset', offset);
   const query = params.toString();
-  const res = await fetch(`${MATCHMAKING_URL}/api/auction/listings${query ? `?${query}` : ''}`);
+  const res = await fetch(`${MATCHMAKING_URL}/auction/listings${query ? `?${query}` : ''}`);
   if (!res.ok) throw new Error('Failed to fetch listings');
   return res.json();
 }
 
 export async function fetchMyListings(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/auction/mine`, {
+  const res = await fetch(`${MATCHMAKING_URL}/auction/my-listings`, {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error('Failed to fetch your listings');

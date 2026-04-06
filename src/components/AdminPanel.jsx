@@ -167,7 +167,7 @@ export default class AdminPanel extends Component {
       return;
     }
     try {
-      const res = await fetch('https://fab-matchmaking.vercel.app/api/mail/test-mail', {
+      const res = await fetch('https://valkenhall-server-production.up.railway.app/mail/test-mail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${profile.serverToken}` },
         body: JSON.stringify({

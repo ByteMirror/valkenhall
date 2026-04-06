@@ -1,6 +1,6 @@
 import { getStoredToken } from './authApi';
 
-const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
+const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
 async function authHeaders() {
   const token = await getStoredToken();
@@ -11,7 +11,7 @@ async function authHeaders() {
 }
 
 export async function searchPlayers(query) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-search?q=${encodeURIComponent(query)}`, {
+  const res = await fetch(`${MATCHMAKING_URL}/friends/search?q=${encodeURIComponent(query)}`, {
     headers: await authHeaders(),
   });
   if (!res.ok) {
@@ -22,7 +22,7 @@ export async function searchPlayers(query) {
 }
 
 export async function getFriendList() {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-list`, {
+  const res = await fetch(`${MATCHMAKING_URL}/friends`, {
     headers: await authHeaders(),
   });
   if (!res.ok) return { friends: [], pendingRequests: [], pendingCount: 0, pendingInvites: [], pendingSpectate: [], acceptedNotifications: [] };
@@ -30,7 +30,7 @@ export async function getFriendList() {
 }
 
 export async function sendFriendRequest(targetId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-request`, {
+  const res = await fetch(`${MATCHMAKING_URL}/friends/request`, {
     method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ targetId }),
   });
@@ -39,7 +39,7 @@ export async function sendFriendRequest(targetId) {
 }
 
 export async function acceptFriendRequest(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-accept`, {
+  const res = await fetch(`${MATCHMAKING_URL}/friends/accept`, {
     method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -48,7 +48,7 @@ export async function acceptFriendRequest(senderId) {
 }
 
 export async function declineFriendRequest(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-decline`, {
+  const res = await fetch(`${MATCHMAKING_URL}/friends/decline`, {
     method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
@@ -57,12 +57,12 @@ export async function declineFriendRequest(senderId) {
 }
 
 export async function removeFriend(friendId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-remove`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ friendId }),
+  const res = await fetch(`${MATCHMAKING_URL}/friends/${encodeURIComponent(friendId)}`, {
+    method: 'DELETE', headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to remove friend');
-  return res.json();
+  if (res.status === 204) return null;
+  return res.json().catch(() => null);
 }
 
 export async function sendPresence(activity) {
@@ -164,7 +164,7 @@ export async function executeTrade(partnerId, myOffer, theirOffer) {
 }
 
 export async function getPublicProfile(profileId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/profile/${profileId}`, {
+  const res = await fetch(`${MATCHMAKING_URL}/profile/${profileId}`, {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to load profile');
