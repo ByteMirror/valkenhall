@@ -3,6 +3,7 @@ import { playUI, UI } from '../utils/arena/uiSounds';
 import { getSeasonLevel, getNextTierInfo, canClaimTier, getTimeRemaining } from '../utils/arena/seasonPass';
 import RuneSpinner from './RuneSpinner';
 import DeckCardTile from './DeckCardTile';
+import CardInspector from './CardInspector';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   BEVELED_BTN, VIGNETTE, PANEL_BG,
@@ -18,16 +19,34 @@ export default class ArcaneTrials extends Component {
     this.state = {
       viewScale: getViewportScale(),
       claiming: null,
+      hoveredCard: null,
+      inspectedEntry: null,
     };
   }
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+    document.addEventListener('keydown', this.handleKeyDown);
   }
 
   componentWillUnmount() {
     this.unsubScale?.();
+    document.removeEventListener('keydown', this.handleKeyDown);
   }
+
+  handleKeyDown = (e) => {
+    if ((e.key === ' ' || e.code === 'Space') && !e.target?.isContentEditable && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) {
+      e.preventDefault();
+      if (this.state.inspectedEntry) {
+        this.setState({ inspectedEntry: null });
+      } else if (this.state.hoveredCard) {
+        this.setState({ inspectedEntry: this.state.hoveredCard });
+      }
+    }
+    if (e.key === 'Escape' && this.state.inspectedEntry) {
+      this.setState({ inspectedEntry: null });
+    }
+  };
 
   handleClaim = async (level) => {
     this.setState({ claiming: level });
@@ -190,7 +209,6 @@ export default class ArcaneTrials extends Component {
                       <div
                         className="relative w-full transition-all duration-300"
                         style={{
-                          filter: locked ? 'brightness(0.65)' : 'none',
                           opacity: isClaimed ? 0.7 : 1,
                           transform: claimable ? 'scale(1.04) translateY(-4px)' : 'scale(1)',
                         }}
@@ -206,6 +224,7 @@ export default class ArcaneTrials extends Component {
                                 entry={{ card, printing, zone: 'spellbook', entryIndex: 0 }}
                                 isSelected={false}
                                 onClick={() => claimable && this.handleClaim(tier.level)}
+                                onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { card, printing } : null })}
                               />
                             </div>
                           );
@@ -350,6 +369,15 @@ export default class ArcaneTrials extends Component {
             </div>
           </div>
         </div>
+        {this.state.inspectedEntry ? (
+          <CardInspector
+            card={this.state.inspectedEntry.card}
+            imageUrl={this.state.inspectedEntry.printing?.image_url}
+            rarity={this.state.inspectedEntry.card?.rarity}
+            foiling={this.state.inspectedEntry.printing?.foiling}
+            onClose={() => this.setState({ inspectedEntry: null })}
+          />
+        ) : null}
       </div>
     );
   }

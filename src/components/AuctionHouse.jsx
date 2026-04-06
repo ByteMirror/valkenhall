@@ -4,6 +4,7 @@ import AppHeader from './AppHeader';
 import AmbientParticles from './AmbientParticles';
 import StoreTorchFX from './StoreTorchFX';
 import DeckCardTile from './DeckCardTile';
+import CardInspector from './CardInspector';
 import RuneSpinner from './RuneSpinner';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil.js';
 import { playUI, UI } from '../utils/arena/uiSounds';
@@ -123,6 +124,8 @@ export default class AuctionHouse extends Component {
       foilOnly: false,
       sellSearch: '',
       now: Date.now(),
+      hoveredCard: null,
+      inspectedEntry: null,
     };
   }
 
@@ -131,13 +134,29 @@ export default class AuctionHouse extends Component {
     this._tickTimer = setInterval(() => this.setState({ now: Date.now() }), 1000);
     this.doSync();
     this.loadListings();
+    document.addEventListener('keydown', this.handleInspectorKeyDown);
   }
 
   componentWillUnmount() {
     this.unsubScale?.();
     clearInterval(this._tickTimer);
     clearTimeout(this._purchaseMsgTimer);
+    document.removeEventListener('keydown', this.handleInspectorKeyDown);
   }
+
+  handleInspectorKeyDown = (e) => {
+    if ((e.key === ' ' || e.code === 'Space') && !e.target?.isContentEditable && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) {
+      e.preventDefault();
+      if (this.state.inspectedEntry) {
+        this.setState({ inspectedEntry: null });
+      } else if (this.state.hoveredCard) {
+        this.setState({ inspectedEntry: this.state.hoveredCard });
+      }
+    }
+    if (e.key === 'Escape' && this.state.inspectedEntry) {
+      this.setState({ inspectedEntry: null });
+    }
+  };
 
   doSync = async () => {
     const { profile } = this.props;
@@ -418,6 +437,7 @@ export default class AuctionHouse extends Component {
                           entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: 0 }}
                           isSelected={isSelected}
                           onClick={() => this.setState({ previewListing: listing })}
+                          onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { card, printing: { ...printing, foiling } } : null })}
                         />
                       ) : (
                         <div
@@ -780,6 +800,7 @@ export default class AuctionHouse extends Component {
                         entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: idx }}
                         isSelected={isSelected}
                         onClick={() => this.setState({ selectedCardId: card.unique_id, selectedFoiling: foiling, sellPrice: '', sellQuantity: 1, sellError: null })}
+                        onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { card, printing: { ...printing, foiling } } : null })}
                       />
                       <div className="flex items-center justify-center gap-1 mt-1">
                         {qty > 1 && (
@@ -1111,6 +1132,15 @@ export default class AuctionHouse extends Component {
           </div>
         )}
         </div>{/* end UI content wrapper */}
+        {this.state.inspectedEntry ? (
+          <CardInspector
+            card={this.state.inspectedEntry.card}
+            imageUrl={this.state.inspectedEntry.printing?.image_url}
+            rarity={this.state.inspectedEntry.card?.rarity}
+            foiling={this.state.inspectedEntry.printing?.foiling}
+            onClose={() => this.setState({ inspectedEntry: null })}
+          />
+        ) : null}
       </div>
     );
   }
