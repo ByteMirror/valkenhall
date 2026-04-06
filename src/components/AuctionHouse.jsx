@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { Mail, Users } from 'lucide-react';
 import DeckCardTile from './DeckCardTile';
 import RuneSpinner from './RuneSpinner';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil.js';
@@ -724,8 +725,8 @@ export default class AuctionHouse extends Component {
                   <div className="text-xs" style={{ color: TEXT_MUTED }}>
                     Available: <span style={{ color: ACCENT_GOLD }}>{selectedQty}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex flex-col gap-0.5">
+                  <div className="flex items-end gap-3">
+                    <div className="flex flex-col gap-1">
                       <span className="text-[9px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Qty</span>
                       <input
                         type="number"
@@ -741,7 +742,7 @@ export default class AuctionHouse extends Component {
                         style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
                       />
                     </div>
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-1">
                       <span className="text-[9px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Price each</span>
                       <input
                         type="number"
@@ -756,7 +757,7 @@ export default class AuctionHouse extends Component {
                     <button
                       type="button"
                       disabled={sellLoading || !sellPrice || parseInt(sellPrice, 10) <= 0}
-                      className="px-4 py-1.5 text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed self-end"
+                      className="px-5 py-1.5 text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       style={GOLD_BTN}
                       onClick={this.handleCreateListing}
                     >
@@ -901,7 +902,7 @@ export default class AuctionHouse extends Component {
   }
 
   render() {
-    const { profile, onBack } = this.props;
+    const { profile, onBack, onToggleMailbox, mailboxUnreadCount, mailboxDropdown, onToggleFriends, friendListData } = this.props;
     const { tab, error, viewScale } = this.state;
 
     return (
@@ -949,7 +950,38 @@ export default class AuctionHouse extends Component {
             ))}
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
+            <div className="relative">
+              <button
+                type="button"
+                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+                onClick={onToggleMailbox}
+              >
+                <Mail size={14} />
+                Mailbox
+                {(mailboxUnreadCount || 0) > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
+                    {mailboxUnreadCount}
+                  </span>
+                )}
+              </button>
+              {mailboxDropdown}
+            </div>
+            <button
+              type="button"
+              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+              onClick={onToggleFriends}
+            >
+              <Users size={14} />
+              Friends
+              {(friendListData?.pendingCount || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
+                  {friendListData.pendingCount}
+                </span>
+              )}
+            </button>
             <span
               className="inline-block w-3.5 h-3.5 rounded-full"
               style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 6px ${GOLD} 0.4)` }}

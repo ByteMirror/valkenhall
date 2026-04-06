@@ -1,26 +1,41 @@
 import { Component } from 'preact';
+import { Mail, Users } from 'lucide-react';
+import { toast } from 'sonner';
+import RuneSpinner from './RuneSpinner';
 import DeckEditorCollection from './DeckEditorCollection';
 import DeckEditorSidebar from './DeckEditorSidebar';
+import { playUI, UI } from '../utils/arena/uiSounds';
 import SorceryDeckMetricsPanel from './SorceryDeckMetricsPanel';
 import {
-  GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, PANEL_BORDER,
+  GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, PANEL_BORDER,
   BEVELED_BTN, GOLD_BTN, INPUT_STYLE, ACCENT_GOLD,
   BG_ATMOSPHERE, VIGNETTE, DIALOG_STYLE,
   FourCorners, getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
-import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from '../utils/arena/collectionUtils';
+import { buildOwnedMap, buildUsedMap } from '../utils/arena/collectionUtils';
+import { canAddCard } from '../utils/sorcery/deckRules';
 
 export default class DeckEditor extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      chosenCards: this.props.deck?.cards || [],
+      chosenCards: (this.props.deck?.cards || []).map((entry) => {
+        if (entry.zone) return entry;
+        const cat = entry.card?._sorceryCategory;
+        let zone = 'spellbook';
+        if (cat === 'Site') zone = 'atlas';
+        else if (cat === 'Avatar') zone = 'avatar';
+        else if (entry.isSideboard) zone = 'collection';
+        return { ...entry, zone };
+      }),
       deckName: this.props.deck?.name || '',
       deckId: this.props.deck?.id || '',
       hasUnsavedChanges: false,
       isSaving: false,
       showStats: false,
       showUnsavedPrompt: false,
+      hoveredSidebarCard: null,
+      hoveredSidebarRect: null,
       viewScale: getViewportScale(),
     };
   }
@@ -29,21 +44,28 @@ export default class DeckEditor extends Component {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
   }
 
+  componentDidUpdate(prevProps) {
+    // Sync deck ID from parent when it changes (e.g., after first save assigns an ID)
+    const newId = this.props.deck?.id;
+    if (newId && newId !== prevProps.deck?.id && newId !== this.state.deckId) {
+      this.setState({ deckId: newId });
+    }
+  }
+
   componentWillUnmount() {
     this.unsubScale?.();
   }
 
-  handleAddCard = (card) => {
-    if (this.props.arenaProfile) {
-      const { collection, decks } = this.props.arenaProfile;
-      const ownedMap = buildOwnedMap(collection);
-      const usedMap = buildUsedMap(decks, this.state.deckId);
-      const available = getAvailableQuantity(card.unique_id, ownedMap, usedMap);
-      const inDeck = this.state.chosenCards.filter(c => c.card.unique_id === card.unique_id).length;
-      if (inDeck >= available) return;
+  handleAddCard = (card, specificPrinting) => {
+    const ownedMap = this.props.arenaProfile ? buildOwnedMap(this.props.arenaProfile.collection) : null;
+    const usedElsewhereMap = this.props.arenaProfile ? buildUsedMap(this.props.arenaProfile.decks, this.state.deckId) : null;
+    const check = canAddCard(card, this.state.chosenCards, { ownedMap, usedElsewhereMap });
+    if (!check.allowed) {
+      this.showToast(check.reason);
+      return;
     }
 
-    const printing = card.printings?.[card.printings.length - 1] || card.printings?.[0];
+    const printing = specificPrinting || card.printings?.[card.printings.length - 1] || card.printings?.[0];
     if (!printing) return;
 
     let zone = 'spellbook';
@@ -58,15 +80,212 @@ export default class DeckEditor extends Component {
     }));
   };
 
-  handleIncrement = (cardUniqueId) => {
-    const existing = this.state.chosenCards.find(c => c.card.unique_id === cardUniqueId);
-    if (!existing) return;
-    this.handleAddCard(existing.card);
+  handleChangeZone = (cardUniqueId, newZone, foiling = 'S') => {
+    this.setState((state) => {
+      const idx = state.chosenCards.findIndex((c) =>
+        c.card.unique_id === cardUniqueId && (c.printing?.foiling || 'S') === foiling
+      );
+      if (idx === -1) return null;
+      const next = [...state.chosenCards];
+      next[idx] = { ...next[idx], zone: newZone, isSideboard: newZone === 'collection' };
+      return { chosenCards: next, hasUnsavedChanges: true };
+    });
   };
 
-  handleDecrement = (cardUniqueId) => {
+  handleAddCardToZone = (card, zone) => {
+    const printing = card.printings?.[card.printings.length - 1] || card.printings?.[0];
+    if (!printing) return;
+
+    const ownedMap = this.props.arenaProfile ? buildOwnedMap(this.props.arenaProfile.collection) : null;
+    const usedElsewhereMap = this.props.arenaProfile ? buildUsedMap(this.props.arenaProfile.decks, this.state.deckId) : null;
+    const check = canAddCard(card, this.state.chosenCards, { ownedMap, usedElsewhereMap });
+    if (!check.allowed) {
+      this.showToast(check.reason);
+      return;
+    }
+
+    this.setState((state) => ({
+      chosenCards: [...state.chosenCards, { card, printing, zone, isSideboard: zone === 'collection' }],
+      hasUnsavedChanges: true,
+    }));
+  };
+
+  // Animated sidebar card preview state
+  _previewAnim = { opacity: 0, top: 0, targetTop: 0, visible: false, imgUrl: '', cardName: '', isSite: false, isFoil: false, foiling: '', sidebarLeft: 0 };
+  _previewRafId = null;
+
+  _getCardSize() {
+    const gridCard = document.querySelector('.card-grid img');
+    if (gridCard) {
+      const r = gridCard.getBoundingClientRect();
+      if (r.width > 50) return { w: Math.round(r.width * 1.2), h: Math.round(r.height * 1.2) };
+    }
+    return { w: 300, h: 420 };
+  }
+
+  handleSidebarHover = (cardUniqueId, hoverFoiling) => {
+    if (!cardUniqueId) {
+      this._previewAnim.visible = false;
+      this._startPreviewLoop();
+      return;
+    }
+    const targetFoiling = hoverFoiling || 'S';
+    const card = this.state.chosenCards.find(c =>
+      c.card.unique_id === cardUniqueId && (c.printing?.foiling || 'S') === targetFoiling
+    ) || this.state.chosenCards.find(c => c.card.unique_id === cardUniqueId);
+    if (!card) return;
+    const row = document.querySelector(`[data-sidebar-card-id="${cardUniqueId}"][data-sidebar-foiling="${targetFoiling}"]`)
+      || document.querySelector(`[data-sidebar-card-id="${cardUniqueId}"]`);
+    const rect = row?.getBoundingClientRect();
+    if (!rect) return;
+
+    const imgUrl = card.printing?.image_url || card.card?.printings?.[0]?.image_url || '';
+    const isSite = card.card?.played_horizontally;
+    const foiling = card.printing?.foiling || 'S';
+    const isFoil = foiling === 'F' || foiling === 'R';
+    const cardSize = this._getCardSize();
+    const previewW = isSite ? cardSize.h : cardSize.w;
+    const previewH = isSite ? cardSize.w : cardSize.h;
+    const centerY = rect.top + rect.height / 2;
+    let targetTop = centerY - previewH / 2;
+    if (targetTop < 8) targetTop = 8;
+    if (targetTop + previewH > window.innerHeight - 8) targetTop = window.innerHeight - 8 - previewH;
+
+    const anim = this._previewAnim;
+    const wasVisible = anim.visible;
+    anim.visible = true;
+    anim.imgUrl = imgUrl;
+    anim.cardName = card.card.name;
+    anim.isSite = isSite;
+    anim.isFoil = isFoil;
+    anim.foiling = foiling;
+    anim.sidebarLeft = rect.left;
+    anim.targetTop = targetTop;
+    anim.previewW = previewW;
+    anim.previewH = previewH;
+    if (!wasVisible) {
+      anim.top = targetTop;
+      anim.opacity = 0;
+    }
+    this._startPreviewLoop();
+  };
+
+  _startPreviewLoop = () => {
+    if (this._previewRafId) return;
+    this._previewRafId = requestAnimationFrame(this._tickPreview);
+  };
+
+  _tickPreview = () => {
+    this._previewRafId = null;
+    const anim = this._previewAnim;
+    const speed = 0.18;
+
+    if (anim.visible) {
+      anim.opacity += (1 - anim.opacity) * speed;
+      if (anim.opacity > 0.99) anim.opacity = 1;
+    } else {
+      anim.opacity += (0 - anim.opacity) * (speed * 1.5);
+      if (anim.opacity < 0.01) anim.opacity = 0;
+    }
+
+    anim.top += (anim.targetTop - anim.top) * speed;
+
+    const el = this._previewRef;
+    if (el) {
+      const previewW = anim.previewW || 300;
+      const previewH = anim.previewH || 420;
+      const gap = 16;
+      const left = anim.sidebarLeft - previewW - gap;
+      el.style.opacity = String(anim.opacity);
+      el.style.top = `${anim.top}px`;
+      el.style.left = `${left}px`;
+      el.style.width = `${previewW}px`;
+      el.style.height = `${previewH}px`;
+      el.style.transform = `scale(${0.85 + anim.opacity * 0.15})`;
+      el.style.display = anim.opacity > 0.01 ? 'block' : 'none';
+
+      // Foil overlay classes — must match the DeckCardTile foil rendering
+      const inner = el.querySelector('[data-preview-inner]');
+      if (inner) {
+        if (anim.isFoil) {
+          inner.className = 'w-full h-full rounded-[14px] card-mask foil-overlay foil-overlay--always';
+          inner.setAttribute('data-foil', anim.foiling);
+        } else {
+          inner.className = 'w-full h-full rounded-[14px] card-mask';
+          inner.removeAttribute('data-foil');
+        }
+      }
+
+      const img = el.querySelector('img');
+      if (img && img.src !== anim.imgUrl && anim.imgUrl) img.src = anim.imgUrl;
+      if (img) {
+        img.alt = anim.cardName;
+        if (anim.isSite) {
+          img.style.transform = 'rotate(90deg)';
+          img.style.transformOrigin = 'center center';
+          img.style.width = `${previewH}px`;
+          img.style.height = `${previewW}px`;
+          img.style.position = 'absolute';
+          img.style.top = `${(previewH - previewW) / 2}px`;
+          img.style.left = `${(previewW - previewH) / 2}px`;
+        } else {
+          img.style.transform = 'none';
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.position = 'static';
+          img.style.top = '';
+          img.style.left = '';
+        }
+      }
+    }
+
+    const isSettled = anim.visible ? anim.opacity >= 1 && Math.abs(anim.top - anim.targetTop) < 0.5
+      : anim.opacity <= 0;
+    if (!isSettled) {
+      this._previewRafId = requestAnimationFrame(this._tickPreview);
+    }
+  };
+
+  renderSidebarPreview() {
+    return (
+      <div
+        ref={(el) => { this._previewRef = el; }}
+        className="fixed pointer-events-none z-[60]"
+        style={{
+          display: 'none',
+          opacity: 0,
+          borderRadius: '14px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 30px rgba(0,0,0,0.4)',
+          transformOrigin: 'right center',
+          willChange: 'transform, opacity, top',
+        }}
+      >
+        <div data-preview-inner className="w-full h-full rounded-[14px] card-mask">
+          <img src="" alt="" className="object-cover" draggable={false} />
+        </div>
+      </div>
+    );
+  }
+
+  showToast = (message) => {
+    toast(message);
+  };
+
+  handleIncrement = (cardUniqueId, foiling = 'S') => {
+    const existing = this.state.chosenCards.find(c =>
+      c.card.unique_id === cardUniqueId && (c.printing?.foiling || 'S') === foiling
+    );
+    if (!existing) return;
+    playUI(UI.EQUIP);
+    this.handleAddCard(existing.card, existing.printing);
+  };
+
+  handleDecrement = (cardUniqueId, foiling = 'S') => {
+    playUI(UI.UNEQUIP);
     this.setState(state => {
-      const idx = state.chosenCards.findLastIndex(c => c.card.unique_id === cardUniqueId);
+      const idx = state.chosenCards.findLastIndex(c =>
+        c.card.unique_id === cardUniqueId && (c.printing?.foiling || 'S') === foiling
+      );
       if (idx === -1) return null;
       const next = [...state.chosenCards];
       next.splice(idx, 1);
@@ -110,8 +329,13 @@ export default class DeckEditor extends Component {
         previewCards,
       };
 
-      await this.props.onSave(payload);
-      this.setState({ isSaving: false, hasUnsavedChanges: false });
+      const result = await this.props.onSave(payload);
+      this.setState({
+        isSaving: false,
+        hasUnsavedChanges: false,
+        deckId: result?.id || this.state.deckId,
+        deckName: result?.name || this.state.deckName,
+      });
     } catch (err) {
       console.error('Failed to save deck:', err);
       this.setState({ isSaving: false });
@@ -133,7 +357,7 @@ export default class DeckEditor extends Component {
   };
 
   render() {
-    const { sorceryCards, arenaProfile } = this.props;
+    const { sorceryCards, arenaProfile, onToggleMailbox, mailboxUnreadCount, mailboxDropdown, onToggleFriends, friendListData } = this.props;
     const { chosenCards, deckName, isSaving, showStats, showUnsavedPrompt, viewScale } = this.state;
     const isArenaMode = !!arenaProfile;
     const ownedMap = arenaProfile ? buildOwnedMap(arenaProfile.collection) : new Map();
@@ -152,6 +376,7 @@ export default class DeckEditor extends Component {
           {/* Back button */}
           <button
             type="button"
+            data-sound={UI.CANCEL}
             className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
             style={{ ...BEVELED_BTN, color: TEXT_BODY }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; e.currentTarget.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,0.1), 0 0 15px ${GOLD} 0.1)`; }}
@@ -174,6 +399,41 @@ export default class DeckEditor extends Component {
           {/* Spacer */}
           <div className="flex-1" />
 
+          {/* Mailbox button */}
+          <div className="relative">
+            <button
+              type="button"
+              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+              onClick={onToggleMailbox}
+            >
+              <Mail size={14} />
+              Mailbox
+              {(mailboxUnreadCount || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
+                  {mailboxUnreadCount}
+                </span>
+              )}
+            </button>
+            {mailboxDropdown}
+          </div>
+
+          {/* Friends button */}
+          <button
+            type="button"
+            className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+            style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+            onClick={onToggleFriends}
+          >
+            <Users size={14} />
+            Friends
+            {(friendListData?.pendingCount || 0) > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
+                {friendListData.pendingCount}
+              </span>
+            )}
+          </button>
+
           {/* Stats button */}
           <button
             type="button"
@@ -189,37 +449,43 @@ export default class DeckEditor extends Component {
           {/* Save button */}
           <button
             type="button"
+            data-sound={UI.CONFIRM}
             className="px-5 py-1.5 text-sm font-bold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none"
             style={GOLD_BTN}
             disabled={!canSave}
             onClick={this.handleSave}
           >
-            {isSaving ? 'Saving\u2026' : 'Save Deck'}
+            {isSaving ? <RuneSpinner size={18} className="inline-block" /> : 'Save Deck'}
           </button>
         </div>
 
         {/* ─── MAIN CONTENT ─────────────────────────────────── */}
         <div
-          className="relative z-10 flex-1 flex min-h-0 overflow-hidden"
+          className="relative z-10 flex-1 flex min-h-0"
           style={{ zoom: viewScale }}
         >
-          {/* Collection browser (~70%) */}
-          <div className="flex-[7] min-w-0 overflow-hidden">
+          {/* Collection browser */}
+          <div className="flex-1 min-w-0 px-4 py-2">
             <DeckEditorCollection
               sorceryCards={sorceryCards}
+              collection={arenaProfile?.collection}
               ownedMap={ownedMap}
               chosenCards={chosenCards}
               onAddCard={this.handleAddCard}
+              onRemoveCard={this.handleDecrement}
+              onShowToast={this.showToast}
               isArenaMode={isArenaMode}
             />
           </div>
 
-          {/* Sidebar (~30%) */}
-          <div className="flex-[3] min-w-0 overflow-hidden" style={{ borderLeft: `1px solid ${GOLD} 0.12)` }}>
+          {/* Sidebar */}
+          <div className="w-[300px] shrink-0 overflow-hidden h-full">
             <DeckEditorSidebar
               chosenCards={chosenCards}
               onIncrement={this.handleIncrement}
               onDecrement={this.handleDecrement}
+              onChangeZone={this.handleChangeZone}
+              onCardHover={this.handleSidebarHover}
             />
           </div>
         </div>
@@ -262,35 +528,35 @@ export default class DeckEditor extends Component {
             onClick={() => this.setState({ showUnsavedPrompt: false })}
           >
             <div
-              className="relative w-[420px] p-6"
+              className="relative w-[520px] max-w-[90vw] p-8"
               style={DIALOG_STYLE}
               onClick={(e) => e.stopPropagation()}
             >
               <FourCorners />
-              <h2 className="arena-heading text-lg font-bold mb-3" style={{ color: TEXT_PRIMARY }}>Unsaved Changes</h2>
-              <p className="text-sm mb-5" style={{ color: TEXT_BODY }}>You have unsaved changes. Save before leaving?</p>
+              <h2 className="arena-heading text-xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>Unsaved Changes</h2>
+              <p className="text-sm mb-6" style={{ color: TEXT_BODY }}>You have unsaved changes. Save before leaving?</p>
               <div className="flex items-center gap-3 justify-end">
                 <button
                   type="button"
-                  className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                  className="whitespace-nowrap px-5 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
                   style={{ ...BEVELED_BTN, color: TEXT_MUTED }}
-                  onClick={() => this.setState({ showUnsavedPrompt: false })}
+                  onClick={() => { playUI(UI.CANCEL); this.setState({ showUnsavedPrompt: false }); }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                  className="whitespace-nowrap px-5 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
                   style={{ ...BEVELED_BTN, color: '#c45050' }}
-                  onClick={() => { this.setState({ showUnsavedPrompt: false }); this.props.onBack(); }}
+                  onClick={() => { playUI(UI.DELETE); this.setState({ showUnsavedPrompt: false }); this.props.onBack(); }}
                 >
                   Discard
                 </button>
                 <button
                   type="button"
-                  className="px-5 py-1.5 text-sm font-bold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                  className="whitespace-nowrap px-6 py-2 text-sm font-bold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
                   style={GOLD_BTN}
-                  onClick={this.handleSaveAndLeave}
+                  onClick={() => { playUI(UI.CONFIRM); this.handleSaveAndLeave(); }}
                 >
                   Save &amp; Leave
                 </button>
@@ -298,6 +564,9 @@ export default class DeckEditor extends Component {
             </div>
           </div>
         )}
+
+        {/* Sidebar hover card preview */}
+        {this.renderSidebarPreview()}
       </div>
     );
   }

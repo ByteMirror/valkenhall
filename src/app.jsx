@@ -250,6 +250,15 @@ export default class App extends Component {
       }
     }
 
+    // Play match music when the game session actually starts
+    if (this.state.sessionMode && !prevState.sessionMode && this.state.isGameBoardOpen) {
+      playMusic('arena-match', { fadeInDuration: 3000 });
+    }
+    // Fade back to hub music when game session ends
+    if (!this.state.sessionMode && prevState.sessionMode && !this.state.isGameBoardOpen) {
+      playMusic('arena-hub', { fadeInDuration: 3000 });
+    }
+
     if (prevState.arenaView !== this.state.arenaView) {
       const activityMap = {
         hub: 'hub',
@@ -645,7 +654,6 @@ export default class App extends Component {
           arenaMatchId: result.matchId,
         });
         playUI(UI.MATCH_START);
-        playMusic('arena-match', { fadeInDuration: 3000 });
         const delay = result.isHost ? 1500 : 4000;
         setTimeout(() => {
           this.setState({
@@ -753,7 +761,6 @@ export default class App extends Component {
       }
       return;
     }
-    playMusic('arena-match', { fadeInDuration: 3000 });
     this.setState({ isGameBoardOpen: true, isArenaMatch: true, isRankedMatch: false });
   };
 
@@ -1347,6 +1354,23 @@ export default class App extends Component {
             onOpenDeck={this.handleOpenDeckInEditor}
             onDeleteDeck={this.handleDeleteDeckFromGallery}
             onBack={this.handleBackToHubFromGallery}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+              />
+            }
+            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            friendListData={this.state.friendListData}
           />
         ) : null}
         {showDeckEditor ? (
@@ -1356,6 +1380,23 @@ export default class App extends Component {
             arenaProfile={this.state.arenaProfile}
             onSave={this.handleSaveDeckFromEditor}
             onBack={this.handleBackToGallery}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+              />
+            }
+            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            friendListData={this.state.friendListData}
           />
         ) : null}
         {this.state.isGameBoardOpen && !this.state.sessionMode ? (
@@ -1487,6 +1528,23 @@ export default class App extends Component {
             onBuyPack={this.buyArenaPack}
             onOpenPacks={this.openNextPack}
             onBack={() => this.setState({ arenaView: 'hub' })}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+              />
+            }
+            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            friendListData={this.state.friendListData}
           />
         ) : null}
         {showArena && this.state.arenaView === 'auction-house' ? (
@@ -1495,6 +1553,23 @@ export default class App extends Component {
             sorceryCards={this.state.sorceryCards}
             onUpdateProfile={(profile) => this.setState({ arenaProfile: profile }, () => saveArenaProfile(profile))}
             onBack={() => this.setState({ arenaView: 'hub' })}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+              />
+            }
+            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            friendListData={this.state.friendListData}
           />
         ) : null}
         {showArena && this.state.arenaView === 'pack-opening' && this.state.arenaOpenedPack ? (

@@ -1,9 +1,13 @@
 import { Component } from 'preact';
+import { Mail, Users } from 'lucide-react';
 import { CURRENCY, SET_UNLOCK_LEVELS, levelFromXp, isArenaDebugMode } from '../utils/arena/profileDefaults';
 import { BOOSTER_SETS } from '../utils/arena/packGenerator';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { cn } from '../lib/utils';
-import { GOLD, PANEL_BG, PANEL_BORDER, CornerPlating, getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
+import { GOLD, GOLD_TEXT, ACCENT_GOLD, BEVELED_BTN, PANEL_BG, PANEL_BORDER, CornerPlating, getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
+import { playUI, UI } from '../utils/arena/uiSounds';
+import AmbientParticles from './AmbientParticles';
+import StoreTorchFX from './StoreTorchFX';
 
 const SET_ORDER = ['gothic', 'arthurian', 'beta'];
 
@@ -59,6 +63,7 @@ export default class ArenaStore extends Component {
   }
 
   handlePurchase = () => {
+    playUI(UI.GOLD);
     const { cart } = this.state;
     const { onBuyPack } = this.props;
     for (const setKey of SET_ORDER) {
@@ -69,7 +74,7 @@ export default class ArenaStore extends Component {
   };
 
   render() {
-    const { profile, pendingPacks, onBack, onOpenPacks } = this.props;
+    const { profile, pendingPacks, onBack, onOpenPacks, onToggleMailbox, mailboxUnreadCount, mailboxDropdown, onToggleFriends, friendListData } = this.props;
     const { tab, cart, showConfirm, purchaseFlash } = this.state;
     const level = levelFromXp(profile.xp);
     const debug = isArenaDebugMode();
@@ -87,6 +92,12 @@ export default class ArenaStore extends Component {
         {/* Vignette */}
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, rgba(0,0,0,0.6) 100%)' }} />
 
+        {/* Torch firelight glow */}
+        <StoreTorchFX />
+
+        {/* Ambient particles */}
+        <AmbientParticles preset="store" />
+
         {purchaseFlash ? (
           <div className="fixed inset-0 z-[60] pointer-events-none" style={{ background: 'rgba(245,158,11,0.08)', animation: 'fadeOut 1.5s ease-out forwards' }} />
         ) : null}
@@ -103,12 +114,45 @@ export default class ArenaStore extends Component {
               color: '#A6A09B',
               textShadow: '0 1px 2px rgba(0,0,0,0.5)',
             }}
+            data-sound={UI.CANCEL}
             onClick={onBack}
           >
             Back to Hub
           </button>
 
-          <div className="ml-auto flex items-center gap-5">
+          <div className="ml-auto flex items-center gap-3">
+            <div className="relative">
+              <button
+                type="button"
+                className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+                style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+                onClick={onToggleMailbox}
+              >
+                <Mail size={14} />
+                Mailbox
+                {(mailboxUnreadCount || 0) > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ background: ACCENT_GOLD, boxShadow: `0 0 8px ${GOLD} 0.5)` }}>
+                    {mailboxUnreadCount}
+                  </span>
+                )}
+              </button>
+              {mailboxDropdown}
+            </div>
+            <button
+              type="button"
+              className="relative flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
+              onClick={onToggleFriends}
+            >
+              <Users size={14} />
+              Friends
+              {(friendListData?.pendingCount || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[9px] font-bold text-white px-1" style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
+                  {friendListData.pendingCount}
+                </span>
+              )}
+            </button>
+            <div className="flex items-center gap-5">
             {totalPending > 0 ? (
               <button
                 type="button"
@@ -130,6 +174,7 @@ export default class ArenaStore extends Component {
               <span style={{ color: '#f0d060', fontSize: '14px', textShadow: '0 0 8px rgba(240,208,96,0.3)' }}>●</span>
               <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
               <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
+            </div>
             </div>
           </div>
         </div>
@@ -295,6 +340,7 @@ export default class ArenaStore extends Component {
                           color: 'rgba(166,160,155,0.25)',
                         }
                     }
+                    data-sound={UI.CONFIRM}
                     onClick={() => this.setState({ showConfirm: true })}
                   >
                     {cartPacks === 0 ? 'Purchase' : canAffordCart ? 'Purchase' : 'Not enough gold'}
@@ -349,6 +395,7 @@ export default class ArenaStore extends Component {
                   type="button"
                   className="flex-1 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
                   style={{ background: 'transparent', border: `1px solid ${GOLD} 0.2)`, borderRadius: '4px', color: '#A6A09B' }}
+                  data-sound={UI.CANCEL}
                   onClick={() => this.setState({ showConfirm: false })}
                 >
                   Cancel
@@ -363,6 +410,7 @@ export default class ArenaStore extends Component {
                     color: '#1a1408',
                     boxShadow: `0 0 15px ${GOLD} 0.15), inset 0 1px 0 rgba(255,255,255,0.2)`,
                   }}
+                  data-sound={UI.CONFIRM}
                   onClick={this.handlePurchase}
                 >
                   Buy {cartPacks} Pack{cartPacks !== 1 ? 's' : ''}
