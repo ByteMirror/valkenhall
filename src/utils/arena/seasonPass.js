@@ -5,14 +5,14 @@ const SETS = ['gothic', 'arthurian', 'beta'];
 const TIER_TABLE = [
   { level: 1,  xpRequired: 200,   reward: { coins: 50 } },
   { level: 2,  xpRequired: 500,   reward: { coins: 100 } },
-  { level: 3,  xpRequired: 900,   reward: { foilRarity: 'Elite', foilIndex: 0 } },
+  { level: 3,  xpRequired: 900,   reward: { foilRarity: 'Ordinary', foilIndex: 0 } },
   { level: 4,  xpRequired: 1400,  reward: { coins: 75 } },
-  { level: 5,  xpRequired: 2000,  reward: { coins: 150 } },
-  { level: 6,  xpRequired: 2800,  reward: { foilRarity: 'Elite', foilIndex: 1 } },
-  { level: 7,  xpRequired: 3800,  reward: { coins: 100 } },
+  { level: 5,  xpRequired: 2000,  reward: { foilRarity: 'Ordinary', foilIndex: 1 } },
+  { level: 6,  xpRequired: 2800,  reward: { coins: 150 } },
+  { level: 7,  xpRequired: 3800,  reward: { foilRarity: 'Exceptional', foilIndex: 0 } },
   { level: 8,  xpRequired: 5000,  reward: { coins: 200 } },
-  { level: 9,  xpRequired: 6500,  reward: { foilRarity: 'Unique', foilIndex: 0 } },
-  { level: 10, xpRequired: 8500,  reward: { coins: 500, foilRarity: 'Unique', foilIndex: 1 } },
+  { level: 9,  xpRequired: 6500,  reward: { coins: 100 } },
+  { level: 10, xpRequired: 8500,  reward: { coins: 500, foilRarity: 'Elite', foilIndex: 0 } },
 ];
 
 const QUEST_TEMPLATES = [
@@ -61,14 +61,17 @@ export function generateSeason(sorceryCards, now = Date.now()) {
   const setNames = { gothic: 'Gothic', arthurian: 'Arthurian Legends', beta: 'Beta' };
   const setId = setNames[setKey];
 
+  const ordinaryCards = [];
+  const exceptionalCards = [];
   const eliteCards = [];
-  const uniqueCards = [];
   for (const card of sorceryCards || []) {
     if (!card._sorcery) continue;
     const foilPrinting = card.printings?.find(p => p.set_id === setId && p.foiling === 'F');
     if (!foilPrinting) continue;
-    if (card.rarity === 'Elite') eliteCards.push({ cardId: card.unique_id, printingId: foilPrinting.unique_id, name: card.name });
-    if (card.rarity === 'Unique') uniqueCards.push({ cardId: card.unique_id, printingId: foilPrinting.unique_id, name: card.name });
+    const entry = { cardId: card.unique_id, printingId: foilPrinting.unique_id, name: card.name };
+    if (card.rarity === 'Ordinary') ordinaryCards.push(entry);
+    else if (card.rarity === 'Exceptional') exceptionalCards.push(entry);
+    else if (card.rarity === 'Elite') eliteCards.push(entry);
   }
 
   const shuffle = (arr) => {
@@ -80,9 +83,11 @@ export function generateSeason(sorceryCards, now = Date.now()) {
     return a;
   };
 
-  const pickedElite = shuffle(eliteCards).slice(0, 2);
-  const pickedUnique = shuffle(uniqueCards).slice(0, 2);
-  const foilPicks = { Elite: pickedElite, Unique: pickedUnique };
+  const foilPicks = {
+    Ordinary: shuffle(ordinaryCards).slice(0, 2),
+    Exceptional: shuffle(exceptionalCards).slice(0, 1),
+    Elite: shuffle(eliteCards).slice(0, 1),
+  };
 
   const tiers = TIER_TABLE.map(tier => {
     const reward = { ...tier.reward };

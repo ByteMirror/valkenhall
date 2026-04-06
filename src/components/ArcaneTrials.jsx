@@ -2,16 +2,15 @@ import { Component } from 'preact';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import { getSeasonLevel, getNextTierInfo, canClaimTier, getTimeRemaining } from '../utils/arena/seasonPass';
 import RuneSpinner from './RuneSpinner';
+import DeckCardTile from './DeckCardTile';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
-  BEVELED_BTN, GOLD_BTN, VIGNETTE, PANEL_BG,
+  BEVELED_BTN, VIGNETTE, PANEL_BG,
   CornerPlating, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
-const TIER_NODE_BORDER_LOCKED = `1px solid ${GOLD} 0.15)`;
-const TIER_NODE_BORDER_UNLOCKABLE = `1px solid ${GOLD} 0.55)`;
-const TIER_NODE_BORDER_CLAIMED = `1px solid ${GOLD} 0.2)`;
+const FOIL_TIERS = new Set([3, 5, 7, 10]);
 
 export default class ArcaneTrials extends Component {
   constructor(props) {
@@ -38,124 +37,6 @@ export default class ArcaneTrials extends Component {
       this.setState({ claiming: null });
     }
   };
-
-  renderProgressBar() {
-    const { season, progress } = this.props;
-    const { tiers } = season;
-    const { seasonXp } = progress;
-    const maxXp = tiers[tiers.length - 1].xpRequired;
-    const fillPct = Math.min(100, (seasonXp / maxXp) * 100);
-
-    return (
-      <div className="w-full">
-        <div className="relative h-5 rounded-full overflow-hidden" style={{
-          background: 'rgba(0,0,0,0.5)',
-          border: `1px solid ${GOLD} 0.25)`,
-        }}>
-          <div className="absolute inset-0 rounded-full" style={{
-            width: `${fillPct}%`,
-            background: 'linear-gradient(90deg, #8b6914, #d4a843, #f0d060)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 0 12px rgba(212,168,67,0.3)',
-            transition: 'width 0.5s ease-out',
-          }} />
-          {tiers.map((tier) => {
-            const pct = (tier.xpRequired / maxXp) * 100;
-            return (
-              <div
-                key={tier.level}
-                className="absolute top-0 bottom-0 w-px"
-                style={{
-                  left: `${pct}%`,
-                  background: `${GOLD} 0.35)`,
-                }}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  renderTierNode(tier) {
-    const { progress } = this.props;
-    const { seasonXp, claimedTiers } = progress;
-    const { claiming } = this.state;
-    const isClaimed = claimedTiers.includes(tier.level);
-    const claimable = canClaimTier(tier.level, seasonXp, claimedTiers, this.props.season.tiers);
-    const isClaimingThis = claiming === tier.level;
-
-    const border = isClaimed ? TIER_NODE_BORDER_CLAIMED
-      : claimable ? TIER_NODE_BORDER_UNLOCKABLE
-      : TIER_NODE_BORDER_LOCKED;
-
-    const { reward } = tier;
-    const foilCardName = reward.foilCardName || null;
-    const foilRarity = reward.foilRarity || null;
-
-    return (
-      <div
-        key={tier.level}
-        className="relative flex flex-col items-center p-3 rounded-lg"
-        style={{
-          background: PANEL_BG,
-          border,
-          opacity: isClaimed ? 0.6 : 1,
-          boxShadow: claimable ? `0 0 16px rgba(212,168,67,0.15)` : 'none',
-          transition: 'opacity 0.3s, border-color 0.3s, box-shadow 0.3s',
-        }}
-      >
-        <CornerPlating position="top-left" />
-        <CornerPlating position="top-right" />
-        <CornerPlating position="bottom-left" />
-        <CornerPlating position="bottom-right" />
-
-        <div className="text-xs font-bold arena-heading mb-1" style={{ color: TEXT_PRIMARY }}>
-          Tier {tier.level}
-        </div>
-        <div className="text-[10px] mb-2" style={{ color: TEXT_MUTED }}>
-          {tier.xpRequired} XP
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center gap-1 mb-2">
-          {reward.coins ? (
-            <div className="text-sm font-bold" style={{ color: '#f0d060' }}>
-              {reward.coins} gold
-            </div>
-          ) : null}
-          {foilCardName ? (
-            <div className="text-center">
-              <div className="text-xs font-semibold" style={{ color: '#6dd5ed' }}>
-                Foil
-              </div>
-              <div className="text-xs font-medium" style={{ color: TEXT_BODY }}>
-                {foilCardName}
-              </div>
-              <div className="text-[10px]" style={{ color: TEXT_MUTED }}>
-                {foilRarity}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {isClaimed ? (
-          <div className="text-xs font-semibold" style={{ color: TEXT_MUTED }}>Claimed</div>
-        ) : claimable ? (
-          <button
-            type="button"
-            className="px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all hover:scale-[1.05] active:scale-[0.95] flex items-center gap-1"
-            style={{ ...GOLD_BTN }}
-            data-sound={UI.CONFIRM}
-            disabled={isClaimingThis}
-            onClick={() => this.handleClaim(tier.level)}
-          >
-            {isClaimingThis ? <RuneSpinner size={14} /> : 'Claim'}
-          </button>
-        ) : (
-          <div className="text-xs font-semibold" style={{ color: TEXT_MUTED }}>Locked</div>
-        )}
-      </div>
-    );
-  }
 
   renderQuestCard(activeQuest) {
     const { season } = this.props;
@@ -276,15 +157,14 @@ export default class ArcaneTrials extends Component {
             </div>
           </div>
 
-          {/* Body */}
-          <div className="flex-1 flex flex-col items-center px-6 py-6 gap-6">
+          {/* Body — reward track centered, quests pinned to bottom */}
+          <div className="flex-1 flex flex-col min-h-0">
 
-            {/* Reward Track — horizontal scrollable bar with nodes on the line */}
-            <div className="w-full max-w-5xl">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-xs font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>
-                  Reward Track
-                </div>
+            {/* Reward Track — vertically centered in available space */}
+            <div className="flex-1 flex items-center justify-center px-6">
+            <div className="w-full">
+              <div className="flex items-center justify-between mb-4 px-4">
+                <div className="text-sm font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>Reward Track</div>
                 {nextTier ? (
                   <div className="text-xs" style={{ color: TEXT_MUTED }}>
                     Next reward in <span style={{ color: ACCENT_GOLD }}>{nextTier.xpRemaining} XP</span>
@@ -294,123 +174,170 @@ export default class ArcaneTrials extends Component {
                 )}
               </div>
 
-              <div className="relative overflow-x-auto pb-3" style={{ scrollbarWidth: 'thin', scrollbarColor: `${GOLD} 0.2) transparent` }}>
-                <div className="relative flex items-center" style={{ minWidth: '900px', height: '140px', padding: '0 40px' }}>
-                  {/* Track line */}
-                  <div className="absolute left-10 right-10 top-1/2 -translate-y-1/2 h-1.5 rounded-full" style={{ background: `${GOLD} 0.1)`, border: `1px solid ${GOLD} 0.08)` }}>
-                    {/* Filled portion */}
-                    <div className="h-full rounded-full" style={{
-                      width: `${Math.min(100, (seasonXp / maxXp) * 100)}%`,
-                      background: 'linear-gradient(90deg, #8b6914, #d4a843, #f0d060)',
-                      boxShadow: '0 0 8px rgba(212,168,67,0.4)',
-                      transition: 'width 0.5s ease-out',
-                    }} />
-                  </div>
+              {/* Rewards row — justify-between spreads first to last edge-to-edge */}
+              <div className="flex items-end justify-between px-4">
+                {season.tiers.map((tier, idx) => {
+                  const { reward } = tier;
+                  const isClaimed = progress.claimedTiers.includes(tier.level);
+                  const unlocked = seasonXp >= tier.xpRequired;
+                  const claimable = canClaimTier(tier.level, seasonXp, progress.claimedTiers, season.tiers);
+                  const isFoil = FOIL_TIERS.has(tier.level);
+                  const locked = !unlocked && !isClaimed;
+                  const isClaimingThis = this.state.claiming === tier.level;
 
-                  {/* Reward nodes on the track */}
-                  <div className="relative flex justify-between w-full">
-                    {season.tiers.map(tier => {
-                      const isClaimed = progress.claimedTiers.includes(tier.level);
-                      const unlocked = seasonXp >= tier.xpRequired;
-                      const claimable = unlocked && !isClaimed;
-                      const isFoilReward = !!tier.reward.foilCardName;
+                  return (
+                    <div key={tier.level} className="flex flex-col items-center" style={{ width: '9%' }}>
+                      <div
+                        className="relative w-full transition-all duration-300"
+                        style={{
+                          filter: locked ? 'saturate(0.3) brightness(0.5)' : 'none',
+                          opacity: isClaimed ? 0.7 : 1,
+                          transform: claimable ? 'scale(1.04) translateY(-4px)' : 'scale(1)',
+                        }}
+                      >
+                        {isFoil ? (() => {
+                          const card = this.props.sorceryCards?.find(c => c.unique_id === reward.foilCardId);
+                          const printing = card?.printings?.find(p => p.unique_id === reward.foilPrintingId) || card?.printings?.[0];
+                          if (!card || !printing) return <div className="aspect-[63/88] rounded-lg" style={{ background: PANEL_BG }} />;
 
-                      return (
-                        <div key={tier.level} className="flex flex-col items-center" style={{ width: '80px' }}>
-                          {/* Reward icon node */}
-                          <button
-                            type="button"
-                            className="relative flex flex-col items-center justify-center transition-all duration-300"
-                            style={{
-                              width: isFoilReward ? 64 : 52,
-                              height: isFoilReward ? 64 : 52,
-                              borderRadius: isFoilReward ? '12px' : '50%',
-                              background: isClaimed
-                                ? `linear-gradient(135deg, rgba(180,140,50,0.25), rgba(120,90,20,0.15))`
-                                : unlocked
-                                  ? `linear-gradient(135deg, rgba(180,140,50,0.15), rgba(80,60,20,0.1))`
-                                  : 'rgba(20,16,10,0.8)',
-                              border: isClaimed
-                                ? `2px solid ${GOLD} 0.6)`
-                                : claimable
-                                  ? `2px solid ${GOLD} 0.5)`
-                                  : `1px solid ${GOLD} 0.15)`,
-                              boxShadow: isClaimed
-                                ? `0 0 16px rgba(212,168,67,0.3), inset 0 0 12px rgba(212,168,67,0.1)`
-                                : claimable
-                                  ? `0 0 12px rgba(212,168,67,0.2)`
-                                  : 'none',
-                              cursor: claimable ? 'pointer' : 'default',
-                              transform: claimable ? 'scale(1.08)' : 'scale(1)',
-                            }}
-                            data-sound={claimable ? UI.CONFIRM : undefined}
-                            disabled={!claimable || this.state.claiming === tier.level}
-                            onClick={() => claimable && this.handleClaim(tier.level)}
-                          >
-                            {/* Claimed checkmark */}
-                            {isClaimed ? (
-                              <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{
-                                background: 'linear-gradient(135deg, #d4a843, #8b6914)',
-                                border: '1.5px solid rgba(255,255,255,0.2)',
-                                color: '#fff',
-                                boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-                                zIndex: 2,
-                              }}>
-                                ✓
-                              </div>
-                            ) : null}
-
-                            {/* Shimmer on claimed */}
-                            {isClaimed ? (
-                              <div className="absolute inset-0 rounded-inherit overflow-hidden" style={{ borderRadius: 'inherit' }}>
-                                <div className="absolute inset-0" style={{
-                                  background: `linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.12) 50%, transparent 70%)`,
-                                  animation: 'shimmer-slide 3s ease-in-out infinite',
-                                }} />
-                              </div>
-                            ) : null}
-
-                            {/* Reward content */}
-                            {tier.reward.coins && !isFoilReward ? (
-                              <div className="text-xs font-bold" style={{ color: isClaimed ? TEXT_MUTED : '#f0d060' }}>
-                                {tier.reward.coins}
-                              </div>
-                            ) : null}
-                            {tier.reward.coins && isFoilReward ? (
-                              <div className="text-[9px] font-bold" style={{ color: isClaimed ? TEXT_MUTED : '#f0d060' }}>
-                                +{tier.reward.coins}
-                              </div>
-                            ) : null}
-                            {isFoilReward ? (
-                              <div className="text-[9px] font-semibold text-center leading-tight px-0.5" style={{ color: isClaimed ? TEXT_MUTED : '#6dd5ed' }}>
-                                {tier.reward.foilRarity === 'Unique' ? '✦' : '◆'}
-                              </div>
-                            ) : null}
-
-                            {this.state.claiming === tier.level ? <RuneSpinner size={16} /> : null}
-                          </button>
-
-                          {/* Label below node */}
-                          <div className="text-[9px] font-bold mt-1" style={{ color: unlocked ? ACCENT_GOLD : TEXT_MUTED }}>
-                            Tier {tier.level}
-                          </div>
-                          {isFoilReward ? (
-                            <div className="text-[8px] text-center leading-tight truncate w-full" style={{ color: isClaimed ? TEXT_MUTED : TEXT_BODY }}>
-                              {tier.reward.foilCardName}
+                          return (
+                            <div className="w-full">
+                              <DeckCardTile
+                                entry={{ card, printing, zone: 'spellbook', entryIndex: 0 }}
+                                isSelected={false}
+                                onClick={() => claimable && this.handleClaim(tier.level)}
+                              />
                             </div>
-                          ) : null}
+                          );
+                        })() : (
+                          <div className="flex justify-center">
+                            <button
+                              type="button"
+                              className="relative flex items-center justify-center transition-all duration-300"
+                              style={{
+                                width: 60, height: 60,
+                                borderRadius: '50%',
+                                background: 'rgba(20,16,10,0.85)',
+                                border: claimable ? `2px solid ${GOLD} 0.6)` : isClaimed ? `2px solid ${GOLD} 0.3)` : `1px solid ${GOLD} 0.12)`,
+                                boxShadow: claimable ? `0 0 16px rgba(212,168,67,0.35)` : 'none',
+                                cursor: claimable ? 'pointer' : 'default',
+                              }}
+                              data-sound={claimable ? UI.CONFIRM : undefined}
+                              disabled={!claimable || isClaimingThis}
+                              onClick={() => claimable && this.handleClaim(tier.level)}
+                            >
+                              <div className="text-base font-bold" style={{ color: '#f0d060' }}>{reward.coins}</div>
+                              {isClaimingThis ? <div className="absolute inset-0 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,0,0,0.5)' }}><RuneSpinner size={16} /></div> : null}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Claimed checkmark */}
+                        {isClaimed ? (
+                          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] z-10" style={{
+                            background: 'linear-gradient(135deg, #d4a843, #8b6914)',
+                            border: '1.5px solid rgba(255,255,255,0.2)',
+                            color: '#fff',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                          }}>✓</div>
+                        ) : null}
+                      </div>
+
+                      {/* Labels below reward */}
+                      <div className="text-[10px] font-bold mt-1.5" style={{ color: unlocked ? ACCENT_GOLD : TEXT_MUTED }}>
+                        Tier {tier.level}
+                      </div>
+                      {isFoil ? (
+                        <div className="text-center mt-0.5">
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{
+                            background: 'rgba(0,0,0,0.5)',
+                            color: reward.foilRarity === 'Unique' ? '#c792ea' : '#6dd5ed',
+                          }}>
+                            {reward.foilRarity === 'Unique' ? '✦ Unique' : '◆ Elite'}
+                          </span>
                         </div>
-                      );
-                    })}
+                      ) : null}
+                      {claimable && !isClaimingThis ? (
+                        <button
+                          type="button"
+                          className="mt-1 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                          style={{ ...BEVELED_BTN, color: ACCENT_GOLD, borderRadius: '4px', background: `${GOLD} 0.15)`, border: `1px solid ${GOLD} 0.35)` }}
+                          data-sound={UI.CONFIRM}
+                          onClick={() => this.handleClaim(tier.level)}
+                        >
+                          Claim
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Progress bar — same padding as reward row so ticks align */}
+              <div className="mt-5" style={{ paddingLeft: 'calc(16px + 4.5%)', paddingRight: 'calc(16px + 4.5%)' }}>
+                <div className="relative h-6 rounded-lg overflow-hidden" style={{
+                  background: 'rgba(10,8,6,0.7)',
+                  border: `1px solid ${GOLD} 0.18)`,
+                  boxShadow: `inset 0 2px 6px rgba(0,0,0,0.5), 0 1px 0 ${GOLD} 0.06)`,
+                }}>
+                  {/* Fill */}
+                  <div className="absolute inset-y-0 left-0 rounded-lg" style={{
+                    width: `${Math.min(100, (seasonXp / maxXp) * 100)}%`,
+                    background: 'linear-gradient(180deg, rgba(240,208,96,0.35) 0%, rgba(180,140,50,0.25) 50%, rgba(140,100,20,0.3) 100%)',
+                    borderRight: seasonXp > 0 && seasonXp < maxXp ? `2px solid ${GOLD} 0.5)` : 'none',
+                    boxShadow: '0 0 12px rgba(212,168,67,0.2)',
+                    transition: 'width 0.5s ease-out',
+                  }} />
+
+                  {/* Minor tick marks — every ~850 XP (10 segments between tiers) */}
+                  {Array.from({ length: 100 }, (_, i) => {
+                    if (i === 0 || i === 100) return null;
+                    const pct = (i / 100) * 100;
+                    const xpAt = (i / 100) * maxXp;
+                    const reached = seasonXp >= xpAt;
+                    return (
+                      <div key={`minor-${i}`} className="absolute -translate-x-1/2" style={{
+                        left: `${pct}%`,
+                        top: '20%',
+                        bottom: '20%',
+                        width: '1px',
+                        background: reached ? `${GOLD} 0.25)` : `${GOLD} 0.06)`,
+                      }} />
+                    );
+                  })}
+                  {/* Major tier checkpoint marks — thicker, 80% height for depth */}
+                  {season.tiers.map((tier, idx) => {
+                    const pct = (idx / (season.tiers.length - 1)) * 100;
+                    const reached = seasonXp >= tier.xpRequired;
+                    return (
+                      <div key={`major-${tier.level}`} className="absolute -translate-x-1/2" style={{
+                        left: `${pct}%`,
+                        top: '10%',
+                        bottom: '10%',
+                        width: '2px',
+                        background: reached ? `${GOLD} 0.5)` : `${GOLD} 0.15)`,
+                        borderRadius: '1px',
+                      }} />
+                    );
+                  })}
+
+                  {/* XP text centered in the bar */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[11px] font-bold" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                      {seasonXp.toLocaleString()} / {maxXp.toLocaleString()} XP
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <OrnamentalDivider className="w-full max-w-4xl" />
+            </div>
+            </div>
 
-            {/* Active Quests */}
-            <div className="w-full max-w-4xl">
+            {/* Quest Footer */}
+            <div className="shrink-0 px-6 pb-5 pt-3" style={{ borderTop: `1px solid ${GOLD} 0.1)` }}>
+              <OrnamentalDivider className="w-full max-w-4xl mx-auto mb-3" />
+            <div className="w-full max-w-4xl mx-auto">
               <h2 className="text-lg font-bold arena-heading mb-4" style={{
                 color: TEXT_PRIMARY,
                 textShadow: '0 1px 4px rgba(0,0,0,0.5)',
