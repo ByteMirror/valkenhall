@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { motion, AnimatePresence } from 'framer-motion';
 import './app.css';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
@@ -34,7 +35,6 @@ import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
 import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult, deleteAccount } from './utils/arena/matchmakingApi';
 import { getStoredToken, validateToken } from './utils/authApi';
-import ToastManager from './components/ToastManager';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
 import SpectatorBanner from './components/SpectatorBanner';
@@ -86,6 +86,7 @@ export default class App extends Component {
 
     this.state = {
       authChecking: true,
+      authFadeOut: false,
       loggedIn: false,
       isGameBoardOpen: false,
       arenaProfile: null,
@@ -116,7 +117,6 @@ export default class App extends Component {
       editingDeckData: null,
       themePreference: getStoredThemePreference(),
       viewportWidth: getViewportWidth(),
-      toasts: [],
       friendListData: null,
       friendsSidebarOpen: false,
       viewingFriendProfile: null,
@@ -138,8 +138,6 @@ export default class App extends Component {
     };
 
     this.arenaQueuePollTimer = null;
-    this.toastIdCounter = 0;
-    this.toastTimers = new Map();
     this.savedDeckCardIndex = null;
     this.savedDeckCardIndexSource = null;
     this.gameBoardRef = null;
@@ -231,8 +229,6 @@ export default class App extends Component {
   };
 
   componentWillUnmount() {
-    for (const timer of this.toastTimers.values()) clearTimeout(timer);
-    this.toastTimers.clear();
     document.removeEventListener('keydown', this.handleDocumentKeyDown);
     document.removeEventListener('keyup', this.handleDocumentKeyUp);
     document.removeEventListener('contextmenu', this.handleGlobalContextMenu);
@@ -335,43 +331,44 @@ export default class App extends Component {
     });
   };
 
-  addToast = (toast) => {
-    const id = ++this.toastIdCounter;
-    const newToast = { ...toast, id, createdAt: Date.now() };
-    this.setState((s) => ({ toasts: [...s.toasts, newToast] }));
-    if (!toast.actions) {
-      this.toastTimers.set(id, setTimeout(() => this.dismissToast(id), 5000));
-    }
+  addToast = (toastData) => {
+    const duration = toastData.actions ? 8000 : 4000;
+    const primaryAction = toastData.actions?.find(a => a.primary);
+    const secondaryAction = toastData.actions?.find(a => !a.primary);
+
+    toast(toastData.title, {
+      description: toastData.message,
+      duration,
+      action: primaryAction ? {
+        label: primaryAction.label,
+        onClick: () => this.handleToastAction(null, primaryAction.key, toastData),
+      } : undefined,
+      cancel: secondaryAction ? {
+        label: secondaryAction.label,
+        onClick: () => this.handleToastAction(null, secondaryAction.key, toastData),
+      } : undefined,
+    });
   };
 
-  dismissToast = (id) => {
-    clearTimeout(this.toastTimers.get(id));
-    this.toastTimers.delete(id);
-    this.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-  };
 
-  handleToastAction = async (toastId, actionKey) => {
-    const toast = this.state.toasts.find((t) => t.id === toastId);
-    this.dismissToast(toastId);
-    if (!toast) return;
-
+  handleToastAction = async (toastId, actionKey, toastData) => {
     if (actionKey === 'open-mailbox') {
       this.setState({ mailboxOpen: true });
     } else if (actionKey === 'accept-friend') {
-      await friendsApi.acceptFriendRequest(toast.senderId).catch(() => {});
+      await friendsApi.acceptFriendRequest(toastData?.senderId).catch(() => {});
     } else if (actionKey === 'decline-friend') {
-      await friendsApi.declineFriendRequest(toast.senderId).catch(() => {});
+      await friendsApi.declineFriendRequest(toastData?.senderId).catch(() => {});
     } else if (actionKey === 'accept-invite') {
       try {
-        const result = await friendsApi.acceptMatchInvite(toast.senderId);
+        const result = await friendsApi.acceptMatchInvite(toastData?.senderId);
         this.handleInviteAccepted(result);
       } catch {}
     } else if (actionKey === 'decline-invite') {
-      await friendsApi.declineMatchInvite(toast.senderId).catch(() => {});
+      await friendsApi.declineMatchInvite(toastData?.senderId).catch(() => {});
     } else if (actionKey === 'allow-spectate') {
-      await friendsApi.allowSpectator(toast.spectatorId).catch(() => {});
+      await friendsApi.allowSpectator(toastData?.spectatorId).catch(() => {});
     } else if (actionKey === 'deny-spectate') {
-      await friendsApi.denySpectator(toast.spectatorId).catch(() => {});
+      await friendsApi.denySpectator(toastData?.spectatorId).catch(() => {});
     }
   };
 
@@ -461,6 +458,7 @@ export default class App extends Component {
   };
 
   handleNewNotifications = (notifications) => {
+    if (notifications.length > 0) playUI(UI.NOTIFICATION);
     for (const n of notifications) {
       if (n.type === 'friend-request') {
         this.addToast({
@@ -501,6 +499,7 @@ export default class App extends Component {
         });
       }
       if (n.type === 'new-mail') {
+        playUI(UI.MAIL_RECEIVE);
         this.addToast({
           title: 'New Mail',
           message: 'You have new mail in your mailbox!',
@@ -644,6 +643,7 @@ export default class App extends Component {
           arenaMatchmakingOpponent: { ...opp, name: opp.name || opp.username || opp.displayName || 'Opponent', avatarUrl: opponentAvatarUrl },
           arenaMatchId: result.matchId,
         });
+        playUI(UI.MATCH_START);
         playMusic('arena-match', { fadeInDuration: 3000 });
         const delay = result.isHost ? 1500 : 4000;
         setTimeout(() => {
@@ -813,6 +813,7 @@ export default class App extends Component {
       const achievement = getAchievement(id);
       if (achievement) {
         bonusCoins += achievement.coins || 0;
+        playUI(UI.ACHIEVEMENT);
         toast.success(`Achievement Unlocked: ${achievement.icon} ${achievement.name}`, {
           description: `${achievement.description} (+${achievement.coins} coins)`,
           duration: 5000,
@@ -908,6 +909,7 @@ export default class App extends Component {
   };
 
   openNextPack = () => {
+    playUI(UI.CHEST_OPEN);
     const { arenaPendingPacks } = this.state;
     if (!arenaPendingPacks || arenaPendingPacks.length === 0) return;
 
@@ -1003,7 +1005,6 @@ export default class App extends Component {
   };
 
   openArenaDeckBuilder = () => {
-    playUI(UI.OPEN);
     playMusic('arena-deckbuilder', { fadeInDuration: 3000 });
     this.refreshSavedDecks();
     this.setState({
@@ -1013,6 +1014,7 @@ export default class App extends Component {
   };
 
   handleOpenDeckInEditor = async (deckId) => {
+    playUI(UI.OPEN);
     if (!deckId || !Array.isArray(this.state.sorceryCards)) return;
     try {
       // Try arena profile first (avoids 404 for decks not in local storage)
@@ -1042,6 +1044,7 @@ export default class App extends Component {
   };
 
   handleCreateNewDeck = () => {
+    playUI(UI.CONFIRM);
     this.setState({
       arenaView: 'deck-editor',
       editingDeckData: { id: '', name: '', cards: [] },
@@ -1078,6 +1081,7 @@ export default class App extends Component {
   };
 
   handleSaveDeckFromEditor = async (payload) => {
+    playUI(UI.CONFIRM);
     const savedSummary = await saveSavedDeck(payload, 'sorcery');
 
     const nextSavedDecks = [savedSummary, ...this.state.savedDecks.filter((d) => d.id !== savedSummary.id)];
@@ -1110,6 +1114,7 @@ export default class App extends Component {
   };
 
   handleDeleteDeckFromGallery = async (deckId) => {
+    playUI(UI.DELETE);
     if (!deckId) return;
     try {
       await deleteSavedDeckById(deckId, 'sorcery');
@@ -1294,25 +1299,37 @@ export default class App extends Component {
     }
   };
 
+  renderAuthOverlay() {
+    return (
+      <AnimatePresence>
+        {this.state.authChecking ? (
+          <motion.div
+            key="auth-overlay"
+            className="fixed inset-0 bg-black flex items-center justify-center z-[200]"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8, ease: 'easeInOut' }}
+          >
+            <RuneSpinner size={120} useViewportUnits />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    );
+  }
+
   render() {
-    if (this.state.authChecking) {
+    if (!this.state.loggedIn && !this.state.authChecking) {
       return (
         <>
-          <div className="fixed inset-0 bg-black flex items-center justify-center">
-            <RuneSpinner size={120} useViewportUnits />
-          </div>
+          <LoginScreen onLogin={this.handleLogin} />
           {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} /> : null}
+          {this.renderAuthOverlay()}
         </>
       );
     }
 
     if (!this.state.loggedIn) {
-      return (
-        <>
-          <LoginScreen onLogin={this.handleLogin} />
-          {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} /> : null}
-        </>
-      );
+      return this.renderAuthOverlay();
     }
 
     const showDeckGallery = this.state.arenaView === 'deck-gallery' && !this.state.isGameBoardOpen;
@@ -1535,12 +1552,8 @@ export default class App extends Component {
           />
         ) : null}
         <Toaster />
-        <ToastManager
-          toasts={this.state.toasts}
-          onDismiss={this.dismissToast}
-          onAction={this.handleToastAction}
-        />
         {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} /> : null}
+        {this.renderAuthOverlay()}
       </>
     );
   }
