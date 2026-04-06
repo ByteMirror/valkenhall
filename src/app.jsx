@@ -1260,10 +1260,17 @@ export default class App extends Component {
       const { arenaProfile } = state;
       if (!arenaProfile) return null;
       const currentDecks = arenaProfile.decks || [];
+      // Normalize cards to lightweight format for server storage
+      const normalizedCards = (payload.cards || []).map((c) => ({
+        cardId: c.cardId || c.card?.unique_id || '',
+        cardName: c.cardName || c.card?.name || '',
+        printingId: c.printingId || c.printing?.unique_id || '',
+        isSideboard: Boolean(c.isSideboard),
+      })).filter((c) => c.cardId && c.printingId);
       const deckEntry = {
         id: savedSummary.id,
         name: savedSummary.name,
-        cards: payload.cards,
+        cards: normalizedCards,
         previewUrl: savedSummary.previewUrl || null,
       };
       // Replace existing deck or add new one, then deduplicate by ID
