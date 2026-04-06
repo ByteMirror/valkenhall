@@ -1,4 +1,8 @@
 import { Component } from 'preact';
+import DeckCardTile from './DeckCardTile';
+import RuneSpinner from './RuneSpinner';
+import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil.js';
+import { playUI, UI } from '../utils/arena/uiSounds';
 import { cn } from '../lib/utils';
 import {
   fetchListings,
@@ -10,30 +14,23 @@ import {
 } from '../utils/arena/auctionApi';
 import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from '../utils/arena/collectionUtils';
 import {
-  BG_ATMOSPHERE, VIGNETTE, GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
+  BG_ATMOSPHERE, VIGNETTE, GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   PANEL_BG, PANEL_BORDER, BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
   TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR, ACCENT_GOLD,
   DIALOG_STYLE, FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
-function cardImageUrl(card) {
+function cardImageUrl(card, printingId) {
+  if (printingId && card?.printings) {
+    const match = card.printings.find((p) => p.unique_id === printingId);
+    if (match) return match.image_url || '';
+  }
   return card?.printings?.[0]?.image_url || '';
 }
 
 function findCard(sorceryCards, cardId) {
-  return sorceryCards.find((c) => c.unique_id === cardId);
-}
-
-function addCardToCollection(collection, cardId) {
-  const updated = [...collection];
-  const existing = updated.find((c) => c.cardId === cardId);
-  if (existing) {
-    existing.quantity += 1;
-  } else {
-    updated.push({ cardId, quantity: 1 });
-  }
-  return updated;
+  return (sorceryCards || []).find((c) => c.unique_id === cardId);
 }
 
 function sortIndicator(activeKey, currentKey, order) {
@@ -41,13 +38,57 @@ function sortIndicator(activeKey, currentKey, order) {
   return order === 'asc' ? ' \u2191' : ' \u2193';
 }
 
-const CARD_STYLE = {
+function SorceryElementIcon({ element, className = 'size-3.5' }) {
+  const triangles = {
+    Water: { points: '6,1 11,10 1,10', line: null, color: '#01FFFF' },
+    Earth: { points: '6,1 11,10 1,10', line: [2.5, 7, 9.5, 7], color: '#CFA572' },
+    Fire: { points: '6,11 1,2 11,2', line: null, color: '#FF5F00' },
+    Air: { points: '6,11 1,2 11,2', line: [2.5, 5, 9.5, 5], color: '#A0BADB' },
+  };
+  const t = triangles[element];
+  if (!t) return null;
+  return (
+    <svg viewBox="0 0 12 12" className={className} fill="none" stroke={t.color} strokeWidth="1.5" strokeLinejoin="round">
+      <polygon points={t.points} />
+      {t.line ? <line x1={t.line[0]} y1={t.line[1]} x2={t.line[2]} y2={t.line[3]} /> : null}
+    </svg>
+  );
+}
+
+const AUCTION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function formatTimeRemaining(createdAt, now) {
+  if (!createdAt) return null;
+  const expires = new Date(createdAt).getTime() + AUCTION_DURATION_MS;
+  const remaining = expires - now;
+  if (remaining <= 0) return 'Expired';
+  const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((remaining % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+  const secs = Math.floor((remaining % (60 * 1000)) / 1000);
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
+const RARITY_COLORS = {
+  Ordinary: TEXT_MUTED,
+  Exceptional: '#6ea8d4',
+  Elite: '#b480d4',
+  Unique: ACCENT_GOLD,
+  Avatar: '#c45050',
+};
+
+const CARD_TILE_STYLE = {
   background: PANEL_BG,
-  border: `1px solid ${GOLD} 0.15)`,
+  border: `1px solid ${GOLD} 0.12)`,
   borderRadius: '8px',
 };
 
-const CARD_STYLE_HOVER = `${GOLD} 0.35)`;
+const SIDEBAR_PANEL = {
+  background: PANEL_BG,
+  borderLeft: `1px solid ${GOLD} 0.25)`,
+};
 
 export default class AuctionHouse extends Component {
   constructor(props) {
@@ -63,6 +104,7 @@ export default class AuctionHouse extends Component {
       page: 0,
       selectedCardId: null,
       sellPrice: '',
+      sellQuantity: 1,
       sellLoading: false,
       sellError: null,
       myListings: [],
@@ -72,17 +114,24 @@ export default class AuctionHouse extends Component {
       buyingId: null,
       cancellingId: null,
       viewScale: getViewportScale(),
+      previewListing: null,
+      elementFilters: new Set(),
+      sellSearch: '',
+      now: Date.now(),
     };
   }
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+    this._tickTimer = setInterval(() => this.setState({ now: Date.now() }), 1000);
     this.doSync();
     this.loadListings();
   }
 
   componentWillUnmount() {
     this.unsubScale?.();
+    clearInterval(this._tickTimer);
+    clearTimeout(this._purchaseMsgTimer);
   }
 
   doSync = async () => {
@@ -140,18 +189,24 @@ export default class AuctionHouse extends Component {
   handleBuy = async (listing) => {
     const { profile } = this.props;
     if (listing.price > profile.coins) {
+      playUI(UI.ERROR);
       this.setState({ error: 'Not enough coins' });
       return;
     }
     this.setState({ buyingId: listing.id, error: null });
     try {
       const result = await buyListing(profile.serverToken, listing.id);
-      const collection = addCardToCollection(profile.collection, listing.cardId);
-      this.props.onUpdateProfile({ ...profile, coins: result.newBalance, collection });
+      // Card is delivered via mail from the server — only update coins
+      playUI(UI.PURCHASE);
+      this.props.onUpdateProfile({ ...profile, coins: result.newBalance });
       this.setState((s) => ({
         listings: s.listings.filter((l) => l.id !== listing.id),
         listingsTotal: s.listingsTotal - 1,
+        previewListing: s.previewListing?.id === listing.id ? null : s.previewListing,
+        purchaseMessage: `${listing.cardName || 'Card'} purchased! Check your mailbox to collect it.`,
       }));
+      clearTimeout(this._purchaseMsgTimer);
+      this._purchaseMsgTimer = setTimeout(() => this.setState({ purchaseMessage: null }), 5000);
     } catch (err) {
       this.setState({ error: err.message });
     } finally {
@@ -161,8 +216,9 @@ export default class AuctionHouse extends Component {
 
   handleCreateListing = async () => {
     const { profile, sorceryCards } = this.props;
-    const { selectedCardId, sellPrice } = this.state;
+    const { selectedCardId, sellPrice, sellQuantity } = this.state;
     const price = parseInt(sellPrice, 10);
+    const qty = Math.max(1, parseInt(sellQuantity, 10) || 1);
     if (!selectedCardId || !price || price <= 0) return;
 
     const card = findCard(sorceryCards, selectedCardId);
@@ -170,12 +226,19 @@ export default class AuctionHouse extends Component {
 
     this.setState({ sellLoading: true, sellError: null });
     try {
-      await createListing(profile.serverToken, selectedCardId, card.name, price);
-      const collection = profile.collection
-        .map((c) => (c.cardId === selectedCardId ? { ...c, quantity: c.quantity - 1 } : c))
-        .filter((c) => c.quantity > 0);
+      for (let i = 0; i < qty; i++) {
+        await createListing(profile.serverToken, selectedCardId, card.name, price);
+      }
+      let collection = [...profile.collection];
+      for (let i = 0; i < qty; i++) {
+        collection = collection
+          .map((c) => (c.cardId === selectedCardId ? { ...c, quantity: c.quantity - 1 } : c))
+          .filter((c) => c.quantity > 0);
+      }
+      playUI(UI.GOLD);
       this.props.onUpdateProfile({ ...profile, collection });
-      this.setState({ selectedCardId: null, sellPrice: '' });
+      this.setState({ selectedCardId: null, sellPrice: '', sellQuantity: 1 });
+      this.loadMyListings();
     } catch (err) {
       this.setState({ sellError: err.message });
     } finally {
@@ -201,13 +264,15 @@ export default class AuctionHouse extends Component {
     this.setState({ cancellingId: listing.id, error: null });
     try {
       await cancelListing(profile.serverToken, listing.id);
-      const collection = addCardToCollection(profile.collection, listing.cardId);
-      this.props.onUpdateProfile({ ...profile, collection });
+      // Card is returned via mail from the server
       this.setState((s) => ({
         myListings: s.myListings.map((l) =>
           l.id === listing.id ? { ...l, status: 'cancelled' } : l,
         ),
+        purchaseMessage: `${listing.cardName || 'Card'} listing cancelled. Check your mailbox to collect it.`,
       }));
+      clearTimeout(this._purchaseMsgTimer);
+      this._purchaseMsgTimer = setTimeout(() => this.setState({ purchaseMessage: null }), 5000);
     } catch (err) {
       this.setState({ error: err.message });
     } finally {
@@ -218,335 +283,727 @@ export default class AuctionHouse extends Component {
   switchTab = (tab) => {
     this.setState({ tab, error: null });
     if (tab === 'browse') this.loadListings();
-    if (tab === 'my-listings') this.loadMyListings();
+    if (tab === 'sell') this.loadMyListings();
+  };
+
+  toggleElementFilter = (el) => {
+    this.setState((s) => {
+      const next = new Set(s.elementFilters);
+      if (next.has(el)) next.delete(el);
+      else next.add(el);
+      return { elementFilters: next };
+    });
   };
 
   renderBrowse() {
     const { sorceryCards, profile } = this.props;
-    const { listings, listingsTotal, listingsLoading, searchQuery, sortBy, sortOrder, page, buyingId } = this.state;
+    const {
+      listings, listingsTotal, listingsLoading, searchQuery,
+      sortBy, sortOrder, page, previewListing, buyingId, elementFilters,
+    } = this.state;
+
+    const previewCard = previewListing ? findCard(sorceryCards, previewListing.cardId) : null;
+    const canAfford = previewListing ? previewListing.price <= profile.coins : false;
+
+    let filteredListings = listings;
+    if (elementFilters.size > 0) {
+      filteredListings = filteredListings.filter((listing) => {
+        const card = findCard(sorceryCards, listing.cardId);
+        return card?.elements?.some((e) => elementFilters.has(e.name));
+      });
+    }
 
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            placeholder="Search cards..."
-            value={searchQuery}
-            onInput={this.handleSearch}
-            className="flex-1 px-3 py-2 text-sm outline-none"
-            style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
-          />
-          <button
-            type="button"
-            className="px-3 py-2 text-xs font-medium transition-colors cursor-pointer"
-            style={sortBy === 'price' ? TAB_ACTIVE : TAB_INACTIVE}
-            onClick={() => this.handleSort('price')}
-          >
-            Price{sortIndicator(sortBy, 'price', sortOrder)}
-          </button>
-          <button
-            type="button"
-            className="px-3 py-2 text-xs font-medium transition-colors cursor-pointer"
-            style={sortBy === 'date' ? TAB_ACTIVE : TAB_INACTIVE}
-            onClick={() => this.handleSort('date')}
-          >
-            Date{sortIndicator(sortBy, 'date', sortOrder)}
-          </button>
+      <div className="flex gap-0 flex-1 min-h-0">
+        {/* Left column: Filters + Grid */}
+        <div className="flex-[65] flex flex-col min-h-0 pr-4">
+          {/* Filter bar */}
+          <div className="flex flex-wrap items-center gap-2 pb-3 mb-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
+            <input
+              type="text"
+              placeholder="Search cards..."
+              value={searchQuery}
+              onInput={this.handleSearch}
+              className="flex-1 min-w-[180px] px-3 py-2 text-sm outline-none"
+              style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+            />
+
+            <div className="flex items-center gap-1">
+              {['price', 'date', 'rarity'].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer capitalize"
+                  style={sortBy === key ? TAB_ACTIVE : TAB_INACTIVE}
+                  onClick={() => this.handleSort(key)}
+                >
+                  {key}{sortIndicator(sortBy, key, sortOrder)}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1" style={{ borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
+              {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
+                <button
+                  key={el}
+                  type="button"
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] transition-colors cursor-pointer"
+                  style={elementFilters.has(el)
+                    ? { ...TAB_ACTIVE, borderRadius: '4px' }
+                    : { ...TAB_INACTIVE, borderRadius: '4px' }
+                  }
+                  onClick={() => this.toggleElementFilter(el)}
+                >
+                  <SorceryElementIcon element={el} className="size-3" />
+                  <span className="hidden md:inline">{el}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Listing grid */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {listingsLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <RuneSpinner size={56} />
+                <span className="text-xs" style={{ color: TEXT_MUTED }}>Loading listings...</span>
+              </div>
+            ) : filteredListings.length === 0 ? (
+              <div className="text-center py-16 text-sm" style={{ color: TEXT_MUTED }}>No listings found</div>
+            ) : (
+              <div className="card-grid px-4">
+                {filteredListings.map((listing) => {
+                  const card = findCard(sorceryCards, listing.cardId);
+                  const printing = card?.printings?.[0];
+                  const foiling = listing.foiling || printing?.foiling || 'S';
+                  const foil = isFoilFinish(foiling);
+                  const isSelected = previewListing?.id === listing.id;
+                  return (
+                    <div
+                      key={listing.id}
+                      className="cursor-pointer"
+                      onClick={() => this.setState({ previewListing: listing })}
+                    >
+                      {card && printing ? (
+                        <DeckCardTile
+                          entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: 0 }}
+                          isSelected={isSelected}
+                          onClick={() => this.setState({ previewListing: listing })}
+                        />
+                      ) : (
+                        <div
+                          className="w-full rounded-[14px] aspect-[63/88] flex items-center justify-center text-[10px]"
+                          style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED, border: `1px solid ${GOLD} 0.12)` }}
+                        >
+                          {listing.cardId}
+                        </div>
+                      )}
+                      <div className="text-xs font-semibold truncate mt-1 text-center" style={{ color: TEXT_PRIMARY }}>
+                        {card?.name || listing.cardId}
+                        {foil && <span className="ml-1 text-[9px]" style={{ color: foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>{FOIL_LABEL[foiling]}</span>}
+                      </div>
+                      <div className="flex items-center justify-center gap-1 mt-0.5">
+                        <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>{listing.price}</span>
+                        <span className="text-[9px]" style={{ color: TEXT_MUTED }}>gold</span>
+                      </div>
+                      {listing.createdAt && (
+                        <div className="text-center mt-0.5">
+                          <span className="text-[9px] tabular-nums" style={{ color: TEXT_MUTED }}>
+                            {formatTimeRemaining(listing.createdAt, this.state.now)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {listingsTotal > 50 && (
+            <div className="flex items-center justify-center gap-4 pt-3 mt-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
+              <button
+                type="button"
+                disabled={page === 0}
+                className="px-3 py-1 text-xs cursor-pointer disabled:opacity-30 transition-all"
+                style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                onClick={() => this.setState({ page: page - 1 }, this.loadListings)}
+              >
+                &laquo; Prev
+              </button>
+              <span className="text-xs" style={{ color: TEXT_MUTED }}>
+                {page * 50 + 1}&ndash;{Math.min((page + 1) * 50, listingsTotal)} of {listingsTotal}
+              </span>
+              <button
+                type="button"
+                disabled={(page + 1) * 50 >= listingsTotal}
+                className="px-3 py-1 text-xs cursor-pointer disabled:opacity-30 transition-all"
+                style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                onClick={() => this.setState({ page: page + 1 }, this.loadListings)}
+              >
+                Next &raquo;
+              </button>
+            </div>
+          )}
         </div>
 
-        {listingsLoading ? (
-          <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>Loading listings...</div>
-        ) : listings.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>No listings found</div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {listings.map((listing) => {
-              const card = findCard(sorceryCards, listing.cardId);
-              const isOwn = profile.name === listing.sellerName;
-              return (
-                <div
-                  key={listing.id}
-                  className="relative p-3 flex flex-col gap-2"
-                  style={CARD_STYLE}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = CARD_STYLE_HOVER; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.15)`; }}
-                >
-                  <FourCorners />
-                  {card ? (
-                    <img src={cardImageUrl(card)} alt={card.name} className="w-full rounded-lg aspect-[5/7] object-cover bg-black/40" loading="lazy" />
-                  ) : (
-                    <div className="w-full rounded-lg aspect-[5/7] flex items-center justify-center text-xs" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>{listing.cardId}</div>
+        {/* Right column: Card Preview — no scroll, image shrinks to fit */}
+        <div className="flex-[35] min-h-0 overflow-hidden" style={SIDEBAR_PANEL}>
+          <div className="relative p-4 h-full flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <FourCorners />
+            {previewListing && previewCard ? (
+              <div className="flex flex-col items-center gap-2 h-full min-h-0">
+                <img
+                  src={cardImageUrl(previewCard, previewListing.printingId)}
+                  alt={previewCard.name}
+                  className="rounded-lg object-cover bg-black/40 shrink min-h-0"
+                  style={{ aspectRatio: '63 / 88', maxWidth: '50%' }}
+                />
+
+                <div className="w-full text-center shrink-0">
+                  <div className="text-sm font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                    {previewCard.name}
+                  </div>
+                  {(() => {
+                    const f = previewListing.foiling || previewCard.printings?.[0]?.foiling || 'S';
+                    return isFoilFinish(f) ? (
+                      <span className="text-[11px] font-semibold" style={{ color: f === 'R' ? '#c480e0' : '#6ec8d4' }}>
+                        {FOIL_LABEL[f]}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
+
+                <div className="w-full flex flex-col gap-1 text-xs shrink-0">
+                  <div className="flex justify-between">
+                    <span style={{ color: TEXT_MUTED }}>Type</span>
+                    <span style={{ color: TEXT_BODY }}>{previewCard.type_text || previewCard.type || 'Unknown'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span style={{ color: TEXT_MUTED }}>Rarity</span>
+                    <span style={{ color: RARITY_COLORS[previewCard.rarity] || TEXT_BODY }}>
+                      {previewCard.rarity || 'Unknown'}
+                    </span>
+                  </div>
+                  {previewCard.elements?.length > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span style={{ color: TEXT_MUTED }}>Elements</span>
+                      <div className="flex items-center gap-1.5">
+                        {previewCard.elements.map((el) => (
+                          <span key={el.name} className="flex items-center gap-0.5">
+                            <SorceryElementIcon element={el.name} className="size-3.5" />
+                            <span style={{ color: TEXT_BODY }}>{el.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                  <div className="text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{card?.name || listing.cardId}</div>
-                  <div className="text-[10px] truncate" style={{ color: TEXT_MUTED }}>by {listing.sellerName}</div>
-                  <div className="flex items-center justify-between mt-auto">
-                    <span className="text-sm font-bold" style={{ color: COIN_COLOR }}>{listing.price} <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>coins</span></span>
-                    {isOwn ? (
-                      <span className="text-[10px]" style={{ color: TEXT_MUTED }}>Your listing</span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={buyingId === listing.id || listing.price > profile.coins}
-                        className="px-2.5 py-1 text-[10px] font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                        style={GOLD_BTN}
-                        onClick={() => this.handleBuy(listing)}
-                      >
-                        {buyingId === listing.id ? 'Buying...' : 'Buy'}
-                      </button>
-                    )}
+                  {previewCard.cost != null && (
+                    <div className="flex justify-between">
+                      <span style={{ color: TEXT_MUTED }}>Cost</span>
+                      <span style={{ color: ACCENT_GOLD }}>{previewCard.cost}</span>
+                    </div>
+                  )}
+                </div>
+
+                <OrnamentalDivider className="w-full shrink-0 mt-auto" />
+
+                <div className="w-full flex flex-col gap-1 text-xs shrink-0">
+                  <div className="flex justify-between">
+                    <span style={{ color: TEXT_MUTED }}>Seller</span>
+                    <span style={{ color: TEXT_BODY }}>{previewListing.sellerName}</span>
+                  </div>
+                  {previewListing.createdAt && (
+                    <div className="flex justify-between">
+                      <span style={{ color: TEXT_MUTED }}>Expires</span>
+                      <span className="tabular-nums" style={{ color: TEXT_BODY }}>
+                        {formatTimeRemaining(previewListing.createdAt, this.state.now)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span style={{ color: TEXT_MUTED }}>Price</span>
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block w-3 h-3 rounded-full"
+                        style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 4px ${GOLD} 0.4)` }}
+                      />
+                      <span className="text-lg font-bold" style={{ color: COIN_COLOR, textShadow: `0 0 10px ${GOLD} 0.3)` }}>
+                        {previewListing.price}
+                      </span>
+                      <span style={{ color: TEXT_MUTED }}>gold</span>
+                    </span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
 
-        {listingsTotal > 50 && (
-          <div className="flex items-center justify-center gap-4 pt-2">
-            <button
-              type="button"
-              disabled={page === 0}
-              className="px-3 py-1 text-xs cursor-pointer disabled:opacity-30 transition-all"
-              style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-              onClick={() => this.setState({ page: page - 1 }, this.loadListings)}
-            >
-              Previous
-            </button>
-            <span className="text-xs" style={{ color: TEXT_MUTED }}>
-              {page * 50 + 1}-{Math.min((page + 1) * 50, listingsTotal)} of {listingsTotal}
-            </span>
-            <button
-              type="button"
-              disabled={(page + 1) * 50 >= listingsTotal}
-              className="px-3 py-1 text-xs cursor-pointer disabled:opacity-30 transition-all"
-              style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-              onClick={() => this.setState({ page: page + 1 }, this.loadListings)}
-            >
-              Next
-            </button>
+                <div className="w-full mt-2 shrink-0">
+                  {!canAfford ? (
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full py-2.5 text-sm font-semibold cursor-not-allowed opacity-40"
+                        style={GOLD_BTN}
+                      >
+                        Buy Now
+                      </button>
+                      <div className="text-center text-[11px]" style={{ color: '#c45050' }}>Not enough gold</div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={buyingId === previewListing.id}
+                      className="w-full py-2.5 text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
+                      style={GOLD_BTN}
+                      onClick={() => this.handleBuy(previewListing)}
+                    >
+                      {buyingId === previewListing.id ? <RuneSpinner size={16} className="inline-block" /> : 'Buy Now'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-3">
+                <div className="w-16 h-16 rounded-lg flex items-center justify-center" style={{ background: `${GOLD} 0.04)`, border: `1px dashed ${GOLD} 0.15)` }}>
+                  <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" stroke={`${GOLD} 0.2)`} strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                    <path d="M9 9h6M9 12h6M9 15h4" />
+                  </svg>
+                </div>
+                <div className="text-sm" style={{ color: TEXT_MUTED }}>Select a listing to preview</div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     );
   }
 
   renderSell() {
     const { profile, sorceryCards } = this.props;
-    const { selectedCardId, sellPrice, sellLoading, sellError } = this.state;
+    const {
+      selectedCardId, sellPrice, sellQuantity, sellLoading, sellError,
+      myListings, myListingsLoading, cancellingId, sellSearch,
+    } = this.state;
 
-    const ownedMap = buildOwnedMap(profile.collection);
-    const usedMap = buildUsedMap(profile.decks);
-    const availableCards = sorceryCards.filter(
+    const ownedMap = buildOwnedMap(profile.collection || []);
+    const usedMap = buildUsedMap(profile.decks || []);
+    const { sortBy, sortOrder, elementFilters } = this.state;
+
+    let availableCards = (sorceryCards || []).filter(
       (card) => getAvailableQuantity(card.unique_id, ownedMap, usedMap) > 0,
     );
 
+    if (sellSearch) {
+      const q = sellSearch.toLowerCase();
+      availableCards = availableCards.filter((c) => c.name.toLowerCase().includes(q));
+    }
+
+    if (elementFilters.size > 0) {
+      availableCards = availableCards.filter((card) =>
+        card.elements?.some((e) => elementFilters.has(e.name)),
+      );
+    }
+
+    const RARITY_ORDER = { Ordinary: 0, Exceptional: 1, Elite: 2, Unique: 3, Avatar: 4 };
+    if (sortBy === 'rarity') {
+      availableCards = [...availableCards].sort((a, b) => {
+        const diff = (RARITY_ORDER[b.rarity] || 0) - (RARITY_ORDER[a.rarity] || 0);
+        return sortOrder === 'asc' ? -diff : diff;
+      });
+    } else if (sortBy === 'price') {
+      availableCards = [...availableCards].sort((a, b) => {
+        const diff = (a.name || '').localeCompare(b.name || '');
+        return sortOrder === 'asc' ? diff : -diff;
+      });
+    }
+
     const selectedCard = selectedCardId ? findCard(sorceryCards, selectedCardId) : null;
     const selectedQty = selectedCardId ? getAvailableQuantity(selectedCardId, ownedMap, usedMap) : 0;
-
-    return (
-      <div className="flex flex-col gap-4">
-        {selectedCard ? (
-          <div className="relative flex items-start gap-4 p-4" style={{ background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
-            <FourCorners />
-            <img src={cardImageUrl(selectedCard)} alt={selectedCard.name} className="w-20 rounded-lg aspect-[5/7] object-cover bg-black/40" />
-            <div className="flex-1 flex flex-col gap-2">
-              <div className="text-sm font-bold" style={{ color: TEXT_PRIMARY }}>{selectedCard.name}</div>
-              <div className="text-xs" style={{ color: TEXT_MUTED }}>Available: {selectedQty}</div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Price in coins"
-                  value={sellPrice}
-                  onInput={(e) => this.setState({ sellPrice: e.target.value })}
-                  className="w-32 px-3 py-1.5 text-sm outline-none"
-                  style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
-                />
-                <button
-                  type="button"
-                  disabled={sellLoading || !sellPrice || parseInt(sellPrice, 10) <= 0}
-                  className="px-4 py-1.5 text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={GOLD_BTN}
-                  onClick={this.handleCreateListing}
-                >
-                  {sellLoading ? 'Listing...' : 'List for Sale'}
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 text-xs cursor-pointer transition-all"
-                  style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-                  onClick={() => this.setState({ selectedCardId: null, sellPrice: '', sellError: null })}
-                >
-                  Cancel
-                </button>
-              </div>
-              {sellError && <div className="text-xs" style={{ color: '#c45050' }}>{sellError}</div>}
-            </div>
-          </div>
-        ) : (
-          <div className="text-xs" style={{ color: TEXT_MUTED }}>Select a card from your collection to list for sale.</div>
-        )}
-
-        {availableCards.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>No available cards to sell</div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-            {availableCards.map((card) => {
-              const qty = getAvailableQuantity(card.unique_id, ownedMap, usedMap);
-              const isSelected = selectedCardId === card.unique_id;
-              return (
-                <button
-                  key={card.unique_id}
-                  type="button"
-                  className="relative p-1 transition-all text-left cursor-pointer"
-                  style={isSelected
-                    ? { border: `1px solid ${ACCENT_GOLD}`, background: `${GOLD} 0.1)`, borderRadius: '6px', boxShadow: `0 0 12px ${GOLD} 0.15)` }
-                    : { border: `1px solid ${GOLD} 0.1)`, borderRadius: '6px' }
-                  }
-                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
-                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.1)`; }}
-                  onClick={() => this.setState({ selectedCardId: card.unique_id, sellPrice: '', sellError: null })}
-                >
-                  <img src={cardImageUrl(card)} alt={card.name} className="w-full rounded aspect-[5/7] object-cover bg-black/40" loading="lazy" />
-                  {qty > 1 && (
-                    <span className="absolute top-0.5 right-0.5 rounded-full px-1.5 text-[10px] font-bold" style={{ background: PANEL_BG, color: ACCENT_GOLD, border: `1px solid ${GOLD} 0.3)` }}>x{qty}</span>
-                  )}
-                  <div className="text-[10px] truncate mt-1 px-0.5" style={{ color: TEXT_MUTED }}>{card.name}</div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  renderMyListings() {
-    const { sorceryCards } = this.props;
-    const { myListings, myListingsLoading, cancellingId } = this.state;
-
-    if (myListingsLoading) {
-      return <div className="text-center py-12 text-sm" style={{ color: TEXT_MUTED }}>Loading your listings...</div>;
-    }
 
     const active = myListings.filter((l) => l.status === 'active');
     const sold = myListings.filter((l) => l.status === 'sold');
 
     return (
-      <div className="flex flex-col gap-6">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_HEADER_STYLE}>Active Listings ({active.length})</div>
-          {active.length === 0 ? (
-            <div className="text-xs py-4" style={{ color: TEXT_MUTED }}>No active listings</div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {active.map((listing) => {
-                const card = findCard(sorceryCards, listing.cardId);
-                return (
-                  <div key={listing.id} className="relative flex items-center gap-3 px-3 py-2" style={CARD_STYLE}>
-                    <FourCorners />
-                    {card && <img src={cardImageUrl(card)} alt={card.name} className="w-10 rounded aspect-[5/7] object-cover bg-black/40" />}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{card?.name || listing.cardId}</div>
+      <div className="flex gap-0 flex-1 min-h-0">
+        {/* Left column: Your Collection + Sell Panel */}
+        <div className="flex-[65] flex flex-col min-h-0 pr-4">
+          {/* Filter bar */}
+          <div className="flex flex-wrap items-center gap-2 pb-3 mb-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
+            <input
+              type="text"
+              placeholder="Search your cards..."
+              value={sellSearch}
+              onInput={(e) => this.setState({ sellSearch: e.target.value })}
+              className="flex-1 min-w-[180px] px-3 py-2 text-sm outline-none"
+              style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+            />
+
+            <div className="flex items-center gap-1">
+              {['rarity', 'name'].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer capitalize"
+                  style={sortBy === key ? TAB_ACTIVE : TAB_INACTIVE}
+                  onClick={() => this.handleSort(key)}
+                >
+                  {key}{sortIndicator(sortBy, key, sortOrder)}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1" style={{ borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
+              {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
+                <button
+                  key={el}
+                  type="button"
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] transition-colors cursor-pointer"
+                  style={elementFilters.has(el)
+                    ? { ...TAB_ACTIVE, borderRadius: '4px' }
+                    : { ...TAB_INACTIVE, borderRadius: '4px' }
+                  }
+                  onClick={() => this.toggleElementFilter(el)}
+                >
+                  <SorceryElementIcon element={el} className="size-3" />
+                  <span className="hidden md:inline">{el}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Card grid */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {availableCards.length === 0 ? (
+              <div className="text-center py-16 text-sm" style={{ color: TEXT_MUTED }}>No available cards to sell</div>
+            ) : (
+              <div className="card-grid px-4">
+                {availableCards.map((card) => {
+                  const qty = getAvailableQuantity(card.unique_id, ownedMap, usedMap);
+                  const printing = card.printings?.[0] || {};
+                  const isSelected = selectedCardId === card.unique_id;
+                  return (
+                    <div key={card.unique_id}>
+                      <DeckCardTile
+                        entry={{ card, printing: printing || {}, zone: 'spellbook', entryIndex: 0 }}
+                        isSelected={isSelected}
+                        onClick={() => this.setState({ selectedCardId: card.unique_id, sellPrice: '', sellQuantity: 1, sellError: null })}
+                      />
+                      {qty > 1 && (
+                        <div className="text-center mt-1">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: PANEL_BG, color: ACCENT_GOLD, border: `1px solid ${GOLD} 0.3)` }}>
+                            ×{qty}
+                          </span>
+                        </div>
+                      )}
+                      <div className="text-[10px] truncate mt-0.5 text-center px-0.5" style={{ color: TEXT_MUTED }}>{card.name}</div>
                     </div>
-                    <span className="text-sm font-bold shrink-0" style={{ color: COIN_COLOR }}>{listing.price} coins</span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Sell panel at bottom */}
+          {selectedCard && (
+            <>
+              <OrnamentalDivider className="my-3" />
+              <div
+                className="relative flex items-start gap-4 p-4 shrink-0"
+                style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.18)`, borderRadius: '8px' }}
+              >
+                <FourCorners />
+                <img
+                  src={cardImageUrl(selectedCard)}
+                  alt={selectedCard.name}
+                  className="w-20 rounded-lg aspect-[63/88] object-cover bg-black/40 shrink-0"
+                />
+                <div className="flex-1 flex flex-col gap-2 min-w-0">
+                  <div className="text-sm font-bold truncate" style={{ color: TEXT_PRIMARY }}>{selectedCard.name}</div>
+                  <div className="text-xs" style={{ color: TEXT_MUTED }}>
+                    Available: <span style={{ color: ACCENT_GOLD }}>{selectedQty}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[9px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Qty</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={selectedQty}
+                        value={sellQuantity}
+                        onInput={(e) => this.setState({ sellQuantity: e.target.value })}
+                        onBlur={(e) => {
+                          const v = Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, selectedQty));
+                          this.setState({ sellQuantity: v });
+                        }}
+                        className="w-14 px-2 py-1.5 text-sm outline-none text-center"
+                        style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[9px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Price each</span>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Gold"
+                        value={sellPrice}
+                        onInput={(e) => this.setState({ sellPrice: e.target.value })}
+                        className="w-24 px-3 py-1.5 text-sm outline-none"
+                        style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+                      />
+                    </div>
                     <button
                       type="button"
-                      disabled={cancellingId === listing.id}
-                      className="px-2.5 py-1 text-[10px] font-medium cursor-pointer disabled:opacity-40 transition-colors shrink-0"
-                      style={DANGER_BTN}
-                      onClick={() => this.handleCancel(listing)}
+                      disabled={sellLoading || !sellPrice || parseInt(sellPrice, 10) <= 0}
+                      className="px-4 py-1.5 text-xs font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed self-end"
+                      style={GOLD_BTN}
+                      onClick={this.handleCreateListing}
                     >
-                      {cancellingId === listing.id ? 'Cancelling...' : 'Cancel'}
+                      {sellLoading ? <RuneSpinner size={14} className="inline-block" /> : sellQuantity > 1 ? `List ${sellQuantity} for Sale` : 'List for Sale'}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs cursor-pointer transition-all"
+                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                      data-sound={UI.CANCEL}
+                      onClick={() => this.setState({ selectedCardId: null, sellPrice: '', sellError: null })}
+                    >
+                      Cancel
                     </button>
                   </div>
-                );
-              })}
-            </div>
+                  {sellError && <div className="text-xs" style={{ color: '#c45050' }}>{sellError}</div>}
+                </div>
+              </div>
+            </>
           )}
         </div>
 
-        {sold.length > 0 && (
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_HEADER_STYLE}>Sold ({sold.length})</div>
-            <div className="flex flex-col gap-1">
-              {sold.map((listing) => {
-                const card = findCard(sorceryCards, listing.cardId);
-                return (
-                  <div key={listing.id} className="flex items-center gap-3 px-3 py-2" style={{ background: `${GOLD} 0.03)`, borderRadius: '6px' }}>
-                    {card && <img src={cardImageUrl(card)} alt={card.name} className="w-8 rounded aspect-[5/7] object-cover bg-black/40" />}
-                    <span className="text-xs flex-1 truncate" style={{ color: TEXT_MUTED }}>{card?.name || listing.cardId}</span>
-                    <span className="text-xs font-semibold" style={{ color: ACCENT_GOLD }}>+{listing.price} coins</span>
+        {/* Right column: Active Listings + Sold */}
+        <div className="flex-[35] min-h-0 overflow-y-auto" style={SIDEBAR_PANEL}>
+          <div className="relative p-4 h-full" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <FourCorners />
+
+            {myListingsLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <RuneSpinner size={48} />
+                <span className="text-xs" style={{ color: TEXT_MUTED }}>Loading your listings...</span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                {/* Active listings */}
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_HEADER_STYLE}>
+                    Active ({active.length})
                   </div>
-                );
-              })}
-            </div>
+                  <OrnamentalDivider className="mb-3" />
+                  {active.length === 0 ? (
+                    <div className="text-xs py-4" style={{ color: TEXT_MUTED }}>No active listings</div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {active.map((listing) => {
+                        const card = findCard(sorceryCards, listing.cardId);
+                        return (
+                          <div
+                            key={listing.id}
+                            className="flex items-center gap-3 px-3 py-2"
+                            style={{
+                              background: `${GOLD} 0.03)`,
+                              border: `1px solid ${GOLD} 0.1)`,
+                              borderRadius: '6px',
+                            }}
+                          >
+                            {card && (
+                              <img
+                                src={cardImageUrl(card)}
+                                alt={card.name}
+                                className="w-8 rounded aspect-[63/88] object-cover bg-black/40 shrink-0"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>
+                                {card?.name || listing.cardId}
+                                {isFoilFinish(listing.foiling) && (
+                                  <span className="ml-1 text-[9px]" style={{ color: listing.foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>
+                                    {FOIL_LABEL[listing.foiling]}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end shrink-0 gap-0.5">
+                              <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>
+                                {listing.price}g
+                              </span>
+                              {listing.createdAt && (
+                                <span className="text-[9px] tabular-nums" style={{ color: TEXT_MUTED }}>
+                                  {formatTimeRemaining(listing.createdAt, this.state.now)}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={cancellingId === listing.id}
+                              className="px-2 py-1 text-[10px] font-medium cursor-pointer disabled:opacity-40 transition-colors shrink-0"
+                              style={DANGER_BTN}
+                              data-sound={UI.CANCEL}
+                              onClick={() => this.handleCancel(listing)}
+                            >
+                              {cancellingId === listing.id ? <RuneSpinner size={12} className="inline-block" /> : 'Cancel'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sold listings */}
+                {sold.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_HEADER_STYLE}>
+                      Sold ({sold.length})
+                    </div>
+                    <OrnamentalDivider className="mb-3" />
+                    <div className="flex flex-col gap-1.5">
+                      {sold.map((listing) => {
+                        const card = findCard(sorceryCards, listing.cardId);
+                        return (
+                          <div
+                            key={listing.id}
+                            className="flex items-center gap-3 px-3 py-2"
+                            style={{ background: `${GOLD} 0.02)`, borderRadius: '6px' }}
+                          >
+                            {card && (
+                              <img
+                                src={cardImageUrl(card)}
+                                alt={card.name}
+                                className="w-7 rounded aspect-[63/88] object-cover bg-black/40 shrink-0"
+                              />
+                            )}
+                            <span className="text-xs flex-1 truncate" style={{ color: TEXT_MUTED }}>
+                              {card?.name || listing.cardId}
+                            </span>
+                            <span className="text-xs font-semibold shrink-0" style={{ color: '#6ab04c' }}>
+                              +{listing.price}g
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     );
   }
 
   render() {
     const { profile, onBack } = this.props;
-    const { tab, error } = this.state;
+    const { tab, error, viewScale } = this.state;
 
     return (
       <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: BG_ATMOSPHERE, color: TEXT_BODY }}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
 
-        {/* Header */}
-        <div className="relative flex items-center gap-4 px-6 py-3" style={{ background: PANEL_BG, borderBottom: `1px solid ${GOLD} 0.15)`, zoom: this.state.viewScale }}>
+        {/* Top bar */}
+        <div
+          className="relative flex items-center gap-4 px-6 py-3 shrink-0"
+          style={{ background: PANEL_BG, borderBottom: `1px solid ${GOLD} 0.15)`, zoom: viewScale }}
+        >
           <button
             type="button"
             className="px-3 py-1.5 text-xs font-medium cursor-pointer transition-all"
             style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+            data-sound={UI.CANCEL}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
             onClick={onBack}
           >
             Back to Hub
           </button>
-          <div className="text-sm font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Auction House</div>
+          <div
+            className="text-sm font-bold arena-heading"
+            style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+          >
+            Auction House
+          </div>
+
+          {/* Tabs inline */}
+          <div className="flex items-center gap-2 ml-6">
+            {[
+              { key: 'browse', label: 'Browse' },
+              { key: 'sell', label: 'Sell & My Listings' },
+            ].map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className="px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer"
+                style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
+                onClick={() => this.switchTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-sm font-bold" style={{ color: COIN_COLOR, textShadow: `0 0 8px ${GOLD} 0.3)` }}>{profile.coins}</span>
-            <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>coins</span>
+            <span
+              className="inline-block w-3.5 h-3.5 rounded-full"
+              style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 6px ${GOLD} 0.4)` }}
+            />
+            <span className="text-sm font-bold" style={{ color: COIN_COLOR, textShadow: `0 0 8px ${GOLD} 0.3)` }}>
+              {profile.coins}
+            </span>
+            <span className="text-[10px]" style={{ color: `${GOLD} 0.5)` }}>gold</span>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="relative flex gap-2 px-6 py-2" style={{ borderBottom: `1px solid ${GOLD} 0.08)`, zoom: this.state.viewScale }}>
-          {[
-            { key: 'browse', label: 'Browse' },
-            { key: 'sell', label: 'Sell' },
-            { key: 'my-listings', label: 'My Listings' },
-          ].map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className="px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer"
-              style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
-              onClick={() => this.switchTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Error */}
+        {/* Error banner */}
         {error && (
-          <div className="relative mx-6 mt-3 px-4 py-2 text-xs" style={{ background: 'rgba(180,60,60,0.08)', border: '1px solid rgba(180,60,60,0.25)', borderRadius: '6px', color: '#c45050' }}>
+          <div
+            className="relative mx-6 mt-3 px-4 py-2 text-xs shrink-0"
+            style={{
+              background: 'rgba(180,60,60,0.08)',
+              border: '1px solid rgba(180,60,60,0.25)',
+              borderRadius: '6px',
+              color: '#c45050',
+              zoom: viewScale,
+            }}
+          >
             {error}
-            <button type="button" className="ml-2 underline hover:no-underline cursor-pointer" onClick={() => this.setState({ error: null })}>dismiss</button>
+            <button
+              type="button"
+              className="ml-2 underline hover:no-underline cursor-pointer"
+              onClick={() => this.setState({ error: null })}
+            >
+              dismiss
+            </button>
           </div>
         )}
 
-        {/* Content */}
-        <div className="relative flex-1 overflow-y-auto px-6 py-4" style={{ zoom: this.state.viewScale }}>
+        {/* Content area */}
+        <div className="relative flex-1 flex flex-col min-h-0 px-6 py-4" style={{ zoom: viewScale }}>
           {tab === 'browse' && this.renderBrowse()}
           {tab === 'sell' && this.renderSell()}
-          {tab === 'my-listings' && this.renderMyListings()}
         </div>
+
+        {/* Purchase toast */}
+        {this.state.purchaseMessage && (
+          <div
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[80] px-5 py-3 rounded-lg text-sm font-medium pointer-events-none"
+            style={{
+              background: 'rgba(12,10,8,0.95)',
+              border: `1px solid ${GOLD} 0.3)`,
+              color: ACCENT_GOLD,
+              boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 20px ${GOLD} 0.1)`,
+            }}
+          >
+            {this.state.purchaseMessage}
+          </div>
+        )}
       </div>
     );
   }
