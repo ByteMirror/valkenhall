@@ -63,7 +63,7 @@ jobs:
       - name: Build web renderer
         run: bun run build
       - name: Build desktop app
-        run: electrobun build
+        run: bunx electrobun build
         env:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}

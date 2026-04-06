@@ -60,7 +60,11 @@ export default function StoreTorchFX() {
   useEffect(() => {
     startRef.current = performance.now();
     rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      refsMap.current.clear();
+    };
   }, [tick]);
 
   return (

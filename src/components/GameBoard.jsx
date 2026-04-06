@@ -1181,8 +1181,23 @@ export default class GameBoard extends Component {
 
       // Show grid cell highlight while dragging a card
       if (this.dragging.cardInstance) {
-        const cell = this.getGridCellAt(point.x, point.z);
-        this.showGridCellHighlight(cell);
+        if (this.dragging.cardInstance.type === 'Aura') {
+          // Auras highlight the intersection and adjacent cells
+          const intersection = this.getNearestGridIntersection(point.x, point.z);
+          if (intersection) {
+            // Highlight all adjacent cells
+            this.hideGridCellHighlight();
+            for (const adj of intersection.adjacentCells) {
+              const adjCell = this.getGridCellByIndex(adj.col, adj.row);
+              if (adjCell) this.showGridCellHighlight(adjCell);
+            }
+          } else {
+            this.hideGridCellHighlight();
+          }
+        } else {
+          const cell = this.getGridCellAt(point.x, point.z);
+          this.showGridCellHighlight(cell);
+        }
       }
       return;
     }
@@ -1313,6 +1328,24 @@ export default class GameBoard extends Component {
     // Card drop — snap to grid if over a cell, otherwise free placement
     const card = this.dragging.cardInstance;
     this.hideGridCellHighlight();
+
+    // Aura cards snap to grid intersections (corners between up to 4 cells)
+    if (card.type === 'Aura') {
+      const intersection = this.getNearestGridIntersection(droppedMesh.position.x, droppedMesh.position.z);
+      if (intersection) {
+        card.x = intersection.x;
+        card.z = intersection.z;
+        card._gridIntersection = { col: intersection.col, row: intersection.row };
+        card._affectedCells = intersection.adjacentCells;
+        droppedMesh.position.x = intersection.x;
+        droppedMesh.position.z = intersection.z;
+        droppedMesh.position.y = this.scene.CARD_REST_Y + 0.5;
+        playSound('cardPlace');
+        emitGameAction('card:move', { cardId: card.id, x: card.x, y: droppedMesh.position.y, z: card.z, isAura: true });
+        this.dragging = null;
+        return;
+      }
+    }
 
     const cell = this.getGridCellAt(droppedMesh.position.x, droppedMesh.position.z);
     if (cell) {
