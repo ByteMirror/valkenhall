@@ -33,8 +33,6 @@ jobs:
             runner: macos-14
           - target_id: linux-x64
             runner: ubuntu-latest
-          - target_id: win32-x64
-            runner: windows-latest
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
