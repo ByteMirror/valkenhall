@@ -40,10 +40,10 @@ function sortIndicator(activeKey, currentKey, order) {
 
 function SorceryElementIcon({ element, className = 'size-3.5' }) {
   const triangles = {
-    Water: { points: '6,1 11,10 1,10', line: null, color: '#01FFFF' },
-    Earth: { points: '6,1 11,10 1,10', line: [2.5, 7, 9.5, 7], color: '#CFA572' },
-    Fire: { points: '6,11 1,2 11,2', line: null, color: '#FF5F00' },
-    Air: { points: '6,11 1,2 11,2', line: [2.5, 5, 9.5, 5], color: '#A0BADB' },
+    Water: { points: '6,11 1,2 11,2', line: null, color: '#01FFFF' },
+    Earth: { points: '6,11 1,2 11,2', line: [2.5, 5, 9.5, 5], color: '#CFA572' },
+    Fire: { points: '6,1 11,10 1,10', line: null, color: '#FF5F00' },
+    Air: { points: '6,1 11,10 1,10', line: [2.5, 7, 9.5, 7], color: '#A0BADB' },
   };
   const t = triangles[element];
   if (!t) return null;

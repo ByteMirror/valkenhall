@@ -2,16 +2,18 @@ import { Component } from 'preact';
 import DeckCardTile from './DeckCardTile';
 import CardInspector from './CardInspector';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil';
+import { getMaxCopies } from '../utils/sorcery/deckRules';
+import { playUI, UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, INPUT_STYLE, ACCENT_GOLD,
 } from '../lib/medievalTheme';
 
 function SorceryElementIcon({ element, className = 'size-3.5' }) {
   const triangles = {
-    Water: { points: '6,1 11,10 1,10', line: null, color: '#01FFFF' },
-    Earth: { points: '6,1 11,10 1,10', line: [2.5, 7, 9.5, 7], color: '#CFA572' },
-    Fire: { points: '6,11 1,2 11,2', line: null, color: '#FF5F00' },
-    Air: { points: '6,11 1,2 11,2', line: [2.5, 5, 9.5, 5], color: '#A0BADB' },
+    Water: { points: '6,11 1,2 11,2', line: null, color: '#01FFFF' },
+    Earth: { points: '6,11 1,2 11,2', line: [2.5, 5, 9.5, 5], color: '#CFA572' },
+    Fire: { points: '6,1 11,10 1,10', line: null, color: '#FF5F00' },
+    Air: { points: '6,1 11,10 1,10', line: [2.5, 7, 9.5, 7], color: '#A0BADB' },
   };
   const t = triangles[element];
   if (!t) return null;
@@ -35,11 +37,10 @@ const SET_ID_MAP = {
 };
 
 const TOGGLE_BASE = {
-  padding: '4px 10px',
+  padding: '3px 8px',
   borderRadius: '4px',
-  fontSize: '12px',
+  fontSize: '11px',
   fontWeight: 600,
-  cursor: 'pointer',
   transition: 'all 0.15s ease',
   textTransform: 'capitalize',
 };
@@ -112,9 +113,8 @@ export default class DeckEditorCollection extends Component {
       e.preventDefault();
       if (this.state.inspectedEntry) {
         this.setState({ inspectedEntry: null });
-      } else if (this.state.hoveredCard) {
-        const card = this.state.hoveredCard;
-        const printing = card.printings?.[card.printings.length - 1] || card.printings?.[0];
+      } else if (this.state.hoveredCard?.card) {
+        const { card, printing } = this.state.hoveredCard;
         if (printing) this.setState({ inspectedEntry: { card, printing } });
       }
     }
@@ -234,122 +234,61 @@ export default class DeckEditorCollection extends Component {
     const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters } = this.state;
 
     return (
-      <div className="flex flex-col gap-2 mb-3">
-        {/* Search + Element row */}
+      <div className="flex flex-col gap-1.5 mb-3">
+        {/* Row 1: Search + Elements + Type */}
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             placeholder="Search cards..."
             value={searchQuery}
             onInput={(e) => this.setState({ searchQuery: e.target.value, visibleCount: 40 })}
-            className="px-3 py-1.5 text-sm flex-shrink-0"
-            style={{ ...INPUT_STYLE, width: 180 }}
+            className="px-3 py-1 text-sm flex-shrink-0"
+            style={{ ...INPUT_STYLE, width: 160 }}
           />
 
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              style={toggleStyle(elementFilters.size === 0)}
-              onClick={() => this.clearFilter('elementFilters')}
-            >
-              All
-            </button>
+          <div className="flex items-center gap-0.5" style={{ borderRight: `1px solid ${GOLD} 0.12)`, paddingRight: 8 }}>
+            <button type="button" style={toggleStyle(elementFilters.size === 0)} onClick={() => this.clearFilter('elementFilters')}>All</button>
             {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
-              <button
-                key={el}
-                type="button"
-                className="flex items-center gap-1"
-                style={toggleStyle(elementFilters.has(el))}
-                onClick={() => this.toggleFilter('elementFilters', el)}
-              >
+              <button key={el} type="button" className="flex items-center gap-1" style={toggleStyle(elementFilters.has(el))} onClick={() => this.toggleFilter('elementFilters', el)}>
                 <SorceryElementIcon element={el} className="size-3" />
                 <span className="hidden sm:inline">{el}</span>
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Type row */}
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="text-[10px] mr-1 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Type</span>
-          <button
-            type="button"
-            style={toggleStyle(typeFilters.size === 0)}
-            onClick={() => this.clearFilter('typeFilters')}
-          >
-            All
-          </button>
-          {['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'].map((t) => (
-            <button
-              key={t}
-              type="button"
-              style={toggleStyle(typeFilters.has(t))}
-              onClick={() => this.toggleFilter('typeFilters', t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Set + Rarity row */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] mr-1 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Set</span>
-            <button
-              type="button"
-              style={toggleStyle(setFilters.size === 0)}
-              onClick={() => this.clearFilter('setFilters')}
-            >
-              All
-            </button>
-            {['gothic', 'arthurian', 'beta'].map((s) => (
-              <button
-                key={s}
-                type="button"
-                style={toggleStyle(setFilters.has(s))}
-                onClick={() => this.toggleFilter('setFilters', s)}
-              >
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
+          <div className="flex items-center gap-0.5">
+            <button type="button" style={toggleStyle(typeFilters.size === 0)} onClick={() => this.clearFilter('typeFilters')}>All</button>
+            {['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'].map((t) => (
+              <button key={t} type="button" style={toggleStyle(typeFilters.has(t))} onClick={() => this.toggleFilter('typeFilters', t)}>{t}</button>
             ))}
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] mr-1 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Rarity</span>
-            <button
-              type="button"
-              style={toggleStyle(rarityFilters.size === 0)}
-              onClick={() => this.clearFilter('rarityFilters')}
-            >
-              All
-            </button>
-            {['Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (
-              <button
-                key={r}
-                type="button"
-                style={toggleStyle(rarityFilters.has(r))}
-                onClick={() => this.toggleFilter('rarityFilters', r)}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5">
             {[
               { id: 'deck', label: 'In Deck' },
               { id: 'owned', label: 'Owned' },
               { id: 'all', label: 'All Cards' },
             ].map((scope) => (
-              <button
-                key={scope.id}
-                type="button"
-                className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-all"
-                style={toggleStyle(this.state.cardScope === scope.id)}
-                onClick={() => this.setState({ cardScope: scope.id, visibleCount: 40 })}
-              >
-                {scope.label}
-              </button>
+              <button key={scope.id} type="button" style={toggleStyle(this.state.cardScope === scope.id)} onClick={() => this.setState({ cardScope: scope.id, visibleCount: 40 })}>{scope.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2: Set + Rarity */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] mr-0.5 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Set</span>
+            <button type="button" style={toggleStyle(setFilters.size === 0)} onClick={() => this.clearFilter('setFilters')}>All</button>
+            {['gothic', 'arthurian', 'beta'].map((s) => (
+              <button key={s} type="button" style={toggleStyle(setFilters.has(s))} onClick={() => this.toggleFilter('setFilters', s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-0.5">
+            <span className="text-[9px] mr-0.5 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Rarity</span>
+            <button type="button" style={toggleStyle(rarityFilters.size === 0)} onClick={() => this.clearFilter('rarityFilters')}>All</button>
+            {['Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (
+              <button key={r} type="button" style={toggleStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
             ))}
           </div>
         </div>
@@ -392,7 +331,7 @@ export default class DeckEditorCollection extends Component {
               }}
             >
               <img
-                src="/rune-divider.svg"
+                src="/rune-divider.webp"
                 alt=""
                 draggable={false}
                 style={active
@@ -407,11 +346,11 @@ export default class DeckEditorCollection extends Component {
     );
   }
 
-  renderOwnershipDotsForPrinting(owned, inDeck) {
+  renderOwnershipDotsForPrinting(owned, inUse) {
     if (owned > 6) {
       return (
         <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontSize: '10px' }}>
-          <span style={{ color: ACCENT_GOLD }}>{inDeck}</span>
+          <span style={{ color: ACCENT_GOLD }}>{inUse}</span>
           <span style={{ color: TEXT_MUTED }}>/</span>
           <span style={{ color: TEXT_MUTED }}>{owned}</span>
         </div>
@@ -424,7 +363,7 @@ export default class DeckEditorCollection extends Component {
     return (
       <div className="flex items-center justify-center gap-1 mt-1.5">
         {Array.from({ length: owned }, (_, i) => {
-          const active = i < inDeck;
+          const active = i < inUse;
           return (
             <div
               key={i}
@@ -437,7 +376,7 @@ export default class DeckEditorCollection extends Component {
               }}
             >
               <img
-                src="/rune-divider.svg"
+                src="/rune-divider.webp"
                 alt=""
                 draggable={false}
                 style={active
@@ -475,15 +414,32 @@ export default class DeckEditorCollection extends Component {
           const isFoilEntry = isFoilFinish(foiling);
 
           // Per-printing ownership: count how many of THIS specific printing variant are owned & in deck
-          const printingOwnedQty = isExpanded ? entry.ownedQty : (ownedMap?.get(card.unique_id) || 0);
+          let printingOwnedQty = isExpanded ? entry.ownedQty : (ownedMap?.get(card.unique_id) || 0);
+          // Fallback for standard cards: if per-printing qty is 0 but card is owned, derive from total
+          if (isExpanded && printingOwnedQty === 0 && foiling === 'S') {
+            const totalOwned = ownedMap?.get(card.unique_id) || 0;
+            const foilOwned = allEntries.filter((e2) =>
+              e2.card?.unique_id === card.unique_id && e2.foiling && e2.foiling !== 'S'
+            ).reduce((sum, e2) => sum + (e2.ownedQty || 0), 0);
+            printingOwnedQty = Math.max(0, totalOwned - foilOwned);
+          }
+          // Cards of this foiling in the current deck
           const inDeckWithPrinting = (chosenCards || []).filter((e) =>
             e.card.unique_id === card.unique_id && (e.printing?.foiling || 'S') === foiling
           ).length;
-          const available = printingOwnedQty > 0 ? printingOwnedQty - inDeckWithPrinting : (isExpanded ? 0 : Infinity);
+          // Total of this card in the current deck (all foilings)
+          const totalInCurrentDeck = (chosenCards || []).filter((e) =>
+            e.card.unique_id === card.unique_id
+          ).length;
+          const totalOwned = ownedMap?.get(card.unique_id) || 0;
+          const maxCopies = getMaxCopies(card);
+          const remainingByRarity = maxCopies - totalInCurrentDeck;
+          const remainingByOwnership = totalOwned - totalInCurrentDeck;
+          const available = Math.min(printingOwnedQty - inDeckWithPrinting, remainingByOwnership, remainingByRarity);
           const unowned = printingOwnedQty === 0 && inDeckWithPrinting === 0;
 
           const key = `${card.unique_id}-${foiling}`;
-          const isHovered = this.state.hoveredCard === key;
+          const isHovered = this.state.hoveredCard?.key === key;
 
           const cardStyle = unowned
             ? { opacity: 0.3, filter: 'grayscale(1) brightness(0.6)' }
@@ -505,16 +461,22 @@ export default class DeckEditorCollection extends Component {
                 onClick={() => {
                   if (unowned) return;
                   if (available <= 0) {
-                    this.props.onShowToast?.(`All ${printingOwnedQty} owned ${printingOwnedQty === 1 ? 'copy' : 'copies'} of ${card.name}${isFoilEntry ? ` (${FOIL_LABEL[foiling]})` : ''} already in deck`);
+                    const reason = `All ${printingOwnedQty} owned ${printingOwnedQty === 1 ? 'copy' : 'copies'} of ${card.name}${isFoilEntry ? ` (${FOIL_LABEL[foiling]})` : ''} already in this deck`;
+                    playUI(UI.ERROR);
+                    this.props.onShowToast?.(reason);
                     return;
                   }
+                  playUI(UI.EQUIP);
                   onAddCard?.(card, printing);
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  if (inDeckWithPrinting > 0) this.props.onRemoveCard?.(card.unique_id);
+                  if (inDeckWithPrinting > 0) {
+                    playUI(UI.UNEQUIP);
+                    this.props.onRemoveCard?.(card.unique_id, foiling);
+                  }
                 }}
-                onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? key : null })}
+                onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { key, card, printing } : null })}
               />
               {printingOwnedQty > 0 && this.renderOwnershipDotsForPrinting(printingOwnedQty, inDeckWithPrinting)}
               <div
