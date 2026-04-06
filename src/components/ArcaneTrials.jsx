@@ -194,7 +194,7 @@ export default class ArcaneTrials extends Component {
               </div>
 
               {/* Rewards row — justify-between spreads first to last edge-to-edge */}
-              <div className="flex items-end justify-between px-4">
+              <div className="flex items-end justify-between px-4 overflow-hidden">
                 {season.tiers.map((tier, idx) => {
                   const { reward } = tier;
                   const isClaimed = progress.claimedTiers.includes(tier.level);
