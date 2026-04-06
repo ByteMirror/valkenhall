@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { motion, AnimatePresence } from 'framer-motion';
 import DeckCardTile from './DeckCardTile';
 import CardInspector from './CardInspector';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil';
@@ -347,23 +348,36 @@ export default class DeckEditorCollection extends Component {
   }
 
   renderOwnershipDotsForPrinting(owned, inUse, flash = false) {
-    const flashStyle = flash ? { animation: 'flashRed 0.6s ease-out' } : {};
+    const filledFilter = flash
+      ? 'sepia(1) saturate(6) brightness(1.3) hue-rotate(-20deg)'
+      : 'sepia(1) saturate(5) brightness(1.2) hue-rotate(15deg)';
+    const emptyFilter = flash
+      ? 'sepia(1) saturate(4) brightness(0.9) hue-rotate(-20deg)'
+      : 'sepia(1) saturate(2) brightness(1.0) hue-rotate(15deg)';
+    const filledShadow = flash ? '0 0 6px rgba(200,50,50,0.6)' : `0 0 3px ${ACCENT_GOLD}`;
+    const emptyOutline = flash ? '1px solid rgba(200,60,60,0.5)' : '1px solid rgba(180,150,80,0.3)';
 
     if (owned > 6) {
       return (
-        <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontSize: '10px', ...flashStyle }}>
+        <motion.div
+          className="flex items-center justify-center gap-1 mt-1.5"
+          style={{ fontSize: '10px' }}
+          animate={flash ? { scale: [1, 1.2, 1, 1.15, 1], x: [0, -3, 3, -2, 0] } : { scale: 1, x: 0 }}
+          transition={{ duration: 0.5 }}
+        >
           <span style={{ color: flash ? '#c45050' : ACCENT_GOLD }}>{inUse}</span>
           <span style={{ color: TEXT_MUTED }}>/</span>
           <span style={{ color: flash ? '#c45050' : TEXT_MUTED }}>{owned}</span>
-        </div>
+        </motion.div>
       );
     }
 
-    const filled = { opacity: 1, filter: 'sepia(1) saturate(5) brightness(1.2) hue-rotate(15deg)', dropShadow: `0 0 3px ${ACCENT_GOLD}` };
-    const empty = { opacity: 0.6, filter: 'sepia(1) saturate(2) brightness(1.0) hue-rotate(15deg)' };
-
     return (
-      <div className="flex items-center justify-center gap-1 mt-1.5" style={flashStyle}>
+      <motion.div
+        className="flex items-center justify-center gap-1 mt-1.5"
+        animate={flash ? { scale: [1, 1.2, 1, 1.15, 1], x: [0, -3, 3, -2, 0] } : { scale: 1, x: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         {Array.from({ length: owned }, (_, i) => {
           const active = i < inUse;
           return (
@@ -373,23 +387,27 @@ export default class DeckEditorCollection extends Component {
                 width: 16,
                 height: 16,
                 borderRadius: 3,
-                outline: active ? 'none' : '1px solid rgba(180,150,80,0.3)',
-                filter: active ? `drop-shadow(${filled.dropShadow})` : undefined,
+                outline: active ? 'none' : emptyOutline,
+                filter: active ? `drop-shadow(${filledShadow})` : undefined,
+                transition: 'filter 0.2s, outline 0.2s',
               }}
             >
               <img
                 src="/rune-divider.webp"
                 alt=""
                 draggable={false}
-                style={active
-                  ? { width: '100%', height: '100%', opacity: filled.opacity, filter: filled.filter }
-                  : { width: '100%', height: '100%', opacity: empty.opacity, filter: empty.filter }
-                }
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  opacity: active ? 1 : 0.6,
+                  filter: active ? filledFilter : emptyFilter,
+                  transition: 'filter 0.2s, opacity 0.2s',
+                }}
               />
             </div>
           );
         })}
-      </div>
+      </motion.div>
     );
   }
 
