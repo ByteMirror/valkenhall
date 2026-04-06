@@ -48,6 +48,7 @@ import SettingsScreen from './components/SettingsScreen';
 import DeckGallery from './components/DeckGallery';
 import DeckEditor from './components/DeckEditor';
 import Mailbox from './components/Mailbox';
+import ArcaneTrials from './components/ArcaneTrials';
 
 const PAGE_TRANSITION_PROPS = {
   initial: { opacity: 0 },
@@ -311,7 +312,7 @@ export default class App extends Component {
     return {
       id: serverProfile.id,
       email: serverProfile.email,
-      name: serverProfile.name,
+      name: serverProfile.name || null,
       coins: serverProfile.coins || 0,
       xp: serverProfile.xp || 0,
       starterDeck: serverProfile.starterDeck || null,
@@ -323,6 +324,7 @@ export default class App extends Component {
       decks: serverProfile.decks || [],
       matchHistory: serverProfile.matchHistory || [],
       achievements: serverProfile.achievements || [],
+      seasonProgress: serverProfile.seasonProgress || null,
     };
   };
 
@@ -845,6 +847,44 @@ export default class App extends Component {
     this.updateManager?.apply();
   };
 
+  handleClaimSeasonReward = async (level) => {
+    const { currentSeason, arenaProfile } = this.state;
+    if (!currentSeason || !arenaProfile?.seasonProgress) return;
+
+    const tier = currentSeason.tiers.find(t => t.level === level);
+    if (!tier) return;
+
+    const progress = arenaProfile.seasonProgress;
+    if (progress.seasonXp < tier.xpRequired || progress.claimedTiers.includes(level)) return;
+
+    const updatedProgress = {
+      ...progress,
+      claimedTiers: [...progress.claimedTiers, level],
+    };
+
+    let coins = arenaProfile.coins;
+    if (tier.reward.coins) coins += tier.reward.coins;
+
+    let collection = [...arenaProfile.collection];
+    if (tier.reward.foilCardId && tier.reward.foilPrintingId) {
+      const existing = collection.find(c => c.cardId === tier.reward.foilCardId && c.printingId === tier.reward.foilPrintingId);
+      if (existing) existing.quantity++;
+      else collection.push({ cardId: tier.reward.foilCardId, printingId: tier.reward.foilPrintingId, quantity: 1 });
+    }
+
+    const updatedProfile = { ...arenaProfile, coins, collection, seasonProgress: updatedProgress };
+    this.setState({ arenaProfile: updatedProfile });
+    await saveArenaProfile(updatedProfile).catch(() => {});
+
+    if (tier.reward.coins) toast.success(`+${tier.reward.coins} coins!`);
+    if (tier.reward.foilCardName) toast.success(`Foil ${tier.reward.foilRarity}: ${tier.reward.foilCardName}!`, { duration: 5000 });
+  };
+
+  openArcaneTrials = () => {
+    playUI(UI.OPEN);
+    this.setState({ arenaView: 'arcane-trials' });
+  };
+
   handleOpenSettings = () => {
     this.setState({ settingsOpen: true, gameMenuOpen: false });
   };
@@ -944,6 +984,8 @@ export default class App extends Component {
     if (this.state.currentSeason && withAchievements.seasonProgress) {
       const seasonResult = processMatchResult(withAchievements.seasonProgress, this.state.currentSeason, reward.won);
       withAchievements = { ...withAchievements, seasonProgress: seasonResult.progress };
+      const totalSeasonXp = seasonResult.matchXpEarned + seasonResult.questXpEarned;
+      toast(`Season XP: +${totalSeasonXp}`, { duration: 3000 });
     }
     this.setState({ arenaProfile: withAchievements });
     await saveArenaProfile(withAchievements).catch((e) => console.error('Failed to save profile:', e));
@@ -1563,6 +1605,7 @@ export default class App extends Component {
             onOpenStore={this.openArenaStore}
             onOpenDeckBuilder={this.openArenaDeckBuilder}
             onOpenAuctionHouse={this.openAuctionHouse}
+            onOpenArcaneTrials={this.openArcaneTrials}
             onUpdateName={this.updateArenaName}
             onUpdateAvatar={this.updateArenaAvatar}
             onResetProfile={this.resetArenaProfile}
@@ -1587,6 +1630,15 @@ export default class App extends Component {
                 composeRecipientId={this.state.mailboxComposeRecipientId}
               />
             }
+          />
+        ) : null}
+        {this.state.arenaView === 'arcane-trials' && !this.state.isGameBoardOpen ? (
+          <ArcaneTrials
+            season={this.state.currentSeason}
+            progress={this.state.arenaProfile?.seasonProgress}
+            sorceryCards={this.state.sorceryCards}
+            onClaimReward={this.handleClaimSeasonReward}
+            onBack={() => { playUI(UI.CLOSE); this.setState({ arenaView: 'hub' }); }}
           />
         ) : null}
         {this.state.settingsOpen ? (
