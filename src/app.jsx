@@ -31,7 +31,7 @@ import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
 import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
 import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult, deleteAccount } from './utils/arena/matchmakingApi';
-import { getStoredToken, validateToken } from './utils/authApi';
+import { getStoredToken, validateToken, clearStoredToken } from './utils/authApi';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
 import SpectatorBanner from './components/SpectatorBanner';
@@ -39,7 +39,7 @@ import RuneSpinner from './components/RuneSpinner';
 import LoadingIndicator from './components/LoadingIndicator';
 import FirstRunDownload from './components/FirstRunDownload';
 import TradeWindow from './components/TradeWindow';
-import { startPresence, updateActivity } from './utils/presenceManager';
+import { startPresence, stopPresence, updateActivity } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
 import { createUpdateManager } from './utils/updateManager';
 import UpdateModal from './components/UpdateModal';
@@ -621,6 +621,24 @@ export default class App extends Component {
     if (token) {
       await saveArenaProfile(profile).catch((e) => console.error('Failed to save reset profile:', e));
     }
+  };
+
+  handleLogout = async () => {
+    stopPresence();
+    stopMusic(0);
+    await clearStoredToken();
+    this.setState({
+      loggedIn: false,
+      authChecking: false,
+      arenaProfile: null,
+      arenaLoading: false,
+      settingsOpen: false,
+      isGameBoardOpen: false,
+      sessionMode: null,
+      friendListData: null,
+      friendsSidebarOpen: false,
+      mailboxUnreadCount: 0,
+    });
   };
 
   registerArenaUsername = async (username) => {
@@ -1543,6 +1561,7 @@ export default class App extends Component {
             updateManager={this.updateManager}
             onApply={this.handleApplyUpdate}
             onBack={this.handleCloseSettings}
+            onLogout={this.handleLogout}
             onResetProfile={this.resetArenaProfile}
             onQuit={() => window.close()}
           />

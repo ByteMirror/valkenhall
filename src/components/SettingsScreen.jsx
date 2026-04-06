@@ -222,13 +222,29 @@ export default class SettingsScreen extends Component {
   }
 
   renderDangerSection() {
-    const { onResetProfile, onQuit } = this.props;
+    const { onLogout, onResetProfile, onQuit } = this.props;
     const { showResetConfirm } = this.state;
 
     return (
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(180,60,60,0.55)', textShadow: '0 0 12px rgba(180,60,60,0.15)' }}>Account</div>
         <div className="flex flex-col overflow-hidden" style={{ background: PANEL_BG, border: '1px solid rgba(180,60,60,0.15)', borderRadius: '8px' }}>
+          {onLogout ? (
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(180,60,60,0.08)' }}>
+              <div>
+                <div className="text-sm" style={{ color: TEXT_BODY }}>Log Out</div>
+                <div className="text-xs" style={{ color: TEXT_MUTED }}>Sign out and switch to another account</div>
+              </div>
+              <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...BEVELED_BTN, borderRadius: '6px' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(166,160,155,0.55)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = BEVELED_BTN.borderColor; }}
+                data-sound={UI.CANCEL}
+                onClick={() => { this.props.onBack(); onLogout(); }}
+              >
+                Log Out
+              </button>
+            </div>
+          ) : null}
           {onResetProfile ? (
             <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(180,60,60,0.08)' }}>
               <div>
@@ -284,7 +300,7 @@ export default class SettingsScreen extends Component {
     // Filter sections based on available props
     const visibleSections = SECTIONS.filter((s) => {
       if (s.key === 'profile' && !profile) return false;
-      if (s.key === 'danger' && !this.props.onResetProfile && !this.props.onQuit) return false;
+      if (s.key === 'danger' && !this.props.onLogout && !this.props.onResetProfile && !this.props.onQuit) return false;
       return true;
     });
 
