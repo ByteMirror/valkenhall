@@ -891,11 +891,13 @@ export default class App extends Component {
   };
 
   openArenaStore = () => {
+    playUI('snd-open-store.wav', { volume: 0.5 });
     playMusic('arena-store', { fadeInDuration: 3000 });
     this.setState({ arenaView: 'store' });
   };
 
   openAuctionHouse = () => {
+    playUI('snd-open-auction.wav', { volume: 0.5 });
     this.setState({ arenaView: 'auction-house' });
   };
 
@@ -1020,6 +1022,7 @@ export default class App extends Component {
   };
 
   openArenaDeckBuilder = () => {
+    playUI('snd-open-deckbuilder.wav', { volume: 0.5 });
     playMusic('arena-deckbuilder', { fadeInDuration: 3000 });
     this.refreshSavedDecks();
     this.setState({
