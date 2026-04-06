@@ -377,7 +377,7 @@ export default class GameBoard extends Component {
           const code = await joinRoom(joinRoomCode);
           this.setState({ roomCode: code, connectionStatus: 'connected', isHost: false, loadingMessage: 'Syncing game state...' });
           this.setupSocketListeners();
-          if (!isArenaMatch) requestStateSync();
+          requestStateSync();
           // Rotate camera 180° for player 2 perspective
           this.scene?.setOrbitTheta(Math.PI);
           return;
