@@ -37,10 +37,10 @@ describe('proxy server', () => {
 
     const runtimeDir = path.join(dir, 'app', 'server');
     const cwd = path.join(dir, 'app');
-    const bundledCardsPath = path.join(cwd, 'dist', 'public', 'cards.json');
+    const bundledCardsPath = path.join(cwd, 'dist', 'cards.json');
 
     await fs.mkdir(runtimeDir, { recursive: true });
-    await fs.mkdir(path.dirname(bundledCardsPath), { recursive: true });
+    await fs.mkdir(path.join(cwd, 'dist'), { recursive: true });
     await fs.writeFile(bundledCardsPath, '[]');
 
     const resolved = resolveCardsJsonPath({

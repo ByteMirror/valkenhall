@@ -26,9 +26,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 function resolvePublicFile(relativePath, { runtimeDir = __dirname, cwd = process.cwd() } = {}) {
   const candidates = [
     path.resolve(runtimeDir, '../public', relativePath),
-    path.resolve(runtimeDir, '../dist/public', relativePath),
+    path.resolve(runtimeDir, '../dist', relativePath),
+    path.resolve(runtimeDir, '../../dist', relativePath),
     path.resolve(cwd, 'public', relativePath),
-    path.resolve(cwd, 'dist/public', relativePath),
+    path.resolve(cwd, 'dist', relativePath),
   ];
   return candidates.find((candidate) => existsSync(candidate)) || candidates[0];
 }
