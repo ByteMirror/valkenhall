@@ -125,6 +125,7 @@ export default class App extends Component {
       viewingFriendProfile: null,
       pendingInviteRoomCode: null,
       isInviteMatch: false,
+      isInviteHost: false,
       isSpectating: false,
       spectateRoomCode: null,
       tradeActive: false,
@@ -422,7 +423,7 @@ export default class App extends Component {
     } else if (actionKey === 'accept-invite') {
       try {
         const result = await friendsApi.acceptMatchInvite(toastData?.senderId);
-        this.handleInviteAccepted(result);
+        this.handleInviteAccepted(result, { isHost: true });
       } catch {}
     } else if (actionKey === 'decline-invite') {
       await friendsApi.declineMatchInvite(toastData?.senderId).catch(() => {});
@@ -433,11 +434,12 @@ export default class App extends Component {
     }
   };
 
-  handleInviteAccepted = (result) => {
+  handleInviteAccepted = (result, { isHost = false } = {}) => {
     this.setState({
       arenaView: 'deck-select',
       pendingInviteRoomCode: result.roomCode,
       isInviteMatch: true,
+      isInviteHost: isHost,
     });
   };
 
@@ -549,7 +551,7 @@ export default class App extends Component {
           ],
         });
       } else if (n.type === 'invite-accepted') {
-        this.handleInviteAccepted({ roomCode: n.roomCode });
+        this.handleInviteAccepted({ roomCode: n.roomCode }, { isHost: false });
         this.addToast({
           title: 'Invite Accepted',
           message: `${n.name || n.senderName || 'Your opponent'} accepted — choose your deck!`,
@@ -709,17 +711,20 @@ export default class App extends Component {
     this._matchRewardApplied = false;
     this.setState({ arenaSelectedDeckId: deckId, arenaMatchmakingOpponent: null });
 
-    // Friend invite: skip public queue, join the private room directly
+    // Friend invite: skip public queue, use the private room directly
     if (isInviteMatch && pendingInviteRoomCode) {
+      // isInviteHost: the accepter hosts (they act first), the inviter joins later
+      const isInviteHost = this.state.isInviteHost || false;
       this.setState({
         isGameBoardOpen: true,
         isArenaMatch: true,
         isRankedMatch: false,
-        sessionMode: 'join',
+        sessionMode: isInviteHost ? 'new' : 'join',
         roomCode: pendingInviteRoomCode,
         arenaView: 'hub',
         pendingInviteRoomCode: null,
         isInviteMatch: false,
+        isInviteHost: false,
       });
       return;
     }

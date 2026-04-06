@@ -370,7 +370,7 @@ export default class GameBoard extends Component {
     }
 
     if (sessionMode === 'join') {
-      const maxRetries = isArenaMatch ? 5 : 1;
+      const maxRetries = isArenaMatch ? 15 : 1;
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
           this.setState({ loadingMessage: attempt > 0 ? `Connecting to host (attempt ${attempt + 1})...` : 'Connecting to host...' });
