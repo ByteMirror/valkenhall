@@ -1,19 +1,18 @@
+import { getStoredToken } from '../authApi';
+
 const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
 
-function getToken() {
-  try { return localStorage.getItem('valkenhall-token'); } catch { return null; }
-}
-
-function authHeaders() {
+async function authHeaders() {
+  const token = await getStoredToken();
   return {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${getToken()}`,
+    Authorization: `Bearer ${token}`,
   };
 }
 
 export async function fetchInbox() {
   const res = await fetch(`${MATCHMAKING_URL}/api/mail/inbox`, {
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch inbox');
   return res.json();
@@ -22,7 +21,7 @@ export async function fetchInbox() {
 export async function sendMail({ recipientId, subject, body, cards, coins }) {
   const res = await fetch(`${MATCHMAKING_URL}/api/mail/send`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify({ recipientId, subject, body, cards, coins }),
   });
   if (!res.ok) {
@@ -35,7 +34,7 @@ export async function sendMail({ recipientId, subject, body, cards, coins }) {
 export async function claimMail(mailId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/mail/claim`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify({ mailId }),
   });
   if (!res.ok) throw new Error('Failed to claim mail');
@@ -45,7 +44,7 @@ export async function claimMail(mailId) {
 export async function deleteMail(mailId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/mail/delete`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify({ mailId }),
   });
   if (!res.ok) throw new Error('Failed to delete mail');
@@ -54,7 +53,7 @@ export async function deleteMail(mailId) {
 
 export async function getUnreadCount() {
   const res = await fetch(`${MATCHMAKING_URL}/api/mail/unread-count`, {
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to get unread count');
   return res.json();

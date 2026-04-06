@@ -1,19 +1,18 @@
+import { getStoredToken } from './authApi';
+
 const MATCHMAKING_URL = 'https://fab-matchmaking.vercel.app';
 
-function getToken() {
-  try { return localStorage.getItem('valkenhall-token'); } catch { return null; }
-}
-
-function authHeaders() {
+async function authHeaders() {
+  const token = await getStoredToken();
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${getToken()}`,
+    'Authorization': `Bearer ${token}`,
   };
 }
 
 export async function searchPlayers(query) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-search?q=${encodeURIComponent(query)}`, {
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) return [];
   return res.json();
@@ -21,7 +20,7 @@ export async function searchPlayers(query) {
 
 export async function getFriendList() {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-list`, {
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) return { friends: [], pendingRequests: [], pendingCount: 0, pendingInvites: [], pendingSpectate: [], acceptedNotifications: [] };
   return res.json();
@@ -29,7 +28,7 @@ export async function getFriendList() {
 
 export async function sendFriendRequest(targetId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-request`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ targetId }),
   });
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Failed to send request'); }
@@ -38,7 +37,7 @@ export async function sendFriendRequest(targetId) {
 
 export async function acceptFriendRequest(senderId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-accept`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
   if (!res.ok) throw new Error('Failed to accept request');
@@ -47,7 +46,7 @@ export async function acceptFriendRequest(senderId) {
 
 export async function declineFriendRequest(senderId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-decline`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
   if (!res.ok) throw new Error('Failed to decline request');
@@ -56,7 +55,7 @@ export async function declineFriendRequest(senderId) {
 
 export async function removeFriend(friendId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/friends-remove`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ friendId }),
   });
   if (!res.ok) throw new Error('Failed to remove friend');
@@ -65,7 +64,7 @@ export async function removeFriend(friendId) {
 
 export async function sendPresence(activity) {
   const res = await fetch(`${MATCHMAKING_URL}/api/presence`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ activity }),
   });
   return res.ok;
@@ -73,7 +72,7 @@ export async function sendPresence(activity) {
 
 export async function sendMatchInvite(targetId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-send`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ targetId }),
   });
   if (!res.ok) throw new Error('Failed to send invite');
@@ -82,7 +81,7 @@ export async function sendMatchInvite(targetId) {
 
 export async function acceptMatchInvite(senderId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-accept`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
   if (!res.ok) throw new Error('Failed to accept invite');
@@ -91,7 +90,7 @@ export async function acceptMatchInvite(senderId) {
 
 export async function declineMatchInvite(senderId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-decline`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
   if (!res.ok) throw new Error('Failed to decline invite');
@@ -100,7 +99,7 @@ export async function declineMatchInvite(senderId) {
 
 export async function requestSpectate(playerId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-request`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ playerId }),
   });
   if (!res.ok) throw new Error('Failed to request spectate');
@@ -109,7 +108,7 @@ export async function requestSpectate(playerId) {
 
 export async function allowSpectator(spectatorId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-allow`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ spectatorId }),
   });
   if (!res.ok) throw new Error('Failed to allow spectator');
@@ -118,7 +117,7 @@ export async function allowSpectator(spectatorId) {
 
 export async function denySpectator(spectatorId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-deny`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ spectatorId }),
   });
   if (!res.ok) throw new Error('Failed to deny spectator');
@@ -127,7 +126,7 @@ export async function denySpectator(spectatorId) {
 
 export async function requestTrade(targetId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-request`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ targetId }),
   });
   if (!res.ok) throw new Error('Failed to request trade');
@@ -136,7 +135,7 @@ export async function requestTrade(targetId) {
 
 export async function acceptTrade(senderId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-accept`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
   if (!res.ok) throw new Error('Failed to accept trade');
@@ -145,7 +144,7 @@ export async function acceptTrade(senderId) {
 
 export async function declineTrade(senderId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-decline`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ senderId }),
   });
   if (!res.ok) throw new Error('Failed to decline trade');
@@ -154,7 +153,7 @@ export async function declineTrade(senderId) {
 
 export async function executeTrade(partnerId, myOffer, theirOffer) {
   const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-execute`, {
-    method: 'POST', headers: authHeaders(),
+    method: 'POST', headers: await authHeaders(),
     body: JSON.stringify({ partnerId, myOffer, theirOffer }),
   });
   if (!res.ok) throw new Error('Failed to execute trade');
@@ -163,7 +162,7 @@ export async function executeTrade(partnerId, myOffer, theirOffer) {
 
 export async function getPublicProfile(profileId) {
   const res = await fetch(`${MATCHMAKING_URL}/api/profile/${profileId}`, {
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to load profile');
   return res.json();
