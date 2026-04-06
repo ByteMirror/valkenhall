@@ -33,4 +33,23 @@ for (const tex of ['tex-stone', 'tex-chisel', 'tex-scratches', 'tex-cracks', 'te
 }
 await fs.cp('./public/cursors', './dist/cursors', { recursive: true }).catch(() => {});
 
+// Bundle card images
+await fs.cp('./public/sorcery-images', './dist/sorcery-images', { recursive: true }).catch(() => {});
+
+// Bundle all audio files (music, sound effects)
+const publicFiles = await fs.readdir('./public').catch(() => []);
+for (const file of publicFiles) {
+  if (file.endsWith('.mp3') || file.endsWith('.ogg') || file.endsWith('.wav')) {
+    await fs.copyFile(`./public/${file}`, `./dist/${file}`).catch(() => {});
+  }
+}
+
+// Bundle other game assets
+for (const asset of ['battlemap.webp', 'table-background-hd.png', 'table-background.jpg',
+  'cardback-spellbook-rounded.png', 'cardback-spellbook.png', 'cardback-atlas-rounded.png', 'cardback-atlas.jpg',
+  'booster-gothic.webp', 'booster-arthurian.webp', 'booster-beta.webp',
+  'monarch.jpg', 'spawn-config.json']) {
+  await fs.copyFile(`./public/${asset}`, `./dist/${asset}`).catch(() => {});
+}
+
 console.log(`Built ${result.outputs.length} output files into dist/`);
