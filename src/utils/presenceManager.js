@@ -1,122 +1,162 @@
-import { sendPresence, getFriendList } from './friendsApi';
+import { connectWebSocket, disconnectWebSocket, on } from './serverClient';
+import { getFriendList } from './friendsApi';
 import { getUnreadCount } from './arena/mailApi';
 
 let currentActivity = 'hub';
-let heartbeatInterval = null;
-let pollInterval = null;
 let onFriendListUpdate = null;
 let onNewNotifications = null;
-let lastPendingCount = 0;
-let lastInviteIds = new Set();
-let lastSpectateIds = new Set();
 let onMailCountUpdate = null;
+
+let friendList = { friends: [], pendingRequests: [], pendingCount: 0 };
+let unsubscribers = [];
 let lastMailCount = 0;
 
-export function startPresence(activity, callbacks = {}) {
+function emitFriendList() {
+  if (onFriendListUpdate) onFriendListUpdate(friendList);
+}
+
+async function refreshFriendList() {
+  try {
+    const data = await getFriendList();
+    friendList = data || { friends: [], pendingRequests: [], pendingCount: 0 };
+    emitFriendList();
+  } catch (err) {
+    console.error('[presence] refreshFriendList failed:', err);
+  }
+}
+
+async function refreshMailCount() {
+  try {
+    const data = await getUnreadCount();
+    if (onMailCountUpdate) onMailCountUpdate(data);
+    lastMailCount = data?.count || 0;
+    return data;
+  } catch (err) {
+    console.error('[presence] refreshMailCount failed:', err);
+    return null;
+  }
+}
+
+export async function startPresence(activity, callbacks = {}) {
   onFriendListUpdate = callbacks.onFriendListUpdate || null;
   onNewNotifications = callbacks.onNewNotifications || null;
   onMailCountUpdate = callbacks.onMailCountUpdate || null;
   currentActivity = activity;
 
-  sendPresence(currentActivity).catch(() => {});
-  pollFriends();
+  await connectWebSocket();
 
-  if (!heartbeatInterval) {
-    heartbeatInterval = setInterval(() => {
-      sendPresence(currentActivity).catch(() => {});
-    }, 15000);
-  }
+  unsubscribers.push(on('presence:snapshot', (data) => {
+    if (!data?.friends) return;
+    const onlineMap = new Map(data.friends.map((f) => [f.playerId, f.online]));
+    friendList = {
+      ...friendList,
+      friends: (friendList.friends || []).map((f) => ({
+        ...f,
+        online: onlineMap.get(f.id) ?? f.online ?? false,
+      })),
+    };
+    emitFriendList();
+  }));
 
-  if (!pollInterval) {
-    pollInterval = setInterval(pollFriends, 15000);
-  }
+  unsubscribers.push(on('presence:update', (data) => {
+    if (!data?.playerId) return;
+    friendList = {
+      ...friendList,
+      friends: (friendList.friends || []).map((f) =>
+        f.id === data.playerId ? { ...f, online: data.online } : f
+      ),
+    };
+    emitFriendList();
+  }));
+
+  unsubscribers.push(on('friend:request', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'friend-request',
+        senderId: data.senderId,
+        senderName: data.senderName,
+        senderAvatar: data.senderAvatar,
+      }]);
+    }
+    refreshFriendList();
+  }));
+
+  unsubscribers.push(on('friend:accepted', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'friend-accepted',
+        name: data.name,
+        avatar: data.avatar,
+      }]);
+    }
+    refreshFriendList();
+  }));
+
+  unsubscribers.push(on('friend:removed', () => {
+    refreshFriendList();
+  }));
+
+  unsubscribers.push(on('mail:received', () => {
+    refreshMailCount().then((data) => {
+      if (!data) return;
+      if (onNewNotifications) {
+        onNewNotifications([{
+          type: 'new-mail',
+          count: data.count,
+          newCount: 1,
+        }]);
+      }
+    });
+  }));
+
+  unsubscribers.push(on('invite:received', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'match-invite',
+        senderId: data.senderId,
+        senderName: data.senderName,
+      }]);
+    }
+  }));
+
+  unsubscribers.push(on('invite:accepted', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'invite-accepted',
+        roomCode: data.roomCode,
+        isHost: data.isHost,
+        opponent: data.opponent,
+        name: data.opponent?.name,
+      }]);
+    }
+  }));
+
+  unsubscribers.push(on('invite:declined', () => {
+    // No UI notification for declines yet — could be added later.
+  }));
+
+  unsubscribers.push(on('auction:sold', () => {
+    // Auction proceeds arrive via mail — mail:received will trigger refresh.
+  }));
+
+  await refreshFriendList();
+  await refreshMailCount();
 }
 
 export function updateActivity(activity) {
   currentActivity = activity;
-  sendPresence(activity).catch(() => {});
+  // Server tracks online status automatically via WebSocket connection.
+  // Activity is retained locally in case a future `presence:activity` message
+  // is added to the server protocol.
 }
 
 export function stopPresence() {
-  clearInterval(heartbeatInterval);
-  clearInterval(pollInterval);
-  heartbeatInterval = null;
-  pollInterval = null;
+  for (const unsub of unsubscribers) {
+    try { unsub(); } catch {}
+  }
+  unsubscribers = [];
   onFriendListUpdate = null;
   onNewNotifications = null;
   onMailCountUpdate = null;
-}
-
-async function pollFriends() {
-  try {
-    const data = await getFriendList();
-    if (onFriendListUpdate) onFriendListUpdate(data);
-
-    const notifications = [];
-
-    if (data.pendingCount > lastPendingCount) {
-      const newest = data.pendingRequests[data.pendingRequests.length - 1];
-      if (newest) {
-        notifications.push({
-          type: 'friend-request',
-          senderId: newest.senderId,
-          senderName: newest.senderName,
-          senderAvatar: newest.senderAvatar,
-        });
-      }
-    }
-    lastPendingCount = data.pendingCount;
-
-    for (const inv of data.pendingInvites || []) {
-      if (!lastInviteIds.has(inv.senderId)) {
-        notifications.push({
-          type: 'match-invite',
-          senderId: inv.senderId,
-          senderName: inv.senderName,
-        });
-      }
-    }
-    lastInviteIds = new Set((data.pendingInvites || []).map((i) => i.senderId));
-
-    for (const spec of data.pendingSpectate || []) {
-      if (!lastSpectateIds.has(spec.spectatorId)) {
-        notifications.push({
-          type: 'spectate-request',
-          spectatorId: spec.spectatorId,
-          spectatorName: spec.spectatorName,
-        });
-      }
-    }
-    lastSpectateIds = new Set((data.pendingSpectate || []).map((s) => s.spectatorId));
-
-    for (const acc of data.acceptedNotifications || []) {
-      notifications.push({
-        type: 'friend-accepted',
-        name: acc.name,
-        avatar: acc.avatar,
-      });
-    }
-
-    if (notifications.length > 0 && onNewNotifications) {
-      onNewNotifications(notifications);
-    }
-
-    // Poll mailbox unread count
-    try {
-      const mailCounts = await getUnreadCount();
-      if (onMailCountUpdate) onMailCountUpdate(mailCounts);
-
-      if (mailCounts.count > lastMailCount && lastMailCount >= 0) {
-        const newCount = mailCounts.count - lastMailCount;
-        if (onNewNotifications) {
-          onNewNotifications([{ type: 'new-mail', count: mailCounts.count, newCount }]);
-        }
-      }
-      lastMailCount = mailCounts.count;
-    } catch {
-      // Silent fail
-    }
-  } catch {
-    // Silent fail — will retry next interval
-  }
+  disconnectWebSocket();
 }

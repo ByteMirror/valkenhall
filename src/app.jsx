@@ -420,16 +420,15 @@ export default class App extends Component {
     } else if (actionKey === 'decline-friend') {
       await friendsApi.declineFriendRequest(toastData?.senderId).catch(() => {});
     } else if (actionKey === 'accept-invite') {
+      // TODO(stage-3): surface deck picker, then call acceptMatchInvite(senderId, deckId).
+      // The new server requires a deckId and delivers invite:accepted via WebSocket.
       try {
-        const result = await friendsApi.acceptMatchInvite(toastData?.senderId);
-        this.handleInviteAccepted(result, { isHost: true });
+        friendsApi.acceptMatchInvite(toastData?.senderId);
       } catch {}
     } else if (actionKey === 'decline-invite') {
-      await friendsApi.declineMatchInvite(toastData?.senderId).catch(() => {});
-    } else if (actionKey === 'allow-spectate') {
-      await friendsApi.allowSpectator(toastData?.spectatorId).catch(() => {});
-    } else if (actionKey === 'deny-spectate') {
-      await friendsApi.denySpectator(toastData?.spectatorId).catch(() => {});
+      try { friendsApi.declineMatchInvite(toastData?.senderId); } catch {}
+    } else if (actionKey === 'allow-spectate' || actionKey === 'deny-spectate') {
+      // Spectate protocol not yet implemented on the new server — no-op.
     }
   };
 
@@ -475,13 +474,10 @@ export default class App extends Component {
   };
 
   handleTradeConfirm = async (myOffer, theirOffer) => {
-    try {
-      const { executeTrade } = await import('./utils/friendsApi');
-      this.addToast({ title: 'Trade Complete', message: 'Cards exchanged!' });
-      this.setState({ tradeActive: false, tradePartnerName: null, tradeRoomCode: null });
-    } catch (err) {
-      this.addToast({ title: 'Trade Failed', message: err.message });
-    }
+    // Trading is not implemented on the new server yet — close the panel so
+    // the UI stays functional until the protocol is reintroduced.
+    this.addToast({ title: 'Trade Unavailable', message: 'Trading is temporarily disabled.' });
+    this.setState({ tradeActive: false, tradePartnerName: null, tradeRoomCode: null });
   };
 
   handleTradeCancel = () => {
@@ -489,8 +485,9 @@ export default class App extends Component {
   };
 
   handleFriendInvite = async (friendId) => {
+    // TODO(stage-3): route through deck picker before dispatching invite.
     try {
-      await friendsApi.sendMatchInvite(friendId);
+      friendsApi.sendMatchInvite(friendId);
       this.addToast({ title: 'Invite Sent', message: 'Waiting for response...' });
     } catch (err) {
       this.addToast({ title: 'Invite Failed', message: err.message });
@@ -498,12 +495,7 @@ export default class App extends Component {
   };
 
   handleFriendSpectate = async (friendId) => {
-    try {
-      await friendsApi.requestSpectate(friendId);
-      this.addToast({ title: 'Spectate Requested', message: 'Waiting for permission...' });
-    } catch (err) {
-      this.addToast({ title: 'Request Failed', message: err.message });
-    }
+    this.addToast({ title: 'Spectate Unavailable', message: 'Spectating is temporarily disabled.' });
   };
 
   handleViewFriendProfile = (profileId) => {
@@ -511,12 +503,7 @@ export default class App extends Component {
   };
 
   handleFriendTrade = async (friendId) => {
-    try {
-      await friendsApi.requestTrade(friendId);
-      this.addToast({ title: 'Trade Request Sent', message: 'Waiting for response...' });
-    } catch (err) {
-      this.addToast({ title: 'Trade Failed', message: err.message });
-    }
+    this.addToast({ title: 'Trade Unavailable', message: 'Trading is temporarily disabled.' });
   };
 
   handleNewNotifications = (notifications) => {

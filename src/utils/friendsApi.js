@@ -1,4 +1,5 @@
 import { getStoredToken } from './authApi';
+import { send } from './serverClient';
 
 const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 
@@ -65,103 +66,24 @@ export async function removeFriend(friendId) {
   return res.json().catch(() => null);
 }
 
-export async function sendPresence(activity) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/presence`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ activity }),
-  });
-  return res.ok;
+// Match invite flow — now delivered via WebSocket. The new server requires a
+// deckId on send/accept; call sites in app.jsx will be updated in the
+// matchmaking-flow stage to surface a deck picker before dispatching these.
+export function sendMatchInvite(targetId, deckId) {
+  return send('invite:send', { targetId, deckId });
 }
 
-export async function sendMatchInvite(targetId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-send`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ targetId }),
-  });
-  if (!res.ok) throw new Error('Failed to send invite');
-  return res.json();
+export function acceptMatchInvite(senderId, deckId) {
+  return send('invite:accept', { senderId, deckId });
 }
 
-export async function acceptMatchInvite(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-accept`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ senderId }),
-  });
-  if (!res.ok) throw new Error('Failed to accept invite');
-  return res.json();
+export function declineMatchInvite(senderId) {
+  return send('invite:decline', { senderId });
 }
 
-export async function declineMatchInvite(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/invite-decline`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ senderId }),
-  });
-  if (!res.ok) throw new Error('Failed to decline invite');
-  return res.json();
-}
-
-export async function requestSpectate(playerId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-request`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ playerId }),
-  });
-  if (!res.ok) throw new Error('Failed to request spectate');
-  return res.json();
-}
-
-export async function allowSpectator(spectatorId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-allow`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ spectatorId }),
-  });
-  if (!res.ok) throw new Error('Failed to allow spectator');
-  return res.json();
-}
-
-export async function denySpectator(spectatorId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/spectate-deny`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ spectatorId }),
-  });
-  if (!res.ok) throw new Error('Failed to deny spectator');
-  return res.json();
-}
-
-export async function requestTrade(targetId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-request`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ targetId }),
-  });
-  if (!res.ok) throw new Error('Failed to request trade');
-  return res.json();
-}
-
-export async function acceptTrade(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-accept`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ senderId }),
-  });
-  if (!res.ok) throw new Error('Failed to accept trade');
-  return res.json();
-}
-
-export async function declineTrade(senderId) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-decline`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ senderId }),
-  });
-  if (!res.ok) throw new Error('Failed to decline trade');
-  return res.json();
-}
-
-export async function executeTrade(partnerId, myOffer, theirOffer) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/social/trade-execute`, {
-    method: 'POST', headers: await authHeaders(),
-    body: JSON.stringify({ partnerId, myOffer, theirOffer }),
-  });
-  if (!res.ok) throw new Error('Failed to execute trade');
-  return res.json();
-}
+// Spectate and trade endpoints are not implemented on the new server yet.
+// Their call sites have been replaced with no-op stubs so the UI keeps
+// compiling; they will be reintroduced once the server-side protocol exists.
 
 export async function getPublicProfile(profileId) {
   const res = await fetch(`${MATCHMAKING_URL}/profile/${profileId}`, {
