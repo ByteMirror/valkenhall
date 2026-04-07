@@ -9,7 +9,8 @@ import { TRACKER_DEFS, PLAYERS, PLAYER_LABELS, getTrackerSpawnEntries, getTotalP
 import CardInspector from './CardInspector';
 import { addTween, animateCardFlip, animateCardTap, animateShufflePile, animateCardToPile, animateCardFromPile } from '../utils/game/animations';
 import { saveGameSession, loadGameSession, listGameSessions } from '../utils/game/sessionStorage';
-import { createRoom, createRoomWithCode, joinRoom, emitGameAction, onGameAction, offGameAction, disconnectSocket, onPlayerJoined, onPlayerLeft, onStateSyncRequest, sendStateSync, requestStateSync, onStateSync } from '../utils/game/socketClient';
+import { createRoom, createRoomWithCode, joinRoom, disconnectSocket, onPlayerJoined, onPlayerLeft, onStateSyncRequest, sendStateSync, requestStateSync, onStateSync } from '../utils/game/socketClient';
+import { GameSyncBridge } from '../utils/game/syncBridge';
 import { getLocalApiOrigin, resolveLocalImageUrl } from '../utils/localApi';
 import { playSound, preloadSounds } from '../utils/game/sounds';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
@@ -26,7 +27,11 @@ import * as THREE from 'three';
 import ArenaMatchResult from './ArenaMatchResult';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 import { resolveCombat, resolveSiteAttack, getValidTargets, resolveMultiCombat, getDefenders, getInterceptors } from '../utils/game/combat';
-import { getMovementAbilities, getMaxSteps, isValidStep, getLevelOptions, LEVELS } from '../utils/game/movementAbilities';
+import { getMovementAbilities, getMaxSteps, isValidStep, LEVELS } from '../utils/game/movementAbilities';
+import InterceptPrompt from './gameBoard/InterceptPrompt';
+import DefendPrompt from './gameBoard/DefendPrompt';
+import PileSearchDialog from './gameBoard/PileSearchDialog';
+import GameContextMenu from './gameBoard/GameContextMenu';
 
 
 export default class GameBoard extends Component {
@@ -40,7 +45,7 @@ export default class GameBoard extends Component {
     this.dragging = null;
     this.hoveredMesh = null;
     this.lastMouseEvent = null;
-    this.suppressBroadcast = false;
+    this.sync = new GameSyncBridge();
     this.spawnMarkers = new Map();
     this.tokenMeshes = new Map();
     this.lifeHUDs = new Map(); // cardId -> { sprite, plusMesh, minusMesh }
@@ -135,11 +140,39 @@ export default class GameBoard extends Component {
       });
     });
 
-    this.initSession().then(() => {
-      // Auto-spawn deck for ranked matchmaking
-      if (this.props.arenaSelectedDeckId) {
+    this.initSession().then(async () => {
+      // Ranked matchmaking: the server provides BOTH decks on room:joined,
+      // so every client spawns identical, authoritative initial state.
+      // No client-to-client races possible.
+      const { roomInfo } = this.state;
+      if (this.props.isArenaMatch && roomInfo?.hostDeck && roomInfo?.guestDeck) {
+        // Reconnection case: the host's match state was already cached,
+        // request a sync instead of re-spawning fresh decks.
+        if (roomInfo.resumed) {
+          requestStateSync();
+        } else {
+          try {
+            // Both clients receive the same server-prepared deck data and
+            // spawn independently; withSuppressed prevents re-emitting the
+            // deck:spawn broadcast back over the wire.
+            this.sync.withSuppressed(() => {
+              this.spawnSelectedDeck(roomInfo.hostDeck, 1);
+              this.spawnSelectedDeck(roomInfo.guestDeck, 2);
+            });
+          } catch (err) {
+            console.error('Failed to spawn match decks:', err);
+          }
+        }
+      } else if (this.props.arenaSelectedDeckId) {
+        // Non-matchmaking arena (e.g. friend invite) — fall back to the
+        // legacy single-deck flow. TODO: migrate invite flow to server-auth too.
         const localPlayerNum = this.state.isHost ? 1 : 2;
-        this.doSpawnDeck(this.props.arenaSelectedDeckId, localPlayerNum).catch(() => {});
+        try {
+          await this.doSpawnDeck(this.props.arenaSelectedDeckId, localPlayerNum);
+        } catch {}
+        if (!this.state.isHost && this.props.sessionMode === 'join') {
+          requestStateSync();
+        }
       }
       // Give textures a moment to upload to GPU
       setTimeout(() => {
@@ -162,6 +195,8 @@ export default class GameBoard extends Component {
     clearTimeout(this.handRetractTimer);
     clearInterval(this.autoSaveTimer);
     this.autoSave();
+    // Unsubscribe every game action handler before tearing down the socket.
+    this.sync.destroy();
     disconnectSocket();
     this.meshes.clear();
     this.pileMeshes.clear();
@@ -194,9 +229,7 @@ export default class GameBoard extends Component {
   };
 
   broadcastHandInfo = (handCards) => {
-    emitGameAction('hand:info', {
-      cards: handCards.map((c) => ({ isSite: c.isSite || false })),
-    });
+    this.sync.updateHandInfo(handCards.map((c) => ({ isSite: c.isSite || false })));
   };
 
   addToHand = (cardInstance) => {
@@ -283,7 +316,7 @@ export default class GameBoard extends Component {
       card.faceDown = !card.faceDown;
       animateCardFlip(this.hoveredMesh, card);
       playSound('cardFlip');
-      emitGameAction('card:flip', { cardId: card.id, faceDown: card.faceDown });
+      this.sync.flipCard(card.id, card.faceDown);
       return;
     }
 
@@ -294,7 +327,7 @@ export default class GameBoard extends Component {
       card.tapped = !card.tapped;
       animateCardTap(this.hoveredMesh, card);
       playSound('cardPlace');
-      emitGameAction('card:tap', { cardId: card.id, tapped: card.tapped });
+      this.sync.tapCard(card.id, card.tapped);
       return;
     }
 
@@ -359,8 +392,13 @@ export default class GameBoard extends Component {
     if (isArenaMatch && joinRoomCode && sessionMode === 'new') {
       try {
         this.setState({ loadingMessage: 'Creating match room...' });
-        const code = await createRoomWithCode(joinRoomCode);
-        this.setState({ roomCode: code, connectionStatus: 'waiting', isHost: true });
+        const roomInfo = await createRoomWithCode(joinRoomCode);
+        this.setState({
+          roomCode: roomInfo.roomCode,
+          connectionStatus: 'waiting',
+          isHost: true,
+          roomInfo,
+        });
         this.setupSocketListeners();
       } catch (error) {
         console.error('Failed to create matchmaking room:', error);
@@ -374,10 +412,15 @@ export default class GameBoard extends Component {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
           this.setState({ loadingMessage: attempt > 0 ? `Connecting to host (attempt ${attempt + 1})...` : 'Connecting to host...' });
-          const code = await joinRoom(joinRoomCode);
-          this.setState({ roomCode: code, connectionStatus: 'connected', isHost: false, loadingMessage: 'Syncing game state...' });
+          const roomInfo = await joinRoom(joinRoomCode);
+          this.setState({
+            roomCode: roomInfo.roomCode,
+            connectionStatus: 'connected',
+            isHost: false,
+            loadingMessage: 'Preparing battlefield...',
+            roomInfo,
+          });
           this.setupSocketListeners();
-          requestStateSync();
           // Rotate camera 180° for player 2 perspective
           this.scene?.setOrbitTheta(Math.PI);
           return;
@@ -471,11 +514,44 @@ export default class GameBoard extends Component {
       },
       'card:move': (data) => {
         const mesh = this.meshes.get(data.cardId);
-        if (mesh) {
-          addTween({ target: mesh.position, property: 'x', from: mesh.position.x, to: data.x, duration: 200 });
-          if (data.y !== undefined) addTween({ target: mesh.position, property: 'y', from: mesh.position.y, to: data.y, duration: 200 });
-          addTween({ target: mesh.position, property: 'z', from: mesh.position.z, to: data.z, duration: 200 });
+        if (!mesh) return;
+        const cardInstance = mesh.userData.cardInstance;
+
+        const applyGridCoords = () => {
+          // Mirror the card's grid position so target-selection and combat
+          // queries (getCardsInCell, getDefenders, etc.) find it on this client.
+          // gridCol/gridRow may be explicitly null when a card is dragged off the grid.
+          if ('gridCol' in data) {
+            const prevCol = cardInstance._gridCol;
+            const prevRow = cardInstance._gridRow;
+            cardInstance._gridCol = data.gridCol == null ? undefined : data.gridCol;
+            cardInstance._gridRow = data.gridRow == null ? undefined : data.gridRow;
+            const newCol = cardInstance._gridCol;
+            const newRow = cardInstance._gridRow;
+            if (newCol != null && newRow != null) this.arrangeCardsInCell(newCol, newRow);
+            if (prevCol != null && prevRow != null && (prevCol !== newCol || prevRow !== newRow)) {
+              this.arrangeCardsInCell(prevCol, prevRow);
+            }
+          }
+        };
+
+        // Path-based movement (move/attack action) — animate step by step
+        // so the opponent visibly walks through each cell. This is critical
+        // for the intercept system: the defender has to be able to see the
+        // path and react as their cells are entered.
+        if (Array.isArray(data.path) && data.path.length > 1) {
+          this.animateCardAlongPath(cardInstance, mesh, data.path, () => {
+            mesh.position.y = this.scene.CARD_REST_Y;
+            applyGridCoords();
+          });
+          return;
         }
+
+        // Free-move drop (no path) — smooth tween from current to target pos.
+        addTween({ target: mesh.position, property: 'x', from: mesh.position.x, to: data.x, duration: 200 });
+        if (data.y !== undefined) addTween({ target: mesh.position, property: 'y', from: mesh.position.y, to: data.y, duration: 200 });
+        addTween({ target: mesh.position, property: 'z', from: mesh.position.z, to: data.z, duration: 200 });
+        applyGridCoords();
       },
       'card:tap': (data) => {
         const mesh = this.meshes.get(data.cardId);
@@ -502,18 +578,93 @@ export default class GameBoard extends Component {
           mats.forEach((m) => m.dispose());
           this.meshes.delete(data.cardId);
         }
+        this.lifeHUDs.delete(data.cardId);
       },
+      // Full-pile sync: authoritative update for a single pile.
+      // Sent by the acting player whenever a pile's card list changes
+      // (draw, discard, shuffle, cemetery creation). Carries the entire
+      // pile object so the receiver's state always matches the sender's.
+      'pile:sync': (data) => {
+        if (!data?.pile?.id) return;
+        const incoming = data.pile;
+        const { gameState } = this.state;
+        const existing = gameState.piles.find((p) => p.id === incoming.id);
+        if (existing) {
+          // Mutate in place so existing mesh.userData.pile references stay
+          // valid — otherwise the pile search dialog and context menu read
+          // stale card lists after a sync and the player can't search.
+          existing.cards = incoming.cards;
+          existing.name = incoming.name;
+          existing.x = incoming.x;
+          existing.z = incoming.z;
+          existing.rotated = incoming.rotated;
+        } else {
+          gameState.piles.push(incoming);
+          // Create a mesh for the new pile (e.g., a cemetery the opponent
+          // just created with a freshly dead card).
+          if (!this.pileMeshes.get(incoming.id)) {
+            const mesh = createPileMesh(incoming);
+            if (mesh) {
+              this.scene.scene.add(mesh);
+              this.pileMeshes.set(incoming.id, mesh);
+            }
+          }
+        }
+        this.updatePileMeshes();
+        this.forceUpdate();
+      },
+      // Remove a pile entirely (e.g., empty cemetery cleanup).
+      'pile:remove': (data) => {
+        if (!data?.pileId) return;
+        const { gameState } = this.state;
+        gameState.piles = gameState.piles.filter((p) => p.id !== data.pileId);
+        const mesh = this.pileMeshes.get(data.pileId);
+        if (mesh) {
+          this.scene.scene.remove(mesh);
+          mesh.geometry?.dispose();
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((m) => m.dispose());
+          this.pileMeshes.delete(data.pileId);
+        }
+        this.forceUpdate();
+      },
+      // Legacy blanket refresh — kept for backwards compat during rollout.
+      // New code should emit pile:sync with the updated pile instead.
       'pile:update': () => {
         this.updatePileMeshes();
+      },
+      // Minion ATK/HP sync: carries the new absolute value so clicks
+      // can't desync even under rapid input.
+      'card:stat': (data) => {
+        const mesh = this.meshes.get(data.cardId);
+        if (!mesh) return;
+        const card = mesh.userData.cardInstance;
+        const hud = this.lifeHUDs.get(data.cardId);
+        if (data.stat === 'atk') {
+          card.currentAttack = data.value;
+          if (hud) updateLifeHUD(hud.sprite, card.currentAttack, 'atk');
+        } else if (data.stat === 'hp') {
+          card.currentLife = data.value;
+          if (hud) updateLifeHUD(hud.hpSprite, card.currentLife, 'hp');
+        }
+      },
+      // Tracker sync: life, mana, elemental thresholds.
+      'tracker:set': (data) => {
+        if (!data?.player || !data?.key) return;
+        const { gameState } = this.state;
+        if (!gameState.trackers[data.player]) return;
+        gameState.trackers[data.player][data.key] = data.value;
+        this.updateTrackerTokenPositions();
+        this.forceUpdate();
       },
       'hand:info': (data) => {
         this.setState({ opponentHand: data.cards || [] });
       },
       'deck:spawn': (data) => {
         if (data.deck) {
-          this.suppressBroadcast = true;
-          this.spawnSelectedDeck(data.deck, data.playerNum);
-          this.suppressBroadcast = false;
+          this.sync.withSuppressed(() => {
+            this.spawnSelectedDeck(data.deck, data.playerNum);
+          });
         }
       },
       'dice:spawn': (data) => {
@@ -613,9 +764,7 @@ export default class GameBoard extends Component {
       },
     };
 
-    for (const [event, handler] of Object.entries(actionHandlers)) {
-      onGameAction(event, handler);
-    }
+    this.sync.registerHandlers(actionHandlers);
   };
 
   serializeTableState = () => {
@@ -648,7 +797,7 @@ export default class GameBoard extends Component {
   };
 
   restoreSession = (session) => {
-    this.suppressBroadcast = true;
+    this.sync.setSuppressed(true);
     // Clear existing table
     for (const [, mesh] of this.meshes) {
       this.scene.scene.remove(mesh);
@@ -728,7 +877,7 @@ export default class GameBoard extends Component {
       this.createTrackerTokens();
       this.createTrackerButtons();
     }
-    this.suppressBroadcast = false;
+    this.sync.setSuppressed(false);
   };
 
   autoSave = async () => {
@@ -987,21 +1136,7 @@ export default class GameBoard extends Component {
       if (lifeHits.length > 0) {
         const btn = lifeHits[0].object;
         if (btn?.userData?.type === 'lifeButton') {
-          const { action, stat, cardId } = btn.userData;
-          const cardMesh = this.meshes.get(cardId);
-          if (cardMesh) {
-            const card = cardMesh.userData.cardInstance;
-            const hud = this.lifeHUDs.get(cardId);
-            if (stat === 'atk') {
-              if (action === 'increment') card.currentAttack = (card.currentAttack || 0) + 1;
-              else card.currentAttack = Math.max(0, (card.currentAttack || 0) - 1);
-              if (hud) updateLifeHUD(hud.sprite, card.currentAttack, 'atk');
-            } else {
-              if (action === 'increment') card.currentLife = (card.currentLife || 0) + 1;
-              else card.currentLife = Math.max(0, (card.currentLife || 0) - 1);
-              if (hud) updateLifeHUD(hud.hpSprite, card.currentLife, 'hp');
-            }
-          }
+          this.applyLifeButton(btn.userData);
           event.preventDefault();
           return;
         }
@@ -1042,21 +1177,7 @@ export default class GameBoard extends Component {
 
     // Life counter +/- button click on cards
     if (hit?.userData.type === 'lifeButton') {
-      const { action, stat, cardId } = hit.userData;
-      const cardMesh = this.meshes.get(cardId);
-      if (cardMesh) {
-        const card = cardMesh.userData.cardInstance;
-        const hud = this.lifeHUDs.get(cardId);
-        if (stat === 'atk') {
-          if (action === 'increment') card.currentAttack = (card.currentAttack || 0) + 1;
-          else card.currentAttack = Math.max(0, (card.currentAttack || 0) - 1);
-          if (hud) updateLifeHUD(hud.sprite, card.currentAttack, 'atk');
-        } else {
-          if (action === 'increment') card.currentLife = (card.currentLife || 0) + 1;
-          else card.currentLife = Math.max(0, (card.currentLife || 0) - 1);
-          if (hud) updateLifeHUD(hud.hpSprite, card.currentLife, 'hp');
-        }
-      }
+      this.applyLifeButton(hit.userData);
       event.preventDefault();
       return;
     }
@@ -1316,7 +1437,7 @@ export default class GameBoard extends Component {
       dice.z = droppedMesh.position.z;
       droppedMesh.position.y = DICE_REST_Y;
       playSound('cardPlace');
-      emitGameAction('dice:move', { diceId: dice.id, x: dice.x, z: dice.z });
+      this.sync.moveDice(dice.id, dice.x, dice.z);
       this.dragging = null;
       return;
     }
@@ -1337,7 +1458,7 @@ export default class GameBoard extends Component {
         droppedMesh.position.z = intersection.z;
         droppedMesh.position.y = this.scene.CARD_REST_Y + 0.5;
         playSound('cardPlace');
-        emitGameAction('card:move', { cardId: card.id, x: card.x, y: droppedMesh.position.y, z: card.z, isAura: true });
+        this.sync.moveCard({ cardId: card.id, x: card.x, y: droppedMesh.position.y, z: card.z, isAura: true });
         this.dragging = null;
         return;
       }
@@ -1429,7 +1550,14 @@ export default class GameBoard extends Component {
     }
 
     playSound('cardPlace');
-    emitGameAction('card:move', { cardId: card.id, x: card.x, y: droppedMesh.position.y, z: card.z });
+    this.sync.moveCard({
+      cardId: card.id,
+      x: card.x,
+      y: droppedMesh.position.y,
+      z: card.z,
+      gridCol: card._gridCol == null ? null : card._gridCol,
+      gridRow: card._gridRow == null ? null : card._gridRow,
+    });
     this.dragging = null;
   };
 
@@ -1467,7 +1595,7 @@ export default class GameBoard extends Component {
       if (card.isSite) return;
       card.tapped = !card.tapped;
       animateCardTap(hit, card);
-      emitGameAction('card:tap', { cardId: card.id, tapped: card.tapped });
+      this.sync.tapCard(card.id, card.tapped);
     }
   };
 
@@ -1714,6 +1842,28 @@ export default class GameBoard extends Component {
     }
   };
 
+  // Apply an in-HUD +/- button click on a minion's ATK or HP.
+  // Mutates the card instance, updates the HUD sprite, and broadcasts the
+  // new absolute value so both clients stay in sync (no action loss under
+  // multiple rapid clicks because each broadcast carries the final number).
+  applyLifeButton = ({ action, stat, cardId }) => {
+    const cardMesh = this.meshes.get(cardId);
+    if (!cardMesh) return;
+    const card = cardMesh.userData.cardInstance;
+    const hud = this.lifeHUDs.get(cardId);
+    if (stat === 'atk') {
+      if (action === 'increment') card.currentAttack = (card.currentAttack || 0) + 1;
+      else card.currentAttack = Math.max(0, (card.currentAttack || 0) - 1);
+      if (hud) updateLifeHUD(hud.sprite, card.currentAttack, 'atk');
+      this.sync.setCardStat(cardId, 'atk', card.currentAttack);
+    } else {
+      if (action === 'increment') card.currentLife = (card.currentLife || 0) + 1;
+      else card.currentLife = Math.max(0, (card.currentLife || 0) - 1);
+      if (hud) updateLifeHUD(hud.hpSprite, card.currentLife, 'hp');
+      this.sync.setCardStat(cardId, 'hp', card.currentLife);
+    }
+  };
+
   incrementTracker = (player, trackerKey) => {
     const def = TRACKER_DEFS[trackerKey];
     const { gameState } = this.state;
@@ -1722,6 +1872,7 @@ export default class GameBoard extends Component {
       playSound('uiClick');
       this.updateTrackerTokenPositions();
       this.forceUpdate();
+      this.sync.setTracker(player, trackerKey, gameState.trackers[player][trackerKey]);
     }
   };
 
@@ -1732,6 +1883,7 @@ export default class GameBoard extends Component {
       playSound('uiClick');
       this.updateTrackerTokenPositions();
       this.forceUpdate();
+      this.sync.setTracker(player, trackerKey, gameState.trackers[player][trackerKey]);
     }
   };
 
@@ -2051,11 +2203,13 @@ export default class GameBoard extends Component {
       }
 
       playSound('cardPlace');
-      emitGameAction('card:move', {
+      this.sync.moveCard({
         cardId: cardInstance.id,
         x: cardInstance.x,
         y: mesh.position.y,
         z: cardInstance.z,
+        gridCol: cardInstance._gridCol == null ? null : cardInstance._gridCol,
+        gridRow: cardInstance._gridRow == null ? null : cardInstance._gridRow,
         action,
         path: path.map((p) => ({ col: p.col, row: p.row })),
       });
@@ -2065,12 +2219,18 @@ export default class GameBoard extends Component {
         if (!cardInstance.tapped) {
           cardInstance.tapped = true;
           animateCardTap(mesh, cardInstance);
-          emitGameAction('card:tap', { cardId: cardInstance.id, tapped: true });
+          this.sync.tapCard(cardInstance.id, true);
         }
         this.enterTargetSelection(cardInstance, mesh);
       } else if (action === 'move') {
-        // Broadcast move-complete so opponent can intercept
-        this.broadcastMoveComplete(cardInstance, dest.col, dest.row);
+        // Broadcast move-complete so opponent can intercept at any cell
+        // along the traversed path (not just the destination).
+        this.broadcastMoveComplete(
+          cardInstance,
+          dest.col,
+          dest.row,
+          path.map((p) => ({ col: p.col, row: p.row })),
+        );
       }
     });
 
@@ -2325,6 +2485,13 @@ export default class GameBoard extends Component {
     const rulesText = fullCard?.functional_text_plain || fullCard?.functional_text || '';
     cardInstance._abilities = getMovementAbilities(rulesText);
     return cardInstance._abilities;
+  };
+
+  // Resolve a card id to its display name via the active mesh map.
+  // Used by the combat prompt components so they stay presentational.
+  getCardNameById = (cardId) => {
+    const mesh = this.meshes.get(cardId);
+    return mesh?.userData?.cardInstance?.name || cardId;
   };
 
   updatePathStepLabel = () => {
@@ -2806,9 +2973,13 @@ export default class GameBoard extends Component {
   drawCard = (pileId) => {
     const { gameState } = this.state;
     const pileMesh = this.pileMeshes.get(pileId);
+    const pile = gameState.piles.find((p) => p.id === pileId);
     const card = drawFromPile(gameState, pileId);
     if (!card) return;
     playSound('cardDraw');
+
+    // Broadcast the updated pile so the opponent sees it shrink
+    if (pile) this.sync.syncPile(pile);
 
     // Animate card flying from pile to hand
     if (pileMesh && this.scene?.camera && this.canvasRef.current) {
@@ -2893,17 +3064,17 @@ export default class GameBoard extends Component {
       mesh.position.y = cardInstance.y;
     }
 
-    // Drop-in animation (skip during session restore)
-    if (!this.suppressBroadcast) {
+    // Drop-in animation (skip during session restore / initial spawn)
+    if (!this.sync.isSuppressed) {
       const targetY = mesh.position.y;
       mesh.position.y = targetY + 15;
       addTween({ target: mesh.position, property: 'y', from: mesh.position.y, to: targetY, duration: 300 });
     }
 
-    if (broadcast && !this.suppressBroadcast) emitGameAction('card:place', { cardInstance });
+    if (broadcast) this.sync.placeCard(cardInstance);
   };
 
-  removeCardFromTable = (cardInstance) => {
+  removeCardFromTable = (cardInstance, broadcast = true) => {
     const mesh = this.meshes.get(cardInstance.id);
     if (mesh) {
       this.scene.scene.remove(mesh);
@@ -2913,6 +3084,7 @@ export default class GameBoard extends Component {
       this.meshes.delete(cardInstance.id);
     }
     this.lifeHUDs.delete(cardInstance.id);
+    if (broadcast) this.sync.removeCard(cardInstance.id);
   };
 
   sendToHand = (cardInstance) => {
@@ -2946,7 +3118,7 @@ export default class GameBoard extends Component {
     this.scene.scene.add(mesh);
     this.diceMeshes.set(diceInstance.id, mesh);
     playSound('diceRoll');
-    emitGameAction('dice:spawn', { diceInstance });
+    this.sync.spawnDice(diceInstance);
     this.setState({ showDiceMenu: false });
   };
 
@@ -2957,7 +3129,7 @@ export default class GameBoard extends Component {
     const targetValue = Math.ceil(Math.random() * faceCount);
     animateDiceRoll(mesh, targetValue);
     playSound('diceRoll');
-    emitGameAction('dice:roll', { diceId: diceInstance.id, value: targetValue });
+    this.sync.rollDice(diceInstance.id, targetValue);
   };
 
   passTurn = () => {
@@ -2981,7 +3153,7 @@ export default class GameBoard extends Component {
     }
 
     this.setState({ currentTurn: nextTurn, turnNumber: nextNumber });
-    emitGameAction('turn:pass', { currentTurn: nextTurn, turnNumber: nextNumber });
+    this.sync.passTurn(nextTurn, nextNumber);
   };
 
   // --- Combat System ---
@@ -3092,7 +3264,7 @@ export default class GameBoard extends Component {
         },
         waitingForDefense: true,
       });
-      emitGameAction('combat:declareAttack', {
+      this.sync.declareAttack({
         attackerId: attackerInstance.id,
         targetId: targetInstance.id,
         targetType: 'unit',
@@ -3150,7 +3322,7 @@ export default class GameBoard extends Component {
       }, 600);
     }, 400);
 
-    emitGameAction('combat:resolve', {
+    this.sync.resolveCombat({
       attackerId: attackerInstance.id,
       targetId: targetInstance.id,
       attackerDamage: result.attackerDamage,
@@ -3172,7 +3344,7 @@ export default class GameBoard extends Component {
     playSound('cardPlace');
     toast(`Avatar takes ${damage} damage from site attack`);
 
-    emitGameAction('combat:siteAttack', {
+    this.sync.siteAttack({
       attackerId: attackerInstance.id,
       siteId: siteInstance.id,
       damage,
@@ -3267,7 +3439,7 @@ export default class GameBoard extends Component {
 
     if (validDefenders.length === 0) {
       // No defenders available, auto-pass
-      emitGameAction('combat:defendResponse', {
+      this.sync.sendDefendResponse({
         attackerId,
         targetId,
         defenders: [],
@@ -3388,12 +3560,12 @@ export default class GameBoard extends Component {
         if (!card.tapped) {
           card.tapped = true;
           animateCardTap(mesh, card);
-          emitGameAction('card:tap', { cardId: card.id, tapped: true });
+          this.sync.tapCard(card.id, true);
         }
       }
     }
 
-    emitGameAction('combat:defendResponse', {
+    this.sync.sendDefendResponse({
       attackerId: defendPrompt.attackerId,
       targetId: defendPrompt.targetId,
       defenders,
@@ -3408,7 +3580,7 @@ export default class GameBoard extends Component {
     if (!defendPrompt) return;
 
     this.clearDefendHighlights();
-    emitGameAction('combat:defendResponse', {
+    this.sync.sendDefendResponse({
       attackerId: defendPrompt.attackerId,
       targetId: defendPrompt.targetId,
       defenders: [],
@@ -3506,7 +3678,7 @@ export default class GameBoard extends Component {
     }, 400);
 
     // Broadcast multi-combat result to opponent
-    emitGameAction('combat:multiResolve', {
+    this.sync.resolveMultiCombat({
       attackerId: attackerInstance.id,
       attackerDamage: result.attackerDamage,
       attackerNewLife: result.attackerNewLife,
@@ -3569,16 +3741,17 @@ export default class GameBoard extends Component {
 
   // --- Intercept System ---
 
-  broadcastMoveComplete = (cardInstance, col, row) => {
+  broadcastMoveComplete = (cardInstance, col, row, path = null) => {
     if (this.state.connectionStatus !== 'connected') return;
-    emitGameAction('combat:moveComplete', {
+    this.sync.completeMove({
       cardId: cardInstance.id,
       cell: { col, row },
+      path,
     });
   };
 
   handleRemoteMoveComplete = (data) => {
-    const { cardId, cell } = data;
+    const { cardId, cell, path } = data;
     const cardMesh = this.meshes.get(cardId);
     if (!cardMesh) return;
 
@@ -3587,7 +3760,24 @@ export default class GameBoard extends Component {
     const interceptingPlayerRotated = !movedCard.rotated;
     const allGridCards = this.getAllGridCards();
     const moverAbilities = this.getCardAbilities(movedCard);
-    const validInterceptors = getInterceptors(cell.col, cell.row, allGridCards, interceptingPlayerRotated, { moverAbilities });
+
+    // Walk every cell the unit entered (skip the start cell — you can't
+    // intercept a unit leaving its own cell). First cell with interceptors
+    // is where the defender gets a chance to react.
+    const cellsToCheck = Array.isArray(path) && path.length > 1
+      ? path.slice(1)
+      : [cell];
+
+    let interceptCell = null;
+    let validInterceptors = [];
+    for (const c of cellsToCheck) {
+      const interceptors = getInterceptors(c.col, c.row, allGridCards, interceptingPlayerRotated, { moverAbilities });
+      if (interceptors.length > 0) {
+        interceptCell = c;
+        validInterceptors = interceptors;
+        break;
+      }
+    }
 
     if (validInterceptors.length === 0) return;
 
@@ -3611,7 +3801,9 @@ export default class GameBoard extends Component {
       interceptPrompt: {
         arrivedCardId: cardId,
         arrivedCardName: movedCard.name || 'Enemy unit',
-        cell,
+        // Report the cell where the intercept actually triggers — may be
+        // an intermediate cell along the path, not necessarily the destination.
+        cell: interceptCell,
         validInterceptors: validInterceptors.map((ic) => ic.cardInstance.id),
         selectedInterceptors: new Set(),
       },
@@ -3698,12 +3890,12 @@ export default class GameBoard extends Component {
         if (!card.tapped) {
           card.tapped = true;
           animateCardTap(mesh, card);
-          emitGameAction('card:tap', { cardId: card.id, tapped: true });
+          this.sync.tapCard(card.id, true);
         }
       }
     }
 
-    emitGameAction('combat:interceptResponse', {
+    this.sync.sendInterceptResponse({
       arrivedCardId: interceptPrompt.arrivedCardId,
       interceptors,
     });
@@ -3716,7 +3908,7 @@ export default class GameBoard extends Component {
     if (!interceptPrompt) return;
 
     this.clearInterceptHighlights();
-    emitGameAction('combat:interceptResponse', {
+    this.sync.sendInterceptResponse({
       arrivedCardId: interceptPrompt.arrivedCardId,
       interceptors: [],
     });
@@ -3789,7 +3981,7 @@ export default class GameBoard extends Component {
       }, 600);
     }, 400);
 
-    emitGameAction('combat:multiResolve', {
+    this.sync.resolveMultiCombat({
       attackerId: arrivedCardId,
       attackerDamage: result.attackerDamage,
       attackerNewLife: result.attackerNewLife,
@@ -3956,7 +4148,7 @@ export default class GameBoard extends Component {
       [LEVELS.UNDERWATER]: 'submerged underwater',
     };
     toast(`${cardInstance.name} ${labels[newLevel] || newLevel}`);
-    emitGameAction('card:level', { cardId: cardInstance.id, level: newLevel });
+    this.sync.setCardLevel(cardInstance.id, newLevel);
     this.setState({ contextMenu: null });
   };
 
@@ -4112,8 +4304,38 @@ export default class GameBoard extends Component {
     requestAnimationFrame(tick);
   };
 
+  // Returns the cemetery pile for the given player (P1 = !rotated, P2 = rotated),
+  // creating it at the correct spawn point if it doesn't exist yet. The pile id
+  // is deterministic (`cemetery-p1` / `cemetery-p2`) so both clients converge
+  // on the same id without a race, and `pile:sync` broadcasts can replace by id.
+  findOrCreateCemetery = (rotated) => {
+    const isP2 = !!rotated;
+    const cemeteryId = isP2 ? 'cemetery-p2' : 'cemetery-p1';
+    const cemeteryName = isP2 ? 'Cemetery P2' : 'Cemetery P1';
+    const spawnKey = isP2 ? 'cemetery2' : 'cemetery';
+    const { gameState, spawnConfig } = this.state;
+
+    let pile = gameState.piles.find((p) => p.id === cemeteryId);
+    if (pile) return pile;
+
+    const point = getSpawnPoint(spawnConfig, spawnKey);
+    pile = {
+      id: cemeteryId,
+      name: cemeteryName,
+      cards: [],
+      x: point.x,
+      z: point.z,
+      rotated: isP2,
+    };
+    gameState.piles.push(pile);
+    // The mesh is created lazily by updatePileMeshes once the first card
+    // lands — createPileMesh returns null for empty piles.
+    return pile;
+  };
+
   sendDeadCardToCemetery = (cardInstance) => {
-    // Guard against double-sends
+    // Guard against local double-sends (animation can complete twice in
+    // rare race conditions).
     if (cardInstance._sentToCemetery) return;
     cardInstance._sentToCemetery = true;
 
@@ -4127,32 +4349,32 @@ export default class GameBoard extends Component {
       }
     }
 
-    const pile = this.findPileByName('Cemetery');
-    if (pile) {
+    // Dead card always goes to ITS OWNER'S cemetery, determined by rotation.
+    const pile = this.findOrCreateCemetery(cardInstance.rotated);
+
+    // Idempotent push: if the card is already in the cemetery (because the
+    // opponent's pile:sync broadcast reached us before our own death
+    // animation finished), skip the push and just clean up the local mesh.
+    // Without this check both clients add the same card and broadcast it,
+    // producing [A, A] duplicates.
+    const alreadyInPile = pile.cards.some((c) => c.id === cardInstance.id);
+    if (!alreadyInPile) {
       pile.cards.push(cardInstance);
-      this.removeCardFromTable(cardInstance);
-      this.updatePileMeshes();
-    } else {
-      // Create cemetery pile if it doesn't exist
-      const { spawnConfig } = this.state;
-      const point = getSpawnPoint(spawnConfig, 'cemetery');
-      const newPile = {
-        id: `pile-${Date.now()}`,
-        name: 'Cemetery',
-        cards: [cardInstance],
-        x: point.x,
-        z: point.z,
-        rotated: cardInstance.rotated || false,
-      };
-      this.state.gameState.piles.push(newPile);
-      const pileMesh = createPileMesh(newPile);
-      if (pileMesh) {
-        this.scene.scene.add(pileMesh);
-        this.pileMeshes.set(newPile.id, pileMesh);
-      }
-      this.removeCardFromTable(cardInstance);
     }
-    emitGameAction('pile:update', {});
+
+    // Clear grid coordinates so the card no longer interferes with
+    // getCardsInCell/combat queries once it's in the cemetery.
+    cardInstance._gridCol = undefined;
+    cardInstance._gridRow = undefined;
+    this.removeCardFromTable(cardInstance);
+    this.updatePileMeshes();
+
+    // Only broadcast if we actually mutated the pile. Re-broadcasting an
+    // unchanged pile would be harmless (pile:sync is idempotent) but it's
+    // wasted bandwidth.
+    if (!alreadyInPile) {
+      this.sync.syncPile(pile);
+    }
   };
 
   deleteDice = (diceInstance) => {
@@ -4170,14 +4392,14 @@ export default class GameBoard extends Component {
     }
     const { gameState } = this.state;
     gameState.dice = gameState.dice.filter((d) => d.id !== diceInstance.id);
-    emitGameAction('dice:delete', { diceId: diceInstance.id });
+    this.sync.deleteDice(diceInstance.id);
     this.setState({ contextMenu: null });
   };
 
   setDiceValue = (diceInstance, value) => {
     const mesh = this.diceMeshes.get(diceInstance.id);
     if (mesh) setDieFaceUp(mesh, value);
-    emitGameAction('dice:roll', { diceId: diceInstance.id, value });
+    this.sync.rollDice(diceInstance.id, value);
     this.setState({ contextMenu: null });
   };
 
@@ -4185,54 +4407,58 @@ export default class GameBoard extends Component {
     return this.state.gameState.piles.find((p) => p.name === name);
   };
 
-  sendCardToPile = (cardInstance, pileName, shouldShuffle = false) => {
-    const pile = this.findPileByName(pileName);
-    if (!pile) {
-      // Create the pile at a default position if it doesn't exist (e.g., Cemetery)
-      const { spawnConfig } = this.state;
-      const key = pileName.toLowerCase();
-      const point = getSpawnPoint(spawnConfig, key);
-      const newPile = { id: `pile-${Date.now()}`, name: pileName, cards: [], x: point.x, z: point.z, rotated: cardInstance.rotated || false };
-      this.state.gameState.piles.push(newPile);
-      newPile.cards.push(cardInstance);
+  // Resolve the destination pile for a given card + name.
+  // Cemetery is special: each player has their own (deterministic id),
+  // routed by the card's rotation.
+  findDestinationPile = (cardInstance, pileName) => {
+    if (pileName === 'Cemetery') {
+      return this.findOrCreateCemetery(cardInstance.rotated);
+    }
+    // For other piles (Spellbook, Atlas, Collection), keep the existing
+    // lookup by name — those are spawned from the deck and uniquely named.
+    return this.findPileByName(pileName);
+  };
 
-      const mesh = createPileMesh(newPile);
-      if (mesh) {
-        this.scene.scene.add(mesh);
-        this.pileMeshes.set(newPile.id, mesh);
-      }
-    } else {
-      // Animate card flying to pile, then add to pile data
-      const cardMesh = this.meshes.get(cardInstance.id);
-      const pileMesh = this.pileMeshes.get(pile.id);
-      if (cardMesh && pileMesh) {
-        this.meshes.delete(cardInstance.id);
-        animateCardToPile(cardMesh, pileMesh.position.x, pileMesh.position.z, this.scene.scene, () => {
-          pile.cards.push(cardInstance);
-          if (shouldShuffle) {
-            shufflePile(this.state.gameState, pile.id);
-            const pm = this.pileMeshes.get(pile.id);
-            if (pm) animateShufflePile(pm, pile, this.scene.scene);
-          }
-          this.updatePileMeshes();
-        });
-      } else {
+  sendCardToPile = (cardInstance, pileName, shouldShuffle = false) => {
+    const pile = this.findDestinationPile(cardInstance, pileName);
+    if (!pile) {
+      this.setState({ contextMenu: null });
+      return;
+    }
+
+    const cardMesh = this.meshes.get(cardInstance.id);
+    const pileMesh = this.pileMeshes.get(pile.id);
+    if (cardMesh && pileMesh) {
+      this.meshes.delete(cardInstance.id);
+      this.lifeHUDs.delete(cardInstance.id);
+      animateCardToPile(cardMesh, pileMesh.position.x, pileMesh.position.z, this.scene.scene, () => {
         pile.cards.push(cardInstance);
         if (shouldShuffle) {
           shufflePile(this.state.gameState, pile.id);
           const pm = this.pileMeshes.get(pile.id);
           if (pm) animateShufflePile(pm, pile, this.scene.scene);
         }
-        this.removeCardFromTable(cardInstance);
         this.updatePileMeshes();
+        this.sync.removeCard(cardInstance.id);
+        this.sync.syncPile(pile);
+      });
+    } else {
+      pile.cards.push(cardInstance);
+      if (shouldShuffle) {
+        shufflePile(this.state.gameState, pile.id);
+        const pm = this.pileMeshes.get(pile.id);
+        if (pm) animateShufflePile(pm, pile, this.scene.scene);
       }
+      this.removeCardFromTable(cardInstance);
+      this.updatePileMeshes();
+      this.sync.syncPile(pile);
     }
 
     this.setState({ contextMenu: null });
   };
 
   sendHandCardToPile = (cardInstance, pileName, shouldShuffle = false) => {
-    const pile = this.findPileByName(pileName);
+    const pile = this.findDestinationPile(cardInstance, pileName);
     if (pile) {
       pile.cards.push(cardInstance);
       if (shouldShuffle) {
@@ -4241,6 +4467,7 @@ export default class GameBoard extends Component {
         if (mesh) animateShufflePile(mesh, pile, this.scene.scene);
       }
       this.updatePileMeshes();
+      this.sync.syncPile(pile);
     }
     this.removeFromHand(cardInstance);
     this.setState({ contextMenu: null, hoveredHandIndex: -1 });
@@ -4253,13 +4480,14 @@ export default class GameBoard extends Component {
     }
     shufflePile(this.state.gameState, pile.id);
     this.setState({ contextMenu: null });
+    this.sync.syncPile(pile);
   };
 
   flipCard = (cardInstance, mesh) => {
     cardInstance.faceDown = !cardInstance.faceDown;
     animateCardFlip(mesh, cardInstance);
     playSound('cardFlip');
-    emitGameAction('card:flip', { cardId: cardInstance.id, faceDown: cardInstance.faceDown });
+    this.sync.flipCard(cardInstance.id, cardInstance.faceDown);
     this.setState({ contextMenu: null });
   };
 
@@ -4267,7 +4495,7 @@ export default class GameBoard extends Component {
     if (cardInstance.isSite) { this.setState({ contextMenu: null }); return; }
     cardInstance.tapped = !cardInstance.tapped;
     animateCardTap(mesh, cardInstance);
-    emitGameAction('card:tap', { cardId: cardInstance.id, tapped: cardInstance.tapped });
+    this.sync.tapCard(cardInstance.id, cardInstance.tapped);
     this.setState({ contextMenu: null });
   };
 
@@ -4309,17 +4537,29 @@ export default class GameBoard extends Component {
     this.createTrackerTokens();
     this.createTrackerButtons();
 
-    // Broadcast deck spawn to the other player
-    if (!this.suppressBroadcast) {
-      emitGameAction('deck:spawn', { deck, playerNum });
-    }
+    // Broadcast deck spawn to the other player (legacy path — server-prepared
+    // matches use room:joined so this only fires for casual/invite decks).
+    this.sync.emit('deck:spawn', { deck, playerNum });
   };
 
   updatePileMeshes = () => {
     const { gameState } = this.state;
     for (const pile of gameState.piles) {
       const mesh = this.pileMeshes.get(pile.id);
-      if (!mesh) continue;
+
+      if (!mesh) {
+        // Lazy-create the mesh the first time a pile becomes non-empty.
+        // Cemeteries are created with an empty card list, so createPileMesh
+        // returns null at creation time — we build it here once a card lands.
+        if (pile.cards.length > 0) {
+          const newMesh = createPileMesh(pile);
+          if (newMesh) {
+            this.scene.scene.add(newMesh);
+            this.pileMeshes.set(pile.id, newMesh);
+          }
+        }
+        continue;
+      }
 
       if (pile.cards.length === 0) {
         this.scene.scene.remove(mesh);
@@ -4366,302 +4606,34 @@ export default class GameBoard extends Component {
 
   // --- Render ---
 
-  renderContextMenu() {
-    const { contextMenu } = this.state;
-    if (!contextMenu) return null;
-
-    const menuStyle = {
-      position: 'fixed',
-      left: contextMenu.x,
-      top: contextMenu.y,
-      zIndex: 100,
-    };
-
-    const menuCls = 'flex w-full items-center rounded-lg px-3 py-1.5 cursor-pointer transition-colors';
-    const menuHover = (e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; };
-    const menuLeave = (e) => { e.currentTarget.style.background = 'transparent'; };
-    const divider = <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />;
-
-    if (contextMenu.type === 'moveAction') {
-      const { cardInstance, mesh } = contextMenu;
-      const abilities = this.getCardAbilities(cardInstance);
-      const isImmobile = abilities.immobile;
-      const attackSteps = 1 + abilities.movementBonus;
-      const abilityTags = [];
-      if (abilities.airborne) abilityTags.push('Airborne');
-      if (abilities.stealth) abilityTags.push('Stealth');
-      if (abilities.lethal) abilityTags.push('Lethal');
-      if (abilities.charge) abilityTags.push('Charge');
-      if (abilities.movementBonus > 0) abilityTags.push(`Movement +${abilities.movementBonus}`);
-
-      return (
-        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: ACCENT_GOLD }}>
-            {cardInstance.name || 'Unit'}
-          </div>
-          {abilityTags.length > 0 ? (
-            <div className="px-3 pb-1 flex flex-wrap gap-1">
-              {abilityTags.map((tag) => (
-                <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: `${GOLD} 0.1)`, color: ACCENT_GOLD }}>{tag}</span>
-              ))}
-            </div>
-          ) : null}
-          {divider}
-          <button type="button" className={menuCls}
-            style={{ color: isImmobile ? TEXT_MUTED : TEXT_BODY, opacity: isImmobile ? 0.4 : 1 }}
-            onMouseEnter={isImmobile ? undefined : menuHover} onMouseLeave={menuLeave}
-            onClick={() => {
-              if (isImmobile) return;
-              this.setState({ contextMenu: null });
-              this.startPathMode(cardInstance, mesh, 'move');
-            }}>
-            <span className="mr-2">&#9814;</span> Move
-            {isImmobile ? <span className="ml-auto text-[10px] opacity-60">Immobile</span> : null}
-          </button>
-          <button type="button" className={menuCls}
-            style={{ color: isImmobile ? TEXT_MUTED : '#c45050', opacity: isImmobile ? 0.4 : 1 }}
-            onMouseEnter={isImmobile ? undefined : menuHover} onMouseLeave={menuLeave}
-            onClick={() => {
-              if (isImmobile) return;
-              this.setState({ contextMenu: null });
-              this.startPathMode(cardInstance, mesh, 'attack');
-            }}>
-            <span className="mr-2">&#9876;</span> Move &amp; Attack
-            <span className="ml-auto text-[10px] opacity-60">{attackSteps} step{attackSteps !== 1 ? 's' : ''}</span>
-          </button>
-          {divider}
-          <button type="button" className={menuCls} style={{ color: TEXT_MUTED }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
-            onClick={() => { this._pendingPathCard = null; this.setState({ contextMenu: null }); }}>
-            Cancel
-          </button>
-        </div>
-      );
-    }
-
-    if (contextMenu.type === 'card') {
-      const { cardInstance, mesh } = contextMenu;
-      return (
-        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
-          {/* Move & Attack option for grid cards */}
-          {(() => {
-            const isOnGrid = cardInstance._gridCol != null && cardInstance._gridRow != null;
-            const isSite = cardInstance.isSite;
-            if (!isOnGrid || isSite) return null;
-            const abilities = this.getCardAbilities(cardInstance);
-            if (abilities?.immobile) return null;
-            const steps = 1 + (abilities?.movementBonus || 0);
-            return (
-              <>
-                <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
-                  onClick={() => {
-                    this.setState({ contextMenu: null });
-                    // Tap and attack in place — enter target selection at current cell
-                    if (!cardInstance.tapped) {
-                      cardInstance.tapped = true;
-                      animateCardTap(mesh, cardInstance);
-                      emitGameAction('card:tap', { cardId: cardInstance.id, tapped: true });
-                    }
-                    this.enterTargetSelection(cardInstance, mesh);
-                  }}>
-                  &#9876; Attack
-                </button>
-                <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
-                  onClick={() => { this.setState({ contextMenu: null }); this.startPathMode(cardInstance, mesh, 'attack'); }}>
-                  &#9876; Move &amp; Attack <span className="ml-auto text-[10px] opacity-60">{steps} step{steps !== 1 ? 's' : ''}</span>
-                </button>
-                {divider}
-              </>
-            );
-          })()}
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.tapCard(cardInstance, mesh)}>
-            {cardInstance.tapped ? 'Untap' : 'Tap'}
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.flipCard(cardInstance, mesh)}>
-            Flip {cardInstance.faceDown ? '(face up)' : '(face down)'}
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendToHand(cardInstance)}>
-            Send to hand
-          </button>
-          {divider}
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Cemetery')}>
-            Send to Cemetery
-          </button>
-          {divider}
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Put into pile</div>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Spellbook', true)}>
-            Spellbook (shuffle)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Spellbook', false)}>
-            Spellbook (bottom)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Atlas', true)}>
-            Atlas (shuffle)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendCardToPile(cardInstance, 'Atlas', false)}>
-            Atlas (bottom)
-          </button>
-          {!cardInstance.isSite && cardInstance._gridCol != null ? (() => {
-            const cellCards = this.getCardsInCell(cardInstance._gridCol, cardInstance._gridRow);
-            const hasUncarriedArtifacts = cellCards.some(({ cardInstance: ci }) =>
-              ci.type === 'Artifact' && ci.id !== cardInstance.id && !ci._carriedBy
-            );
-            const hasCarried = cardInstance.carriedArtifacts && cardInstance.carriedArtifacts.length > 0;
-            if (!hasUncarriedArtifacts && !hasCarried) return null;
-            return (
-              <>
-                {divider}
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Artifacts</div>
-                {hasUncarriedArtifacts ? (
-                  <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.pickUpArtifacts(cardInstance)}>
-                    Pick Up Artifacts
-                  </button>
-                ) : null}
-                {hasCarried ? (
-                  <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.dropArtifacts(cardInstance)}>
-                    Drop Artifacts ({cardInstance.carriedArtifacts.length})
-                  </button>
-                ) : null}
-              </>
-            );
-          })() : null}
-          {/* Level options (Burrow / Submerge) */}
-          {(() => {
-            const abilities = this.getCardAbilities(cardInstance);
-            const levelOpts = abilities ? getLevelOptions(abilities, cardInstance._level || LEVELS.SURFACE) : [];
-            if (levelOpts.length === 0) return null;
-            return (
-              <>
-                {divider}
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Level</div>
-                {levelOpts.map((opt) => (
-                  <button key={opt.level} type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave}
-                    onClick={() => this.changeCardLevel(cardInstance, opt.level)}>
-                    {opt.icon} {opt.label}
-                  </button>
-                ))}
-              </>
-            );
-          })()}
-          {divider}
-          <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteCard(cardInstance)}>
-            Delete
-          </button>
-        </div>
-      );
-    }
-
-    if (contextMenu.type === 'pile') {
-      const { pile } = contextMenu;
-      return (
-        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>{pile.name} ({pile.cards.length} cards)</div>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.drawCard(pile.id); this.setState({ contextMenu: null }); }}>
-            Draw card
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.shufflePileAction(pile); }}>
-            Shuffle
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.setState({ searchPile: pile, searchQuery: '', contextMenu: null }); }}>
-            Search
-          </button>
-          {divider}
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => {
-            if (pile.cards.length > 0) {
-              const card = pile.cards[pile.cards.length - 1];
-              pile.cards.pop();
-              this.addToHand(card);
-              this.setState({ contextMenu: null });
-              this.updatePileMeshes();
-            } else {
-              this.setState({ contextMenu: null });
-            }
-          }}>
-            Draw to hand
-          </button>
-        </div>
-      );
-    }
-
-    if (contextMenu.type === 'handcard') {
-      const { cardInstance } = contextMenu;
-      const handMenuStyle = {
-        position: 'fixed',
-        left: contextMenu.x,
-        bottom: window.innerHeight - contextMenu.y,
-        zIndex: 1100,
-      };
-      return (
-        <div style={{ ...handMenuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
-          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Put into pile</div>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Spellbook', true)}>
-            Spellbook (shuffle)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Spellbook', false)}>
-            Spellbook (bottom)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Atlas', true)}>
-            Atlas (shuffle)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Atlas', false)}>
-            Atlas (bottom)
-          </button>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.sendHandCardToPile(cardInstance, 'Cemetery', false)}>
-            Send to Cemetery
-          </button>
-        </div>
-      );
-    }
-
-    if (contextMenu.type === 'token') {
-      return (
-        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>Token</div>
-          <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteToken(contextMenu.tokenInstance)}>
-            Delete
-          </button>
-        </div>
-      );
-    }
-
-    if (contextMenu.type === 'dice') {
-      const di = contextMenu.diceInstance;
-      const maxVal = DICE_CONFIGS[di.dieType]?.faces || 6;
-      return (
-        <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>{di.dieType.toUpperCase()} — showing {di.value}</div>
-          <button type="button" className={menuCls} style={{ color: TEXT_BODY }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => { this.rollDice(di); this.setState({ contextMenu: null }); }}>
-            Roll
-          </button>
-          <div className="px-3 py-1 text-[10px] font-semibold mt-1" style={SECTION_HEADER_STYLE}>Set Value</div>
-          <div className="flex flex-wrap gap-1 px-2 pb-1.5">
-            {Array.from({ length: maxVal }, (_, i) => i + 1).map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="size-7 rounded-md text-xs font-semibold flex items-center justify-center cursor-pointer transition-colors"
-                style={v === di.value
-                  ? { background: `${GOLD} 0.25)`, color: TEXT_PRIMARY, border: `1px solid ${GOLD} 0.4)` }
-                  : { color: TEXT_BODY }
-                }
-                onMouseEnter={(e) => { if (v !== di.value) e.currentTarget.style.background = `${GOLD} 0.08)`; }}
-                onMouseLeave={(e) => { if (v !== di.value) e.currentTarget.style.background = 'transparent'; }}
-                onClick={() => this.setDiceValue(di, v)}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-          <button type="button" className={menuCls} style={{ color: '#c45050' }} onMouseEnter={menuHover} onMouseLeave={menuLeave} onClick={() => this.deleteDice(di)}>
-            Delete
-          </button>
-        </div>
-      );
-    }
-
-    return null;
-  }
+  // Flat map of the orchestration callbacks the GameContextMenu component
+  // needs. Re-created per render (cheap) so the component receives the
+  // latest references without us having to worry about stale closures.
+  buildContextMenuActions = () => ({
+    startPathMode: (cardInstance, mesh, action) => {
+      this.setState({ contextMenu: null });
+      this.startPathMode(cardInstance, mesh, action);
+    },
+    cancelMoveAction: this.cancelMoveAction,
+    attackInPlace: this.attackInPlace,
+    tapCard: (cardInstance, mesh) => { this.tapCard(cardInstance, mesh); this.closeContextMenu(); },
+    flipCard: (cardInstance, mesh) => { this.flipCard(cardInstance, mesh); this.closeContextMenu(); },
+    sendToHand: this.sendToHand,
+    sendCardToPile: this.sendCardToPile,
+    pickUpArtifacts: this.pickUpArtifacts,
+    dropArtifacts: this.dropArtifacts,
+    changeCardLevel: (cardInstance, level) => { this.changeCardLevel(cardInstance, level); this.closeContextMenu(); },
+    deleteCard: this.deleteCard,
+    drawCard: this.handleDrawCardFromPile,
+    shufflePile: this.shufflePileAction,
+    openPileSearch: this.openPileSearch,
+    drawPileToHand: this.drawPileToHand,
+    sendHandCardToPile: this.sendHandCardToPile,
+    deleteToken: this.deleteToken,
+    rollDice: this.handleRollDiceAndClose,
+    setDiceValue: this.setDiceValue,
+    deleteDice: this.deleteDice,
+  });
 
   takeCardFromPile = (pile, cardInstance) => {
     const idx = pile.cards.indexOf(cardInstance);
@@ -4690,92 +4662,74 @@ export default class GameBoard extends Component {
     );
   }
 
-  renderPileSearch() {
-    const { searchPile, searchQuery } = this.state;
-    if (!searchPile) return null;
+  // --- Context menu action wrappers ---
+  // Thin orchestration helpers that the GameContextMenu component calls so
+  // it can stay purely presentational.
 
-    const query = searchQuery.toLowerCase();
-    const filtered = query
-      ? searchPile.cards.filter((c) => c.name.toLowerCase().includes(query))
-      : searchPile.cards;
+  closeContextMenu = () => this.setState({ contextMenu: null });
 
-    return (
-      <div className="fixed inset-0 z-[1100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => this.setState({ searchPile: null, searchQuery: '' })}>
-        <div className="relative w-[600px] max-h-[80vh] flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
-          <FourCorners radius={12} />
-          <div className="flex items-center gap-3 p-4" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
-            <h2 className="text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>{searchPile.name}</h2>
-            <span className="text-sm" style={{ color: TEXT_MUTED }}>{searchPile.cards.length} cards</span>
-            <div className="ml-auto flex items-center gap-2">
-              <input
-                type="search"
-                placeholder="Search cards..."
-                value={searchQuery}
-                onInput={(e) => this.setState({ searchQuery: e.target.value })}
-                className="px-3 py-1.5 text-sm outline-none"
-                style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
-                autoFocus
-              />
-              <button
-                type="button"
-                className="px-3 py-1.5 text-sm cursor-pointer transition-all"
-                style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-                onClick={() => this.setState({ searchPile: null, searchQuery: '' })}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            {filtered.length === 0 ? (
-              <div className="py-8 text-center text-sm" style={{ color: TEXT_MUTED }}>
-                {query ? 'No cards match your search' : 'Pile is empty'}
-              </div>
-            ) : (
-              <div className="grid grid-cols-4 gap-3">
-                {filtered.map((card) => (
-                  <div key={card.id} className="group relative cursor-pointer rounded-lg overflow-hidden transition-colors" style={{ border: `1px solid ${GOLD} 0.12)` }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.4)`; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.12)`; }}
-                  >
-                    <img src={resolveLocalImageUrl(card.imageUrl)} alt={card.name} className={cn('w-full object-cover', card.isSite ? 'aspect-[88.9/63.5]' : 'aspect-[63.5/88.9]')} />
-                    <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="w-full p-2 flex gap-1">
-                        <button
-                          type="button"
-                          className="flex-1 rounded px-2 py-1 text-[10px] font-medium cursor-pointer transition-colors"
-                          style={{ background: `${GOLD} 0.2)`, color: TEXT_PRIMARY }}
-                          onClick={() => this.takeCardFromPile(searchPile, card)}
-                        >
-                          To hand
-                        </button>
-                        <button
-                          type="button"
-                          className="flex-1 rounded px-2 py-1 text-[10px] font-medium cursor-pointer transition-colors"
-                          style={{ background: `${GOLD} 0.2)`, color: TEXT_PRIMARY }}
-                          onClick={() => {
-                            const idx = searchPile.cards.indexOf(card);
-                            if (idx !== -1) searchPile.cards.splice(idx, 1);
-                            card.x = 0; card.z = 0;
-                            this.addCardToTable(card);
-                            this.setState((state) => ({ searchPile: searchPile.cards.length === 0 ? null : state.searchPile }));
-                            this.updatePileMeshes();
-                          }}
-                        >
-                          To field
-                        </button>
-                      </div>
-                    </div>
-                    <div className="absolute top-1 left-1 right-1 truncate text-[9px] font-medium drop-shadow-md" style={{ color: TEXT_PRIMARY }}>{card.name}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  cancelMoveAction = () => {
+    this._pendingPathCard = null;
+    this.setState({ contextMenu: null });
+  };
+
+  // Tap the attacker in place and enter target selection at its current cell.
+  attackInPlace = (cardInstance, mesh) => {
+    this.setState({ contextMenu: null });
+    if (!cardInstance.tapped) {
+      cardInstance.tapped = true;
+      animateCardTap(mesh, cardInstance);
+      this.sync.tapCard(cardInstance.id, true);
+    }
+    this.enterTargetSelection(cardInstance, mesh);
+  };
+
+  // Pop the top card off a pile into the player's hand.
+  drawPileToHand = (pile) => {
+    if (pile.cards.length > 0) {
+      const card = pile.cards[pile.cards.length - 1];
+      pile.cards.pop();
+      this.addToHand(card);
+      this.updatePileMeshes();
+    }
+    this.setState({ contextMenu: null });
+  };
+
+  openPileSearch = (pile) => {
+    this.setState({ searchPile: pile, searchQuery: '', contextMenu: null });
+  };
+
+  handleDrawCardFromPile = (pileId) => {
+    this.drawCard(pileId);
+    this.setState({ contextMenu: null });
+  };
+
+  handleRollDiceAndClose = (diceInstance) => {
+    this.rollDice(diceInstance);
+    this.setState({ contextMenu: null });
+  };
+
+  handlePileSearchClose = () => {
+    this.setState({ searchPile: null, searchQuery: '' });
+  };
+
+  handlePileSearchQueryChange = (value) => {
+    this.setState({ searchQuery: value });
+  };
+
+  handlePileSearchTakeToField = (card) => {
+    const { searchPile } = this.state;
+    if (!searchPile) return;
+    const idx = searchPile.cards.indexOf(card);
+    if (idx !== -1) searchPile.cards.splice(idx, 1);
+    card.x = 0;
+    card.z = 0;
+    this.addCardToTable(card);
+    this.setState((state) => ({
+      searchPile: searchPile.cards.length === 0 ? null : state.searchPile,
+    }));
+    this.updatePileMeshes();
+  };
 
   renderDeckPicker() {
     if (!this.state.showDeckPicker) return null;
@@ -5086,7 +5040,12 @@ export default class GameBoard extends Component {
             className="block w-full h-full"
           />
 
-          {this.renderContextMenu()}
+          <GameContextMenu
+            contextMenu={this.state.contextMenu}
+            getCardAbilities={this.getCardAbilities}
+            getCardsInCell={this.getCardsInCell}
+            actions={this.buildContextMenuActions()}
+          />
 
           {/* Waiting for opponent defense/intercept */}
           {this.state.waitingForDefense ? (
@@ -5097,122 +5056,33 @@ export default class GameBoard extends Component {
           ) : null}
 
           {/* Defend Prompt */}
-          {this.state.defendPrompt ? (() => {
-            const dp = this.state.defendPrompt;
-            const selectedCount = dp.selectedDefenders.size;
-            return (
-              <div className="absolute bottom-0 left-0 right-0 z-[60]" style={{ background: 'linear-gradient(to top, rgba(8,6,4,0.95) 0%, rgba(8,6,4,0.85) 70%, transparent 100%)' }}>
-                <div className="max-w-2xl mx-auto px-6 py-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="size-2.5 rounded-full bg-red-400 animate-pulse" />
-                    <span className="text-sm font-bold" style={{ color: '#c45050' }}>ATTACK DECLARED</span>
-                  </div>
-                  <p className="text-sm mb-3" style={{ color: TEXT_BODY }}>
-                    <span style={{ color: TEXT_PRIMARY }}>{dp.attackerName}</span> is attacking your <span style={{ color: TEXT_PRIMARY }}>{dp.targetName}</span>! Click adjacent units on the board to assign defenders, or pass.
-                  </p>
-                  {selectedCount > 0 ? (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {[...dp.selectedDefenders].map((defId) => {
-                        const mesh = this.meshes.get(defId);
-                        const name = mesh?.userData?.cardInstance?.name || defId;
-                        return (
-                          <span key={defId} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer" style={{ background: `rgba(34,204,68,0.15)`, border: '1px solid rgba(34,204,68,0.3)', color: '#6fd87a' }} onClick={() => this.toggleDefender(defId)}>
-                            {name} &times;
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none" style={{ color: TEXT_MUTED }}>
-                      <input
-                        type="checkbox"
-                        checked={dp.keepOriginalTarget}
-                        onChange={(e) => this.setState((s) => ({ defendPrompt: { ...s.defendPrompt, keepOriginalTarget: e.target.checked } }))}
-                        className="accent-amber-500"
-                      />
-                      <span className="text-xs">Keep {dp.targetName} in fight</span>
-                    </label>
-                    <div className="flex-1" />
-                    <button
-                      type="button"
-                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer"
-                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-                      onClick={this.passDefend}
-                    >
-                      Pass
-                    </button>
-                    <button
-                      type="button"
-                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer disabled:opacity-40"
-                      style={{ ...GOLD_BTN, borderRadius: '6px' }}
-                      disabled={selectedCount === 0}
-                      onClick={this.submitDefendResponse}
-                    >
-                      Defend ({selectedCount})
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })() : null}
+          <DefendPrompt
+            prompt={this.state.defendPrompt}
+            getCardName={this.getCardNameById}
+            onToggleDefender={this.toggleDefender}
+            onToggleKeepOriginal={(keep) =>
+              this.setState((s) => ({ defendPrompt: { ...s.defendPrompt, keepOriginalTarget: keep } }))
+            }
+            onPass={this.passDefend}
+            onSubmit={this.submitDefendResponse}
+          />
 
-          {/* Intercept Prompt */}
-          {this.state.interceptPrompt ? (() => {
-            const ip = this.state.interceptPrompt;
-            const selectedCount = ip.selectedInterceptors.size;
-            return (
-              <div className="absolute bottom-0 left-0 right-0 z-[60]" style={{ background: 'linear-gradient(to top, rgba(8,6,4,0.95) 0%, rgba(8,6,4,0.85) 70%, transparent 100%)' }}>
-                <div className="max-w-2xl mx-auto px-6 py-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="size-2.5 rounded-full bg-amber-400 animate-pulse" />
-                    <span className="text-sm font-bold" style={{ color: ACCENT_GOLD }}>ENEMY ARRIVED</span>
-                  </div>
-                  <p className="text-sm mb-3" style={{ color: TEXT_BODY }}>
-                    <span style={{ color: TEXT_PRIMARY }}>{ip.arrivedCardName}</span> has moved into your territory! Click units on the board to intercept, or pass.
-                  </p>
-                  {selectedCount > 0 ? (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {[...ip.selectedInterceptors].map((icId) => {
-                        const mesh = this.meshes.get(icId);
-                        const name = mesh?.userData?.cardInstance?.name || icId;
-                        return (
-                          <span key={icId} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium cursor-pointer" style={{ background: `rgba(34,204,68,0.15)`, border: '1px solid rgba(34,204,68,0.3)', color: '#6fd87a' }} onClick={() => this.toggleInterceptor(icId)}>
-                            {name} &times;
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1" />
-                    <button
-                      type="button"
-                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer"
-                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-                      onClick={this.passIntercept}
-                    >
-                      Pass
-                    </button>
-                    <button
-                      type="button"
-                      className="px-5 py-2 text-sm font-semibold transition-all cursor-pointer disabled:opacity-40"
-                      style={{ ...GOLD_BTN, borderRadius: '6px' }}
-                      disabled={selectedCount === 0}
-                      onClick={this.submitInterceptResponse}
-                    >
-                      Intercept ({selectedCount})
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })() : null}
+          <InterceptPrompt
+            prompt={this.state.interceptPrompt}
+            getCardName={this.getCardNameById}
+            onToggleInterceptor={this.toggleInterceptor}
+            onPass={this.passIntercept}
+            onSubmit={this.submitInterceptResponse}
+          />
 
           {/* Life & Mana HUD */}
           {(() => {
             const localPlayer = this.state.isHost ? 'p1' : 'p2';
+            const opponentPlayer = localPlayer === 'p1' ? 'p2' : 'p1';
             const isMyTurn = this.state.currentTurn === localPlayer;
+            // Always render the local player first so "You" is on top on
+            // both clients, regardless of whether they host or joined.
+            const orderedPlayers = [localPlayer, opponentPlayer];
             return (
               <div className="absolute top-3 right-3 z-10 px-5 py-4" style={{ ...POPOVER_STYLE, borderRadius: '12px', boxShadow: '0 18px 48px rgba(0,0,0,0.4), 0 0 20px rgba(180,140,60,0.04)' }}>
                 <FourCorners radius={12} />
@@ -5231,10 +5101,13 @@ export default class GameBoard extends Component {
                   </button>
                 </div>
                 <div className="flex flex-col gap-3">
-                  {PLAYERS.map((player) => {
+                  {orderedPlayers.map((player) => {
                     const t = this.state.gameState.trackers[player];
-                    const isP1 = player === 'p1';
-                    const info = isP1 ? this.props.arenaPlayerInfo : this.props.arenaOpponentInfo;
+                    const isLocal = player === localPlayer;
+                    // Map each row to the player it actually represents —
+                    // the local player's info goes on their own row whether
+                    // they're the host (p1) or the guest (p2).
+                    const info = isLocal ? this.props.arenaPlayerInfo : this.props.arenaOpponentInfo;
                     const displayName = info?.name || PLAYER_LABELS[player];
                     const avatarUrl = info?.avatarUrl || null;
                     const isActive = this.state.currentTurn === player;
@@ -5244,7 +5117,7 @@ export default class GameBoard extends Component {
                           <img src={avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover object-top shrink-0" style={{ border: isActive ? `2px solid ${ACCENT_GOLD}` : `1px solid ${GOLD} 0.15)` }} />
                         ) : (
                           <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] shrink-0" style={isActive ? { background: `${GOLD} 0.15)`, border: `2px solid ${ACCENT_GOLD}`, color: ACCENT_GOLD } : { background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.15)`, color: TEXT_MUTED }}>
-                            {isP1 ? '1' : '2'}
+                            {isLocal ? 'You' : 'Opp'}
                           </div>
                         )}
                         <span className="text-xs font-semibold min-w-[4rem] truncate" style={{ color: isActive ? TEXT_PRIMARY : TEXT_BODY }}>{displayName}</span>
@@ -5459,18 +5332,22 @@ export default class GameBoard extends Component {
             </div>
           ) : null}
           {this.renderDeckPicker()}
-          {this.renderPileSearch()}
+          <PileSearchDialog
+            pile={this.state.searchPile}
+            query={this.state.searchQuery}
+            resolveImageUrl={resolveLocalImageUrl}
+            onQueryChange={this.handlePileSearchQueryChange}
+            onClose={this.handlePileSearchClose}
+            onTakeToHand={(card) => this.takeCardFromPile(this.state.searchPile, card)}
+            onTakeToField={this.handlePileSearchTakeToField}
+          />
           {this.renderCardInspector()}
           {this.state.showMatchResult && this.props.isRankedMatch ? (
             <ArenaMatchResult
               ref={(ref) => { this.matchResultRef = ref; }}
               matchDurationMinutes={this.state.matchStartTime ? Math.round((Date.now() - this.state.matchStartTime) / 60000) : 0}
-              onProposeWinner={(winner) => {
-                emitGameAction('match:propose', { winner });
-              }}
-              onRejectProposal={() => {
-                emitGameAction('match:reject', {});
-              }}
+              onProposeWinner={(winner) => this.sync.proposeMatch(winner)}
+              onRejectProposal={() => this.sync.rejectMatch()}
               onListenForProposal={(handler) => {
                 this.matchResultProposalHandler = handler;
                 // If a proposal arrived before the component mounted, deliver it now
@@ -5480,7 +5357,7 @@ export default class GameBoard extends Component {
                 }
               }}
               onRewardsApplied={(reward) => {
-                emitGameAction('match:confirmed', { winner: reward.won ? 'me' : 'opponent' });
+                this.sync.confirmMatch(reward.won ? 'me' : 'opponent');
                 if (this.props.onMatchReward) {
                   this.props.onMatchReward(reward);
                 }

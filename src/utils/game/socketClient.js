@@ -38,7 +38,7 @@ function setupSubscriptions() {
     currentRoomCode = data?.roomCode || currentRoomCode;
     isHost = !!data?.isHost;
     if (joinResolver) {
-      joinResolver(currentRoomCode);
+      joinResolver({ ...data, roomCode: currentRoomCode, resumed: false });
       joinResolver = null;
       joinRejecter = null;
     }
@@ -51,7 +51,7 @@ function setupSubscriptions() {
     currentRoomCode = data?.roomCode || currentRoomCode;
     isHost = !!data?.isHost;
     if (joinResolver) {
-      joinResolver(currentRoomCode);
+      joinResolver({ ...data, roomCode: currentRoomCode, resumed: true });
       joinResolver = null;
       joinRejecter = null;
     }

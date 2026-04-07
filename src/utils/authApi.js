@@ -41,6 +41,13 @@ export async function validateToken(token) {
 }
 
 export async function getStoredToken() {
+  // Read localStorage first so browser and CEF dev instances stay isolated.
+  // Falls back to the on-disk token (needed in production where CEF's port
+  // changes per launch, which wipes localStorage).
+  try {
+    const localToken = localStorage.getItem('valkenhall-token');
+    if (localToken) return localToken;
+  } catch {}
   try {
     const res = await fetch(`${LOCAL_API_ORIGIN}/api/auth/token`);
     if (res.ok) {
@@ -48,7 +55,7 @@ export async function getStoredToken() {
       if (token) return token;
     }
   } catch {}
-  try { return localStorage.getItem('valkenhall-token'); } catch { return null; }
+  return null;
 }
 
 export async function setStoredToken(token) {

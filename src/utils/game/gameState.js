@@ -54,13 +54,16 @@ export function shuffleArray(array) {
   return shuffled;
 }
 
-export function createCardInstance(card, printing, rotated = false) {
+export function createCardInstance(card, printing, rotated = false, stableId = null) {
   // Store the image path (not full URL) so it works across different local proxy ports
   const fullUrl = printing?.image_url || card.printings?.[0]?.image_url || '';
   const imagePath = fullUrl.replace(/^https?:\/\/[^/]+/, '');
 
   return {
-    id: uid(),
+    // Use the caller-supplied stable id when present — the server assigns
+    // these for match decks so both clients produce the same mesh ids for
+    // the same cards. Falls back to a local uid for single-player sessions.
+    id: stableId || uid(),
     cardId: card.unique_id,
     name: card.name,
     imageUrl: fullUrl,
@@ -94,6 +97,12 @@ export function spawnDeck(deck, sorceryCards, spawnPoints = {}, rotated = false)
     cardIndex.set(card.unique_id, card);
   }
 
+  // Detect a server-prepared match deck: if cards already carry instanceIds
+  // the server has shuffled and assigned stable ids. We preserve that order
+  // verbatim so both clients produce identical pile layouts and mesh ids.
+  const isServerPrepared = Array.isArray(deck.cards) && deck.cards.length > 0 &&
+    typeof deck.cards[0]?.instanceId === 'string';
+
   const spellbookCards = [];
   const atlasCards = [];
   const collectionCards = [];
@@ -104,7 +113,7 @@ export function spawnDeck(deck, sorceryCards, spawnPoints = {}, rotated = false)
     if (!card) continue;
 
     const printing = card.printings?.find((p) => p.unique_id === savedCard.printingId) || card.printings?.[0];
-    const instance = createCardInstance(card, printing, rotated);
+    const instance = createCardInstance(card, printing, rotated, savedCard.instanceId || null);
 
     if (card.type === 'Avatar' || card._sorceryCategory === 'Avatar') {
       avatarInstance = instance;
@@ -130,8 +139,13 @@ export function spawnDeck(deck, sorceryCards, spawnPoints = {}, rotated = false)
   const av = spawnPoints.avatar || { x: -30, z: 0 };
   const co = spawnPoints.collection || { x: -30, z: 30 };
 
-  const spellbookPile = createPile('Spellbook', shuffleArray(spellbookCards), sb.x, sb.z, rotated);
-  const atlasPile = createPile('Atlas', shuffleArray(atlasCards), at.x, at.z, rotated);
+  // Only shuffle client-side for non-server-prepared decks (single-player,
+  // saved session loads). Server-prepared decks are already shuffled.
+  const orderedSpellbook = isServerPrepared ? spellbookCards : shuffleArray(spellbookCards);
+  const orderedAtlas = isServerPrepared ? atlasCards : shuffleArray(atlasCards);
+
+  const spellbookPile = createPile('Spellbook', orderedSpellbook, sb.x, sb.z, rotated);
+  const atlasPile = createPile('Atlas', orderedAtlas, at.x, at.z, rotated);
 
   const piles = [spellbookPile, atlasPile];
 

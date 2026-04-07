@@ -714,8 +714,7 @@ export default class App extends Component {
 
     try {
       await clearQueueState(arenaProfile.serverToken).catch(() => {});
-      await joinQueue(arenaProfile.serverToken);
-      this.arenaQueuePollTimer = setInterval(() => this.pollMatchmaking(), 2000);
+      await joinQueue(arenaProfile.serverToken, deckId);
     } catch (error) {
       console.error('Failed to join queue:', error);
       this.setState({ arenaMatchmaking: false, arenaView: 'hub', arenaSelectedDeckId: null });
