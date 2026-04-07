@@ -135,6 +135,17 @@ export async function startPresence(activity, callbacks = {}) {
     // No UI notification for declines yet — could be added later.
   }));
 
+  unsubscribers.push(on('matchmaking:matched', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'matchmaking-matched',
+        roomCode: data.roomCode,
+        isHost: data.isHost,
+        opponent: data.opponent,
+      }]);
+    }
+  }));
+
   unsubscribers.push(on('auction:sold', () => {
     // Auction proceeds arrive via mail — mail:received will trigger refresh.
   }));

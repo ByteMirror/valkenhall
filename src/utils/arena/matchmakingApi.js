@@ -1,81 +1,65 @@
-const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
+import { connectWebSocket, send, api, SERVER_URL } from '../serverClient';
 
-function authHeaders(token) {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
-  };
+// Registration is automatic on first /auth/verify with the new server.
+// Kept as a no-op stub returning a success response for backwards compat.
+export async function registerPlayer(_profileId, _username) {
+  return { ok: true };
 }
 
-export async function registerPlayer(profileId, username) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ profileId, username }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Registration failed');
+// Queue state is managed server-side via the WebSocket connection.
+// No state to clear from the client — kept as a no-op for backwards compat.
+export async function clearQueueState(_token) {
+  return { ok: true };
+}
+
+// Join the public matchmaking queue via WebSocket.
+// The `token` argument is ignored (auth is handled by the WebSocket connection).
+// The optional `deckId` is forwarded in the WebSocket payload.
+export async function joinQueue(_token, deckId) {
+  await connectWebSocket();
+  send('matchmaking:join', { deckId });
+  return { ok: true };
+}
+
+export async function leaveQueue(_token) {
+  await connectWebSocket();
+  send('matchmaking:leave', {});
+  return { ok: true };
+}
+
+// Polling is obsolete — status arrives via WebSocket `matchmaking:status`
+// and `matchmaking:matched` events (handled in presenceManager).
+// This returns a stable "waiting" response so any legacy polling code
+// continues to work as a no-op.
+export async function pollQueueStatus(_token) {
+  return { status: 'waiting' };
+}
+
+// Record a match in the server-side history.
+// Rank changes are now computed client-side (see processMatchResult / applyLpChange)
+// and sent via PUT /profile/me. This endpoint just appends to match_history.
+export async function reportMatchResult(_token, _matchId, winner, extras = {}) {
+  try {
+    return await api.post('/profile/me/match', {
+      opponentName: extras.opponentName || 'Opponent',
+      won: winner === 'me',
+      coinsEarned: extras.coinsEarned || 0,
+      xpEarned: extras.xpEarned || 0,
+    });
+  } catch (err) {
+    console.error('[matchmakingApi] reportMatchResult failed:', err);
+    return { recorded: false };
   }
-  return res.json();
-}
-
-export async function clearQueueState(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-clear`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error('Failed to clear queue state');
-  return res.json();
-}
-
-export async function joinQueue(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-join`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error('Failed to join queue');
-  return res.json();
-}
-
-export async function leaveQueue(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-leave`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error('Failed to leave queue');
-  return res.json();
-}
-
-export async function pollQueueStatus(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/game/queue-status`, {
-    headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error('Failed to check queue status');
-  return res.json();
-}
-
-export async function reportMatchResult(token, matchId, winner) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/game/match-report`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ matchId, winner }),
-  });
-  if (!res.ok) throw new Error('Failed to report match result');
-  return res.json();
 }
 
 export async function getLeaderboard() {
-  const res = await fetch(`${MATCHMAKING_URL}/api/leaderboard`);
+  const res = await fetch(`${SERVER_URL}/api/leaderboard`);
   if (!res.ok) throw new Error('Failed to fetch leaderboard');
   return res.json();
 }
 
-export async function deleteAccount(token) {
-  const res = await fetch(`${MATCHMAKING_URL}/api/game/account-delete`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  });
-  if (!res.ok) throw new Error('Failed to delete account');
-  return res.json();
+// Account deletion is not yet implemented on the new server.
+// No-op for backwards compat.
+export async function deleteAccount(_token) {
+  return { ok: true };
 }

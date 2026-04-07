@@ -542,6 +542,28 @@ export default class App extends Component {
           title: 'Invite Accepted',
           message: `${n.name || n.senderName || 'Your opponent'} accepted — choose your deck!`,
         });
+      } else if (n.type === 'matchmaking-matched') {
+        clearInterval(this.arenaQueuePollTimer);
+        this.arenaQueuePollTimer = null;
+        const opp = n.opponent || {};
+        const opponentAvatarUrl = this.getArenaAvatarUrl(opp.profileAvatar);
+        this.setState({
+          arenaMatchmakingOpponent: { ...opp, name: opp.name || opp.username || opp.displayName || 'Opponent', avatarUrl: opponentAvatarUrl },
+          arenaMatchId: n.roomCode,
+        });
+        playUI(UI.MATCH_START);
+        const delay = n.isHost ? 1500 : 4000;
+        setTimeout(() => {
+          this.setState({
+            arenaMatchmaking: false,
+            arenaView: 'hub',
+            isGameBoardOpen: true,
+            isArenaMatch: true,
+            isRankedMatch: true,
+            sessionMode: n.isHost ? 'new' : 'join',
+            roomCode: n.roomCode,
+          });
+        }, delay);
       } else if (n.type === 'spectate-request') {
         this.addToast({
           title: 'Spectate Request',
@@ -1003,18 +1025,16 @@ export default class App extends Component {
     this.setState({ arenaProfile: withAchievements });
     await saveArenaProfile(withAchievements).catch((e) => console.error('Failed to save profile:', e));
 
-    const { arenaMatchId } = this.state;
-    if (arenaProfile.serverToken && arenaMatchId) {
+    // Record match in server-side history (rank updates are now client-driven)
+    if (arenaProfile.serverToken && this.state.isRankedMatch) {
       try {
-        const result = await reportMatchResult(arenaProfile.serverToken, arenaMatchId, reward.won ? 'me' : 'opponent');
-        if (result.status === 'resolved') {
-          this.setState((state) => ({
-            arenaProfile: { ...state.arenaProfile, rank: { tier: result.newTier, division: result.newDivision, lp: result.newLp } },
-          }));
-          await saveArenaProfile({ ...updatedProfile, rank: { tier: result.newTier, division: result.newDivision, lp: result.newLp } }).catch(() => {});
-        }
+        await reportMatchResult(arenaProfile.serverToken, null, reward.won ? 'me' : 'opponent', {
+          opponentName,
+          coinsEarned: reward.coins,
+          xpEarned: reward.xp,
+        });
       } catch (error) {
-        console.error('Failed to report match result to server:', error);
+        console.error('Failed to report match result:', error);
       }
     }
   };
