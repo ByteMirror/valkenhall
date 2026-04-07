@@ -32,7 +32,6 @@ export default class SettingsScreen extends Component {
       activeSection: 'display',
       soundSettings: getSoundSettings(),
       displayMode: 'fullscreen',
-      showResetConfirm: false,
       checking: false,
       retrying: false,
       viewScale: getViewportScale(),
@@ -285,8 +284,7 @@ export default class SettingsScreen extends Component {
   }
 
   renderDangerSection() {
-    const { onLogout, onResetProfile, onQuit } = this.props;
-    const { showResetConfirm } = this.state;
+    const { onLogout, onQuit } = this.props;
 
     return (
       <div>
@@ -306,33 +304,6 @@ export default class SettingsScreen extends Component {
               >
                 Log Out
               </button>
-            </div>
-          ) : null}
-          {onResetProfile ? (
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(180,60,60,0.08)' }}>
-              <div>
-                <div className="text-sm" style={{ color: '#c45050' }}>Reset Profile</div>
-                <div className="text-xs" style={{ color: TEXT_MUTED }}>Delete all progress and start over</div>
-              </div>
-              {showResetConfirm ? (
-                <div className="flex items-center gap-2">
-                  <button type="button" className="px-3 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...DANGER_BTN, background: 'rgba(180,60,60,0.8)', color: '#fff', borderRadius: '6px' }} data-sound={UI.CANCEL} onClick={() => { this.setState({ showResetConfirm: false }); this.props.onBack(); onResetProfile(); }}>
-                    Confirm
-                  </button>
-                  <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_MUTED, borderRadius: '6px' }} onClick={() => this.setState({ showResetConfirm: false })}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...DANGER_BTN, borderRadius: '6px' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.55)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.35)'; }}
-                  data-sound={UI.CANCEL}
-                  onClick={() => this.setState({ showResetConfirm: true })}
-                >
-                  Reset
-                </button>
-              )}
             </div>
           ) : null}
           {onQuit ? (
@@ -363,7 +334,7 @@ export default class SettingsScreen extends Component {
     // Filter sections based on available props
     const visibleSections = SECTIONS.filter((s) => {
       if (s.key === 'profile' && !profile) return false;
-      if (s.key === 'danger' && !this.props.onLogout && !this.props.onResetProfile && !this.props.onQuit) return false;
+      if (s.key === 'danger' && !this.props.onLogout && !this.props.onQuit) return false;
       return true;
     });
 
@@ -420,7 +391,7 @@ export default class SettingsScreen extends Component {
                   }}
                   onMouseEnter={(e) => { if (activeSection !== section.key) e.currentTarget.style.background = `${GOLD} 0.04)`; }}
                   onMouseLeave={(e) => { if (activeSection !== section.key) e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => this.setState({ activeSection: section.key, showResetConfirm: false })}
+                  onClick={() => this.setState({ activeSection: section.key })}
                 >
                   <span className="text-xs opacity-50">{section.icon}</span>
                   {section.label}

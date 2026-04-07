@@ -80,7 +80,7 @@ export default class ArenaHub extends Component {
   }
 
   render() {
-    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenArcaneTrials, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onResetProfile, onExit, friendListData, onToggleFriends, onToggleMailbox, mailboxUnreadCount } = this.props;
+    const { profile, rank, onPlayMatch, onFindMatch, onOpenStore, onOpenDeckBuilder, onOpenAuctionHouse, onOpenArcaneTrials, onOpenSettings, updateStatus, onViewProfile, onUpdateAvatar, onExit, friendListData, onToggleFriends, onToggleMailbox, mailboxUnreadCount } = this.props;
     const { showAvatarPicker, leaderboardLoading, leaderboardFilter, leaderboardSearch } = this.state;
     const progress = xpProgressInLevel(profile.xp);
     const level = progress.level;

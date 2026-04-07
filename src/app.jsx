@@ -30,7 +30,7 @@ import ArenaDeckSelect from './components/ArenaDeckSelect';
 import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
 import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
-import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult, deleteAccount } from './utils/arena/matchmakingApi';
+import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult } from './utils/arena/matchmakingApi';
 import { getStoredToken, validateToken, clearStoredToken } from './utils/authApi';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
@@ -633,31 +633,6 @@ export default class App extends Component {
     const updatedProfile = { ...arenaProfile, profileAvatar: cardId };
     this.setState({ arenaProfile: updatedProfile });
     await saveArenaProfile(updatedProfile).catch((e) => console.error('Failed to save profile:', e));
-  };
-
-  resetArenaProfile = async () => {
-    const { arenaProfile } = this.state;
-    const token = arenaProfile?.serverToken;
-
-    // Delete game account on server (matchmaking, leaderboard, etc.)
-    if (token) {
-      await deleteAccount(token).catch((e) => console.error('Failed to delete server account:', e));
-    }
-
-    // Create a fresh default profile but keep the auth token so we can save it
-    const profile = {
-      ...createDefaultProfile(),
-      serverToken: token || null,
-      email: arenaProfile?.email || null,
-      id: arenaProfile?.id || null,
-    };
-
-    this.setState({ arenaProfile: profile });
-
-    // Save the blank profile to the server, overwriting the old data
-    if (token) {
-      await saveArenaProfile(profile).catch((e) => console.error('Failed to save reset profile:', e));
-    }
   };
 
   handleLogout = async () => {
@@ -1560,7 +1535,6 @@ export default class App extends Component {
             onOpenArcaneTrials={this.openArcaneTrials}
             onUpdateName={this.updateArenaName}
             onUpdateAvatar={this.updateArenaAvatar}
-            onResetProfile={this.resetArenaProfile}
             onUpdateProfile={(profile) => this.setState({ arenaProfile: profile })}
             friendListData={this.state.friendListData}
             onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
@@ -1602,7 +1576,6 @@ export default class App extends Component {
             onApply={this.handleApplyUpdate}
             onBack={this.handleCloseSettings}
             onLogout={this.handleLogout}
-            onResetProfile={this.resetArenaProfile}
             onQuit={() => window.close()}
           />
           </motion.div>
