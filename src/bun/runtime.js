@@ -29,7 +29,9 @@ const AUTH_TOKEN_PATH = path.join(PERSISTENT_DATA_DIR, 'auth-token.json');
 
 const SORCERY_CDN_BASE = 'https://d27a44hjr9gen3.cloudfront.net/cards';
 
-const IMAGE_CACHE_HEADERS = { 'Cache-Control': 'public, max-age=31536000, immutable' };
+// Card images are immutable — once downloaded, they're permanent local assets.
+// The `immutable` directive tells the browser to never revalidate.
+const IMAGE_HEADERS = { 'Cache-Control': 'public, max-age=31536000, immutable' };
 
 let assetDownloadState = { running: false, total: 0, downloaded: 0, failed: 0, done: false };
 let windowApi = null;
@@ -157,12 +159,12 @@ async function handleSorceryImage(pathname, distDir) {
 
   const persistentPath = path.join(PERSISTENT_IMAGES_DIR, slug);
   if (existsSync(persistentPath)) {
-    return new Response(Bun.file(persistentPath), { headers: IMAGE_CACHE_HEADERS });
+    return new Response(Bun.file(persistentPath), { headers: IMAGE_HEADERS });
   }
 
   const bundledPath = path.join(distDir, 'sorcery-images', slug);
   if (existsSync(bundledPath)) {
-    return new Response(Bun.file(bundledPath), { headers: IMAGE_CACHE_HEADERS });
+    return new Response(Bun.file(bundledPath), { headers: IMAGE_HEADERS });
   }
 
   try {
@@ -174,7 +176,7 @@ async function handleSorceryImage(pathname, distDir) {
     await mkdir(PERSISTENT_IMAGES_DIR, { recursive: true });
     await writeFile(persistentPath, buffer);
     return new Response(buffer, {
-      headers: { 'Content-Type': 'image/png', ...IMAGE_CACHE_HEADERS },
+      headers: { 'Content-Type': 'image/png', ...IMAGE_HEADERS },
     });
   } catch {
     return new Response('CDN fetch failed', { status: 502 });
@@ -188,7 +190,7 @@ function handleGameAsset(pathname, distDir) {
   }
   const bundledPath = path.join(distDir, filename);
   if (existsSync(bundledPath)) {
-    return new Response(Bun.file(bundledPath), { headers: IMAGE_CACHE_HEADERS });
+    return new Response(Bun.file(bundledPath), { headers: IMAGE_HEADERS });
   }
   return new Response('Not found', { status: 404 });
 }
@@ -234,12 +236,14 @@ async function handleAuthToken(request) {
 }
 
 function handleAssetStatus() {
-  let cached = 0;
+  // Count permanent card art files already saved to the user's data directory.
+  let saved = 0;
   try {
     const files = readdirSync(PERSISTENT_IMAGES_DIR);
-    cached = files.filter((f) => f.endsWith('.png')).length;
+    saved = files.filter((f) => f.endsWith('.png')).length;
   } catch {}
-  return Response.json({ ...assetDownloadState, cached });
+  // Legacy field name `cached` kept for backwards compat with the client.
+  return Response.json({ ...assetDownloadState, saved, cached: saved });
 }
 
 async function handleAssetDownload(request) {
