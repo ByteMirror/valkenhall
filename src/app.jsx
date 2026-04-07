@@ -160,7 +160,8 @@ export default class App extends Component {
       this.themeMediaQuery.addEventListener('change', this.handleThemeMediaQueryChange);
     }
     applyThemePreference(this.state.themePreference);
-    this.refreshSavedDecks();
+    // Decks are loaded after login via postLoginInit — skipped on mount
+    // because the auth token may not be available yet (401 from server).
 
     this.loadCardsWithRetry = async (retries = 3, delay = 2000) => {
       for (let attempt = 1; attempt <= retries; attempt++) {
@@ -358,6 +359,7 @@ export default class App extends Component {
   postLoginInit = () => {
     preloadUISounds();
     this.initSeason();
+    this.refreshSavedDecks();
     playMusic('arena-hub', { fadeInDuration: 3000 });
     startPresence('hub', {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
