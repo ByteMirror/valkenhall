@@ -60,6 +60,6 @@ describe('preview runtime', () => {
 
     expect(previewServers.url).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:\\d+${APP_BASE_PATH}$`));
     expect(previewServers.rendererPort).toBeGreaterThan(0);
-    expect(await fetchStatus(`http://127.0.0.1:${previewServers.proxyPort}/api/cards`)).toBe(200);
+    expect(await fetchStatus(`http://127.0.0.1:${previewServers.proxyPort}/api/sorcery/cards`)).toBe(200);
   });
 });

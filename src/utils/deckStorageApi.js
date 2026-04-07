@@ -1,51 +1,29 @@
-import { getLocalApiOrigin } from './localApi';
+import { api } from './serverClient';
 
-function getDeckStorageEndpoint(locationLike = globalThis.location) {
-  return `${getLocalApiOrigin(locationLike)}/api/decks`;
-}
-
-async function parseJsonResponse(response, fallbackMessage) {
-  if (response.ok) {
-    return response.status === 204 ? null : response.json();
-  }
-
-  let details = fallbackMessage;
-
+export async function listSavedDecks(_game = 'sorcery') {
   try {
-    const payload = await response.json();
-    details = payload?.details || payload?.error || fallbackMessage;
-  } catch {
-    details = fallbackMessage;
+    const decks = await api.get('/decks');
+    return Array.isArray(decks) ? decks : [];
+  } catch (err) {
+    console.error('[deckStorageApi] listSavedDecks failed:', err);
+    return [];
   }
-
-  throw new Error(details);
 }
 
-export async function listSavedDecks(game = 'fab') {
-  const response = await fetch(`${getDeckStorageEndpoint()}?game=${encodeURIComponent(game)}`);
-  const decks = await parseJsonResponse(response, 'Failed to load saved decks');
-  return Array.isArray(decks) ? decks : [];
+export async function loadSavedDeckById(deckId, _game = 'sorcery') {
+  try {
+    return await api.get(`/decks/${encodeURIComponent(deckId)}`);
+  } catch (err) {
+    if (err.message?.includes('404')) return null;
+    console.error('[deckStorageApi] loadSavedDeckById failed:', err);
+    return null;
+  }
 }
 
-export async function saveSavedDeck(deck, game = 'fab') {
-  const response = await fetch(getDeckStorageEndpoint(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...deck, game }),
-  });
-
-  return parseJsonResponse(response, 'Failed to save deck');
+export async function saveSavedDeck(deck, _game = 'sorcery') {
+  return await api.post('/decks', deck);
 }
 
-export async function loadSavedDeckById(deckId, game = 'fab') {
-  const response = await fetch(`${getDeckStorageEndpoint()}/${encodeURIComponent(deckId)}?game=${encodeURIComponent(game)}`);
-  return parseJsonResponse(response, 'Failed to load saved deck');
-}
-
-export async function deleteSavedDeckById(deckId, game = 'fab') {
-  const response = await fetch(`${getDeckStorageEndpoint()}/${encodeURIComponent(deckId)}?game=${encodeURIComponent(game)}`, {
-    method: 'DELETE',
-  });
-
-  await parseJsonResponse(response, 'Failed to delete saved deck');
+export async function deleteSavedDeckById(deckId, _game = 'sorcery') {
+  return await api.delete(`/decks/${encodeURIComponent(deckId)}`);
 }
