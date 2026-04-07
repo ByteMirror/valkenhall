@@ -596,30 +596,25 @@ export default class App extends Component {
   };
 
   getArenaSavedDecks = () => {
-    const arenaDecks = this.state.arenaProfile?.decks || [];
-    const localById = new Map(this.state.savedDecks.map((d) => [d.id, d]));
-
-    return arenaDecks.map((arenaDeck) => {
-      const local = localById.get(arenaDeck.id);
-      return {
-        id: arenaDeck.id,
-        name: arenaDeck.name,
-        cards: arenaDeck.cards || [],
-        cardCount: arenaDeck.cards?.length || 0,
-        previewUrl: local?.previewUrl || arenaDeck.previewUrl || null,
-        savedAt: local?.savedAt || null,
-        format: local?.format || '',
-      };
-    });
+    // Server is the source of truth for decks — use savedDecks directly.
+    return (this.state.savedDecks || []).map((d) => ({
+      id: d.id,
+      name: d.name,
+      cards: d.cards || [],
+      cardCount: d.cardCount ?? d.cards?.length ?? 0,
+      previewUrl: d.previewUrl || null,
+      savedAt: d.savedAt || d.updatedAt || null,
+      format: d.format || 'constructed',
+    }));
   };
 
   getArenaDecksForGameBoard = () => {
-    const decks = this.state.arenaProfile?.decks || [];
+    const decks = this.state.savedDecks || [];
     return decks.map((d) => ({
       id: d.id,
       name: d.name,
       cards: d.cards || [],
-      cardCount: d.cards?.length || 0,
+      cardCount: d.cardCount ?? d.cards?.length ?? 0,
       format: 'constructed',
       previewUrl: d.previewUrl || null,
     }));
