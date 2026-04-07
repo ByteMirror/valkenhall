@@ -53,9 +53,12 @@ export async function reportMatchResult(_token, _matchId, winner, extras = {}) {
 }
 
 export async function getLeaderboard() {
-  const res = await fetch(`${SERVER_URL}/api/leaderboard`);
-  if (!res.ok) throw new Error('Failed to fetch leaderboard');
-  return res.json();
+  try {
+    return await api.get('/leaderboard');
+  } catch (err) {
+    console.error('[matchmakingApi] getLeaderboard failed:', err);
+    return [];
+  }
 }
 
 // Account deletion is not yet implemented on the new server.
