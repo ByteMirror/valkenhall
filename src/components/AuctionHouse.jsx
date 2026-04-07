@@ -272,11 +272,11 @@ export default class AuctionHouse extends Component {
   };
 
   loadMyListings = async () => {
-    const { profile } = this.props;
     this.setState({ myListingsLoading: true, error: null });
     try {
       const result = await fetchMyListings();
-      this.setState({ myListings: result.listings });
+      // Server returns an array directly
+      this.setState({ myListings: Array.isArray(result) ? result : (result?.listings || []) });
     } catch (err) {
       this.setState({ error: err.message });
     } finally {
