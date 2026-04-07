@@ -15,8 +15,8 @@ import {
   createListing,
   buyListing,
   cancelListing,
-  syncCoins,
 } from '../utils/arena/auctionApi';
+import { loadArenaProfile } from '../utils/arena/profileApi';
 import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from '../utils/arena/collectionUtils';
 import {
   BG_ATMOSPHERE, VIGNETTE, GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
@@ -163,9 +163,9 @@ export default class AuctionHouse extends Component {
     if (!profile.serverToken) return;
     this.setState({ syncing: true });
     try {
-      const result = await syncCoins(profile.serverToken, profile.coins);
-      if (result.coins !== profile.coins) {
-        this.props.onUpdateProfile({ ...profile, coins: result.coins });
+      const fresh = await loadArenaProfile(profile.serverToken);
+      if (fresh && fresh.coins !== profile.coins) {
+        this.props.onUpdateProfile({ ...profile, coins: fresh.coins });
       }
     } catch {
     } finally {
@@ -275,7 +275,7 @@ export default class AuctionHouse extends Component {
     const { profile } = this.props;
     this.setState({ myListingsLoading: true, error: null });
     try {
-      const result = await fetchMyListings(profile.serverToken);
+      const result = await fetchMyListings();
       this.setState({ myListings: result.listings });
     } catch (err) {
       this.setState({ error: err.message });
