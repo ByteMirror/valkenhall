@@ -37,6 +37,11 @@ async function refreshMailCount() {
   }
 }
 
+/** Manually trigger a mail count refresh (used by the Mailbox after claim/delete). */
+export function refreshMailbox() {
+  return refreshMailCount();
+}
+
 export async function startPresence(activity, callbacks = {}) {
   onFriendListUpdate = callbacks.onFriendListUpdate || null;
   onNewNotifications = callbacks.onNewNotifications || null;

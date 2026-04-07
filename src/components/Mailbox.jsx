@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollText } from 'lucide-react';
 import RuneSpinner from './RuneSpinner';
 import { fetchInbox, sendMail, claimMail, deleteMail } from '../utils/arena/mailApi';
+import { loadArenaProfile } from '../utils/arena/profileApi';
+import { refreshMailbox } from '../utils/presenceManager';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
@@ -176,37 +178,41 @@ export default class Mailbox extends Component {
   handleClaim = async (mail) => {
     this.setState({ claiming: true, error: null });
     try {
-      const result = await claimMail(mail.id);
-      if (this.props.onProfileUpdate) {
-        const updates = {};
-        if (result.newBalance != null) updates.coins = result.newBalance;
-        if (result.addedCards) {
-          const collection = [...(this.props.profile.collection || [])];
-          for (const cardId of result.addedCards) {
-            const existing = collection.find(c => c.cardId === cardId);
-            if (existing) {
-              existing.quantity += 1;
-            } else {
-              collection.push({ cardId, quantity: 1 });
-            }
-          }
-          updates.collection = collection;
+      await claimMail(mail.id);
+
+      // Reload the full profile from the server to pick up updated coins + collection
+      const token = this.props.profile?.serverToken;
+      if (token && this.props.onProfileUpdate) {
+        const fresh = await loadArenaProfile(token).catch(() => null);
+        if (fresh) {
+          this.props.onProfileUpdate({
+            ...this.props.profile,
+            coins: fresh.coins ?? this.props.profile.coins,
+            collection: fresh.collection ?? this.props.profile.collection,
+          });
         }
-        this.props.onProfileUpdate({ ...this.props.profile, ...updates });
       }
 
       // Auto-delete auction mail after a short delay
       const isAuction = mail.type === 'auction';
-      const updatedMail = this.state.mail.map(m =>
-        m.id === mail.id ? { ...m, claimed: true } : m
+      const updatedMail = this.state.mail.map((m) =>
+        m.id === mail.id ? { ...m, claimed: true } : m,
       );
-      this.setState({ mail: updatedMail, selectedMail: { ...mail, claimed: true }, claiming: false });
+      this.setState({
+        mail: updatedMail,
+        selectedMail: { ...mail, claimed: true },
+        claiming: false,
+      });
+
+      // Refresh the mailbox unread badge in the parent
+      refreshMailbox();
 
       if (isAuction) {
         setTimeout(async () => {
           await deleteMail(mail.id).catch(() => {});
-          const remaining = this.state.mail.filter(m => m.id !== mail.id);
+          const remaining = this.state.mail.filter((m) => m.id !== mail.id);
           this.setState({ mail: remaining, selectedMail: null, view: 'list', claimedSlots: new Set() });
+          refreshMailbox();
         }, 2000);
       }
     } catch (err) {
@@ -219,8 +225,9 @@ export default class Mailbox extends Component {
     this.setState({ error: null });
     try {
       await deleteMail(mail.id);
-      const updatedMail = this.state.mail.filter(m => m.id !== mail.id);
+      const updatedMail = this.state.mail.filter((m) => m.id !== mail.id);
       this.setState({ mail: updatedMail, view: 'list', selectedMail: null });
+      refreshMailbox();
     } catch (err) {
       this.setState({ error: err.message });
     }
