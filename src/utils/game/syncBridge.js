@@ -145,38 +145,6 @@ export class GameSyncBridge {
     this._send('dice:delete', { diceId });
   }
 
-  // --- Combat orchestration ------------------------------------------
-  // Payloads are passed through verbatim because the combat action shapes
-  // are non-trivial and already constructed at the call site.
-
-  declareAttack(payload) {
-    this._send('combat:declareAttack', payload);
-  }
-
-  resolveCombat(payload) {
-    this._send('combat:resolve', payload);
-  }
-
-  siteAttack(payload) {
-    this._send('combat:siteAttack', payload);
-  }
-
-  sendDefendResponse(payload) {
-    this._send('combat:defendResponse', payload);
-  }
-
-  resolveMultiCombat(payload) {
-    this._send('combat:multiResolve', payload);
-  }
-
-  completeMove(payload) {
-    this._send('combat:moveComplete', payload);
-  }
-
-  sendInterceptResponse(payload) {
-    this._send('combat:interceptResponse', payload);
-  }
-
   // --- Match result --------------------------------------------------
 
   proposeMatch(winner) {
