@@ -84,7 +84,8 @@ export default class Mailbox extends Component {
     this.setState({ loading: true, error: null });
     try {
       const result = await fetchInbox();
-      const mail = result.mail || [];
+      // Server returns an array directly; older versions wrapped it in {mail: [...]}
+      const mail = Array.isArray(result) ? result : (result?.mail || []);
       const nextState = { mail, loading: false };
 
       if (this.props.selectedMailId) {
