@@ -61,7 +61,7 @@ export default class DeckEditor extends Component {
 
   handleAddCard = (card, specificPrinting) => {
     const ownedMap = this.props.arenaProfile ? buildOwnedMap(this.props.arenaProfile.collection) : null;
-    const usedElsewhereMap = this.props.arenaProfile ? buildUsedMap(this.props.arenaProfile.decks, this.state.deckId) : null;
+    const usedElsewhereMap = buildUsedMap(this.props.savedDecks || [], this.state.deckId);
     const check = canAddCard(card, this.state.chosenCards, { ownedMap, usedElsewhereMap });
     if (!check.allowed) {
       this.showToast(check.reason);
@@ -100,7 +100,7 @@ export default class DeckEditor extends Component {
     if (!printing) return;
 
     const ownedMap = this.props.arenaProfile ? buildOwnedMap(this.props.arenaProfile.collection) : null;
-    const usedElsewhereMap = this.props.arenaProfile ? buildUsedMap(this.props.arenaProfile.decks, this.state.deckId) : null;
+    const usedElsewhereMap = buildUsedMap(this.props.savedDecks || [], this.state.deckId);
     const check = canAddCard(card, this.state.chosenCards, { ownedMap, usedElsewhereMap });
     if (!check.allowed) {
       this.showToast(check.reason);

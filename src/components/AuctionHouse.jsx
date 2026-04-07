@@ -219,10 +219,19 @@ export default class AuctionHouse extends Component {
     }
     this.setState({ buyingId: listing.id, error: null });
     try {
-      const result = await buyListing(profile.serverToken, listing.id);
-      // Card is delivered via mail from the server — only update coins
+      await buyListing(profile.serverToken, listing.id);
       playUI(UI.PURCHASE);
-      this.props.onUpdateProfile({ ...profile, coins: result.newBalance });
+
+      // Reload profile to pick up the new coin balance
+      const fresh = await loadArenaProfile(profile.serverToken).catch(() => null);
+      if (fresh) {
+        this.props.onUpdateProfile({
+          ...profile,
+          coins: fresh.coins ?? profile.coins,
+          collection: fresh.collection ?? profile.collection,
+        });
+      }
+
       this.setState((s) => ({
         listings: s.listings.filter((l) => l.id !== listing.id),
         listingsTotal: s.listingsTotal - 1,
@@ -254,16 +263,22 @@ export default class AuctionHouse extends Component {
       for (let i = 0; i < qty; i++) {
         await createListing(profile.serverToken, selectedCardId, card.name, price, foiling);
       }
-      let collection = [...profile.collection];
-      for (let i = 0; i < qty; i++) {
-        collection = collection
-          .map((c) => (c.cardId === selectedCardId ? { ...c, quantity: c.quantity - 1 } : c))
-          .filter((c) => c.quantity > 0);
-      }
       playUI(UI.GOLD);
-      this.props.onUpdateProfile({ ...profile, collection });
+
+      // Reload profile (server has already deducted the card from the collection)
+      const fresh = await loadArenaProfile(profile.serverToken).catch(() => null);
+      if (fresh) {
+        this.props.onUpdateProfile({
+          ...profile,
+          coins: fresh.coins ?? profile.coins,
+          collection: fresh.collection ?? profile.collection,
+        });
+      }
+
       this.setState({ selectedCardId: null, selectedFoiling: 'S', sellPrice: '', sellQuantity: 1 });
       this.loadMyListings();
+      // Refresh the parent's saved decks so deck card counts reflect reality
+      if (this.props.onRefreshDecks) this.props.onRefreshDecks();
     } catch (err) {
       this.setState({ sellError: err.message });
     } finally {
@@ -637,7 +652,7 @@ export default class AuctionHouse extends Component {
     } = this.state;
 
     const ownedMap = buildOwnedMap(profile.collection || []);
-    const usedMap = buildUsedMap(profile.decks || []);
+    const usedMap = buildUsedMap(this.props.savedDecks || []);
     const { sortBy, sortOrder, elementFilters } = this.state;
 
     let availableCards = (sorceryCards || []).filter(

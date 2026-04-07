@@ -1439,6 +1439,7 @@ export default class App extends Component {
             deck={this.state.editingDeckData}
             sorceryCards={this.state.sorceryCards}
             arenaProfile={this.state.arenaProfile}
+            savedDecks={this.state.savedDecks}
             onSave={this.handleSaveDeckFromEditor}
             onBack={this.handleBackToGallery}
             onToggleMailbox={this.handleToggleMailbox}
@@ -1626,7 +1627,9 @@ export default class App extends Component {
           <motion.div key="auction-house" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <AuctionHouse
             profile={this.state.arenaProfile}
+            savedDecks={this.state.savedDecks}
             sorceryCards={this.state.sorceryCards}
+            onRefreshDecks={this.refreshSavedDecks}
             onUpdateProfile={(profile) => this.setState({ arenaProfile: profile }, () => saveArenaProfile(profile))}
             onBack={() => this.setState({ arenaView: 'hub' })}
             onToggleMailbox={this.handleToggleMailbox}
