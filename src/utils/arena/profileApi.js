@@ -30,7 +30,6 @@ export async function saveArenaProfile(profile) {
   if (profile.profileAvatar !== undefined) payload.profileAvatar = profile.profileAvatar;
   if (profile.rank) payload.rank = profile.rank;
   if (profile.collection) payload.collection = profile.collection;
-  if (profile.decks) payload.decks = profile.decks;
   if (profile.matchHistory) payload.matchHistory = profile.matchHistory;
   if (profile.achievements) payload.achievements = profile.achievements;
   if (profile.seasonProgress !== undefined) payload.seasonProgress = profile.seasonProgress;

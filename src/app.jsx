@@ -22,7 +22,6 @@ import { playMusic, stopMusic } from './utils/arena/musicManager';
 import { playUI, UI, preloadUISounds } from './utils/arena/uiSounds';
 import { createDefaultProfile, CURRENCY, isArenaDebugMode } from './utils/arena/profileDefaults';
 import { checkAchievements, getAchievement } from './utils/arena/achievements';
-import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from './utils/arena/collectionUtils';
 import { generatePack } from './utils/arena/packGenerator';
 import { resolveStarterDeck } from './utils/arena/starterDecks';
 import { generateSeason, createDefaultSeasonProgress, initializeQuests, processMatchResult } from './utils/arena/seasonPass';
@@ -322,7 +321,6 @@ export default class App extends Component {
       serverRegistered: true,
       rank: serverProfile.rank || { tier: 'apprentice', division: 4, lp: 0 },
       collection: serverProfile.collection || [],
-      decks: serverProfile.decks || [],
       matchHistory: serverProfile.matchHistory || [],
       achievements: serverProfile.achievements || [],
       seasonProgress: serverProfile.seasonProgress || null,
@@ -435,6 +433,7 @@ export default class App extends Component {
   };
 
   handleInviteAccepted = (result, { isHost = false } = {}) => {
+    this.refreshSavedDecks();
     this.setState({
       arenaView: 'deck-select',
       pendingInviteRoomCode: result.roomCode,
@@ -706,6 +705,7 @@ export default class App extends Component {
       }
       return;
     }
+    this.refreshSavedDecks();
     this.setState({ arenaView: 'deck-select' });
   };
 
@@ -851,7 +851,6 @@ export default class App extends Component {
       starterDeck: deck.id,
       profileAvatar: avatarCard?.cardId || null,
       collection,
-      decks: [{ id: deckId, name: deck.name, cards: resolvedCards, previewUrl }],
     };
 
     this.setState({ arenaProfile: updatedProfile });
@@ -1181,16 +1180,8 @@ export default class App extends Component {
     playUI(UI.OPEN);
     if (!deckId || !Array.isArray(this.state.sorceryCards)) return;
     try {
-      // Try arena profile first (avoids 404 for decks not in local storage)
-      const arenaDeck = this.state.arenaProfile?.decks?.find((d) => d.id === deckId);
-      let savedDeck;
-
-      if (arenaDeck) {
-        savedDeck = { id: arenaDeck.id, name: arenaDeck.name, cards: arenaDeck.cards || [] };
-      } else {
-        savedDeck = await loadSavedDeckById(deckId, 'sorcery');
-        if (!savedDeck) return;
-      }
+      const savedDeck = await loadSavedDeckById(deckId, 'sorcery');
+      if (!savedDeck) return;
 
       const activeCards = this.getActiveCards();
       const restoredCards = await restoreSavedDeckCards({
@@ -1215,43 +1206,11 @@ export default class App extends Component {
     });
   };
 
-  // Legacy sync — only used by handleStarterChosen for initial deck setup.
-  // Normal save/delete operations update the server profile directly.
-  syncArenaProfileDecks = (savedDecks, extraDeckData) => {
-    this.setState((state) => {
-      const { arenaProfile } = state;
-      if (!arenaProfile) return null;
-
-      // Build deck list from savedDecks summaries + any full card data we have
-      const currentArenaDecks = arenaProfile.decks || [];
-      const updatedDecks = savedDecks.map((summary) => {
-        // Prefer extra data (just-saved payload), then existing arena deck, then summary-only
-        const extra = extraDeckData?.get(summary.id);
-        const existing = currentArenaDecks.find((d) => d.id === summary.id);
-        return {
-          id: summary.id,
-          name: summary.name,
-          cards: extra?.cards || existing?.cards || [],
-          previewUrl: summary.previewUrl || existing?.previewUrl || null,
-        };
-      });
-
-      return { arenaProfile: { ...arenaProfile, decks: updatedDecks } };
-    }, () => {
-      if (this.state.arenaProfile) {
-        saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to sync arena profile:', e));
-      }
-    });
-  };
-
   handleSaveDeckFromEditor = async (payload) => {
     playUI(UI.CONFIRM);
     const savedSummary = await saveSavedDeck(payload, 'sorcery');
 
-    const nextSavedDecks = [savedSummary, ...this.state.savedDecks.filter((d) => d.id !== savedSummary.id)];
-
     this.setState({
-      savedDecks: nextSavedDecks,
       editingDeckData: {
         ...this.state.editingDeckData,
         id: savedSummary.id,
@@ -1259,41 +1218,7 @@ export default class App extends Component {
       },
     });
 
-    // Update this deck in the server profile (don't rebuild from local storage)
-    this.setState((state) => {
-      const { arenaProfile } = state;
-      if (!arenaProfile) return null;
-      const currentDecks = arenaProfile.decks || [];
-      // Normalize cards to lightweight format for server storage
-      const normalizedCards = (payload.cards || []).map((c) => ({
-        cardId: c.cardId || c.card?.unique_id || '',
-        cardName: c.cardName || c.card?.name || '',
-        printingId: c.printingId || c.printing?.unique_id || '',
-        isSideboard: Boolean(c.isSideboard),
-      })).filter((c) => c.cardId && c.printingId);
-      const deckEntry = {
-        id: savedSummary.id,
-        name: savedSummary.name,
-        cards: normalizedCards,
-        previewUrl: savedSummary.previewUrl || null,
-      };
-      // Replace existing deck or add new one, then deduplicate by ID
-      const exists = currentDecks.some((d) => d.id === savedSummary.id);
-      const merged = exists
-        ? currentDecks.map((d) => d.id === savedSummary.id ? deckEntry : d)
-        : [...currentDecks, deckEntry];
-      const seen = new Set();
-      const updatedDecks = merged.filter((d) => {
-        if (seen.has(d.id)) return false;
-        seen.add(d.id);
-        return true;
-      });
-      return { arenaProfile: { ...arenaProfile, decks: updatedDecks } };
-    }, () => {
-      if (this.state.arenaProfile) {
-        saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to save profile:', e));
-      }
-    });
+    await this.refreshSavedDecks();
 
     return savedSummary;
   };
@@ -1314,54 +1239,10 @@ export default class App extends Component {
     if (!deckId) return;
     try {
       await deleteSavedDeckById(deckId, 'sorcery');
-      const nextSavedDecks = this.state.savedDecks.filter((d) => d.id !== deckId);
-      this.setState({ savedDecks: nextSavedDecks });
-      // Remove from server profile directly
-      this.setState((state) => {
-        const { arenaProfile } = state;
-        if (!arenaProfile) return null;
-        return { arenaProfile: { ...arenaProfile, decks: (arenaProfile.decks || []).filter((d) => d.id !== deckId) } };
-      }, () => {
-        if (this.state.arenaProfile) {
-          saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to save profile:', e));
-        }
-      });
+      await this.refreshSavedDecks();
     } catch (error) {
       console.error('Failed to delete deck:', error);
     }
-  };
-
-  saveArenaDeck = async (deck) => {
-    const { arenaProfile } = this.state;
-
-    const cleanedDecks = arenaProfile.decks.filter(
-      (d) => d.id !== deck.id && d.name !== deck.name,
-    );
-    const excludeIds = arenaProfile.decks
-      .filter((d) => d.id === deck.id || d.name === deck.name)
-      .map((d) => d.id);
-
-    const usedMap = buildUsedMap(
-      arenaProfile.decks.filter((d) => !excludeIds.includes(d.id)),
-    );
-    const ownedMap = buildOwnedMap(arenaProfile.collection);
-    const needed = new Map();
-    for (const card of deck.cards) {
-      needed.set(card.cardId, (needed.get(card.cardId) || 0) + 1);
-    }
-    for (const [cardId, count] of needed) {
-      const available = getAvailableQuantity(cardId, ownedMap, usedMap);
-      if (count > available) {
-        const cardName = this.state.sorceryCards?.find((c) => c.unique_id === cardId)?.name || cardId;
-        this.setState({ savedDecksError: `Not enough copies of "${cardName}" available` });
-        return;
-      }
-    }
-
-    cleanedDecks.push(deck);
-    const updatedProfile = { ...arenaProfile, decks: cleanedDecks };
-    this.setState({ arenaProfile: updatedProfile });
-    await saveArenaProfile(updatedProfile).catch((e) => console.error('Failed to save profile:', e));
   };
 
   getActiveCards = () => {
@@ -1728,7 +1609,7 @@ export default class App extends Component {
         ) : null}
         {showArena && this.state.arenaView === 'deck-select' ? (
           <ArenaDeckSelect
-            decks={this.state.arenaProfile?.decks || []}
+            decks={this.getArenaSavedDecks()}
             sorceryCards={this.state.sorceryCards}
             onConfirm={this.confirmDeckAndQueue}
             onCancel={() => this.setState({ arenaView: 'hub' })}

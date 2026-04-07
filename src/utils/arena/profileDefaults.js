@@ -91,7 +91,6 @@ export function createDefaultProfile() {
     serverRegistered: false,
     rank: { tier: 'apprentice', division: 4, lp: 0 },
     collection: [],
-    decks: [],
     matchHistory: [],
     achievements: [],
     seasonProgress: null,
