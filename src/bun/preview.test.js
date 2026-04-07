@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -15,37 +14,13 @@ async function makeTempDir() {
   return dir;
 }
 
-function closeHttpServer(server) {
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
-}
-
 afterEach(async () => {
   await Promise.allSettled(cleanupCallbacks.splice(0).map((callback) => callback()));
   await Promise.all(createdDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-function fetchStatus(url) {
-  return new Promise((resolve, reject) => {
-    const request = http.get(url, (response) => {
-      response.resume();
-      resolve(response.statusCode || 0);
-    });
-
-    request.on('error', reject);
-  });
-}
-
 describe('preview runtime', () => {
-  it('starts the local proxy alongside the renderer preview server', async () => {
+  it('starts a single unified http server for renderer and local api routes', async () => {
     const distDir = await makeTempDir();
     await fs.writeFile(path.join(distDir, 'index.html'), '<!doctype html><title>Preview</title>', 'utf8');
 
@@ -53,13 +28,14 @@ describe('preview runtime', () => {
       distDir,
       host: '127.0.0.1',
       rendererPort: 0,
-      proxyPort: 0,
     });
 
     cleanupCallbacks.push(() => previewServers.stop());
 
     expect(previewServers.url).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:\\d+${APP_BASE_PATH}$`));
     expect(previewServers.rendererPort).toBeGreaterThan(0);
-    expect(await fetchStatus(`http://127.0.0.1:${previewServers.proxyPort}/api/sorcery/cards`)).toBe(200);
+    expect(previewServers.rendererServer).toBeTruthy();
+    expect(typeof previewServers.rendererServer.stop).toBe('function');
+    expect(previewServers.rendererServer.port).toBe(previewServers.rendererPort);
   });
 });

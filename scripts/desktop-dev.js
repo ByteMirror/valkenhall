@@ -176,11 +176,6 @@ async function main() {
       accepts: () => true,
     },
     {
-      targetPath: path.join(projectRoot, 'server'),
-      recursive: false,
-      accepts: (relativePath) => relativePath === 'proxy.js',
-    },
-    {
       targetPath: path.join(projectRoot, 'assets', 'app-icons', 'source'),
       recursive: true,
       accepts: () => true,

@@ -6,10 +6,8 @@
   "scripts": {
     "icons:generate": "bun scripts/app-icons.js",
     "dev": "bun run desktop:dev",
-    "dev:web": "bun run update-cards && bun run clean && bun run dev:all",
-    "dev:all": "concurrently \"bun run dev:renderer\" \"bun run dev:proxy\"",
+    "dev:web": "bun run update-cards && bun run clean && bun run dev:renderer",
     "dev:renderer": "bun --port 5173 --hot index.html --console",
-    "dev:proxy": "bun server/proxy.js",
     "desktop:dev": "bun run build:renderer && concurrently -k \"bun run desktop:renderer:dev\" \"bun run desktop:dev:app\"",
     "desktop:renderer:dev": "concurrently -k \"bun --watch scripts/build-web.js\" \"bun run preview\"",
     "desktop:dev:app": "ELECTROBUN_RENDERER_URL=http://127.0.0.1:4173 bun scripts/desktop-dev.js",
