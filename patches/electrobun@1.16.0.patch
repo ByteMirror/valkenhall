@@ -1,0 +1,13 @@
+diff --git a/src/cli/index.ts b/src/cli/index.ts
+index d1ecbb757c45a32fe3d197e50738dd4cc89c18d8..e5d6e0e3f3a707f99f638c07870039e6974fb875 100644
+--- a/src/cli/index.ts
++++ b/src/cli/index.ts
+@@ -47,7 +47,7 @@ function createTar(tarPath: string, cwd: string, entries: string[]) {
+ 	const resolvedTarPath =
+ 		process.platform === "win32" ? path.relative(cwd, tarPath) : tarPath;
+ 	execSync(
+-		`tar -cf "${resolvedTarPath}" ${entries.map((e) => `"${e}"`).join(" ")}`,
++		`tar -chf "${resolvedTarPath}" ${entries.map((e) => `"${e}"`).join(" ")}`,
+ 		{
+ 			cwd,
+ 			stdio: "pipe",
