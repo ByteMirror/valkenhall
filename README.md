@@ -8,6 +8,22 @@
 
 Runs natively on macOS, Linux, and Windows.
 
+## Install (macOS, Apple Silicon)
+
+The easiest way to install Valkenhall on Apple Silicon Macs is via our Homebrew tap:
+
+```bash
+brew install --cask bytemirror/tap/valkenhall
+```
+
+To update later:
+
+```bash
+brew upgrade --cask valkenhall
+```
+
+The app auto-updates itself once installed, so you only need `brew upgrade` if you skip an update modal or want to force a reinstall.
+
 ## Getting Started
 
 ```bash
