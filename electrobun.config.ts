@@ -33,14 +33,15 @@ export default {
       bundleCEF: true,
       defaultRenderer: 'cef',
       icon: 'public/app-icon.png',
-      // Linux is the worst-affected platform: in addition to Electrobun's
-      // default --disable-gpu, Chromium's GPU blocklist excludes most
-      // Linux drivers (Mesa, NVIDIA proprietary, AMDGPU) by default, so
-      // even with GPU "enabled" it falls back to software unless we tell
-      // it to ignore the blocklist. enable-zero-copy + gpu-rasterization
-      // give the rest of the WebGL pipeline its best path.
+      // Electrobun defaults disable-gpu, disable-gpu-compositing, and
+      // disable-gpu-memory-buffer-video-frames. Override all three so
+      // Three.js / WebGL runs on the actual GPU. ignore-gpu-blocklist
+      // is needed because Chromium's blocklist excludes most Linux
+      // drivers (Mesa, NVIDIA, AMDGPU).
       chromiumFlags: {
         'disable-gpu': false,
+        'disable-gpu-compositing': false,
+        'disable-gpu-memory-buffer-video-frames': false,
         'ignore-gpu-blocklist': true,
         'enable-zero-copy': true,
         'enable-gpu-rasterization': true,
