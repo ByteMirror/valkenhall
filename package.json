@@ -60,8 +60,5 @@
     "@testing-library/preact": "^3.2.4",
     "bun-plugin-tailwind": "^0.1.2",
     "concurrently": "^9.1.2"
-  },
-  "patchedDependencies": {
-    "electrobun@1.16.0": "patches/electrobun@1.16.0.patch"
   }
 }
