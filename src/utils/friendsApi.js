@@ -23,8 +23,11 @@ export async function searchPlayers(query) {
 }
 
 export async function getFriendList() {
-  const res = await fetch(`${MATCHMAKING_URL}/friends`, {
-    headers: await authHeaders(),
+  // Cache-bust the URL — friend metadata (avatars, names, ranks) needs to
+  // reflect the current server state on every poll. Without this, CEF or any
+  // intermediate cache could serve a stale snapshot indefinitely.
+  const res = await fetch(`${MATCHMAKING_URL}/friends?_t=${Date.now()}`, {
+    headers: { ...(await authHeaders()), 'Cache-Control': 'no-cache' },
   });
   if (!res.ok) return { friends: [], pendingRequests: [], pendingCount: 0, pendingInvites: [], pendingSpectate: [], acceptedNotifications: [] };
   return res.json();

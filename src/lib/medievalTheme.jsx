@@ -78,6 +78,11 @@ export const DIALOG_STYLE = {
   border: `1px solid ${DIALOG_BORDER}`,
   borderRadius: '12px',
   boxShadow: DIALOG_SHADOW,
+  // isolation: isolate creates a new stacking context for the dialog
+  // panel. This is what lets the embossed Borre knots in FourCorners
+  // sit at z-index: -1 (behind static content) without escaping past
+  // the panel into the page-level stacking context.
+  isolation: 'isolate',
 };
 
 /* ── Gold primary button ───────────────────────────────── */
@@ -135,6 +140,10 @@ export const POPOVER_STYLE = {
   border: `1px solid ${GOLD} 0.2)`,
   borderRadius: '8px',
   boxShadow: '0 24px 80px rgba(0,0,0,0.4), 0 0 30px rgba(180,140,60,0.04)',
+  // Same stacking-context isolation as DIALOG_STYLE so any embossed
+  // ornaments (knots, centerpieces) inside a popover stay clipped to
+  // the popover instead of escaping to the page level.
+  isolation: 'isolate',
 };
 
 /* ── Scrollbar accent (css class) ──────────────────────── */
@@ -195,14 +204,123 @@ export function CornerPlating({ position, color = GOLD_CORNER, radius = 8 }) {
   return <div className="absolute pointer-events-none" style={styles[position]} data-corner="" />;
 }
 
+/* ── Borre knot corner ─────────────────────────────────── */
+//
+// Small Viking knot tucked into one corner of a panel. Uses CSS
+// mask-image so the wrapper div's background-color is what's actually
+// rendered — meaning we can re-tint via the `color` prop without
+// shipping multiple SVG variants.
+//
+// The knot is meant to feel ENGRAVED into the panel, sitting below
+// every other content layer:
+//
+//   1. zIndex: -1 puts it at the bottom of the parent's stacking
+//      context. The parent (DIALOG_STYLE / POPOVER_STYLE) sets
+//      isolation: isolate so the knot stays clipped to the panel
+//      instead of escaping to the page-level stacking context.
+//
+//   2. The neutral warm-white tint at low opacity blends with the
+//      panel texture. The two-stop drop-shadow filter adds a 1px
+//      warm highlight (offset down) and a 1px dark recess (offset up),
+//      creating the relief that sells the embossed look.
+//
+//   3. mix-blend-mode: overlay further integrates the knot with
+//      whatever's behind it: the strokes lift bright pixels and
+//      darken shadows, the way an actual carving would catch light
+//      across the panel's stone texture.
+//
+// The knot's natural orientation has a small upward triangle on top
+// and a larger downward V on the bottom. We rotate each corner so the
+// V faces INWARD toward the panel center, which feels like the knot
+// is "closing" the corner.
+
+// Per-session cache-bust — see VikingOrnament.jsx for the rationale.
+// CEF treats CSS mask-image url() as long-lived cached resources, so a
+// stable query string per app launch is the most reliable way to make
+// edits to the SVG show up after a reload.
+const KNOT_URL = `/game-assets/ornaments/viking-borre-knot.svg?v=${typeof Date !== 'undefined' ? Date.now() : 0}`;
+
+const KNOT_ROTATIONS = {
+  'top-left': 135,
+  'top-right': -135,
+  'bottom-left': 45,
+  'bottom-right': -45,
+};
+
+export function KnotCorner({
+  position,
+  size = 40,
+  inset = 6,
+  color = 'rgba(232, 200, 130, 1)',
+  opacity = 0.42,
+}) {
+  const [vertical, horizontal] = position.split('-');
+  return (
+    <div
+      className="absolute pointer-events-none"
+      style={{
+        [vertical]: inset,
+        [horizontal]: inset,
+        width: size,
+        height: size,
+        transform: `rotate(${KNOT_ROTATIONS[position]}deg)`,
+        maskImage: `url("${KNOT_URL}")`,
+        WebkitMaskImage: `url("${KNOT_URL}")`,
+        maskRepeat: 'no-repeat',
+        WebkitMaskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        WebkitMaskPosition: 'center',
+        maskSize: 'contain',
+        WebkitMaskSize: 'contain',
+        backgroundColor: color,
+        opacity,
+        filter: 'drop-shadow(0 1px 0 rgba(255, 235, 195, 0.35)) drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.85))',
+        mixBlendMode: 'overlay',
+        zIndex: -1,
+      }}
+      data-knot=""
+    />
+  );
+}
+
+/* ── Four knots shorthand ──────────────────────────────── */
+//
+// Drop-in companion to FourCorners. Use directly when you want only
+// the knots, or pass `knots` to FourCorners to render both.
+export function FourKnots({ size = 40, inset = 6, color, opacity }) {
+  return (
+    <>
+      <KnotCorner position="top-left"     size={size} inset={inset} color={color} opacity={opacity} />
+      <KnotCorner position="top-right"    size={size} inset={inset} color={color} opacity={opacity} />
+      <KnotCorner position="bottom-left"  size={size} inset={inset} color={color} opacity={opacity} />
+      <KnotCorner position="bottom-right" size={size} inset={inset} color={color} opacity={opacity} />
+    </>
+  );
+}
+
 /* ── Four corners shorthand ────────────────────────────── */
-export function FourCorners({ color = GOLD_CORNER, radius = 8 }) {
+//
+// Pass `knots` to also render the Borre knots in each corner. Use it
+// for modal-style panels with enough space (typically 320px+ in both
+// dimensions). Skip it on tiny things like toasts or loading spinners.
+export function FourCorners({
+  color = GOLD_CORNER,
+  radius = 8,
+  knots = false,
+  knotSize = 40,
+  knotInset = 6,
+  knotColor,
+  knotOpacity,
+}) {
   return (
     <>
       <CornerPlating position="top-left" color={color} radius={radius} />
       <CornerPlating position="top-right" color={color} radius={radius} />
       <CornerPlating position="bottom-left" color={color} radius={radius} />
       <CornerPlating position="bottom-right" color={color} radius={radius} />
+      {knots ? (
+        <FourKnots size={knotSize} inset={knotInset} color={knotColor} opacity={knotOpacity} />
+      ) : null}
     </>
   );
 }
@@ -258,10 +376,11 @@ export function MedievalBtn({ variant = 'default', sound, onClick, className = '
 }
 
 /* ── Ornate menu button (used in hub, game menu, etc.) ── */
-export function MenuButton({ title, onClick, style: extraStyle }) {
+export function MenuButton({ title, onClick, style: extraStyle, dataTutorial }) {
   return (
     <button
       type="button"
+      data-tutorial={dataTutorial}
       className="relative group w-full text-center cursor-pointer transition-all duration-200 mb-2"
       style={{ transform: 'scale(1)', ...extraStyle }}
       onMouseEnter={(e) => {

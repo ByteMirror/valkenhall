@@ -1,8 +1,8 @@
 import { Component } from 'preact';
 import { UI } from '../utils/arena/uiSounds';
 import { searchPlayers, sendFriendRequest } from '../utils/friendsApi';
-import { saveArenaProfile } from '../utils/arena/profileApi';
-import { generatePack } from '../utils/arena/packGenerator';
+import { saveArenaProfile, grantCards } from '../utils/arena/profileApi';
+import { purchasePacks, openPendingPack } from '../utils/arena/packsApi';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   DIALOG_STYLE, BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
@@ -48,26 +48,20 @@ export default class AdminPanel extends Component {
   };
 
   // ─── Seed foil cards ─────────────────────────────────
-  handleSeedFoils = () => {
+  handleSeedFoils = async () => {
     const { profile, onUpdateProfile } = this.props;
-    const collection = [...(profile.collection || [])];
-    let added = 0;
-    for (const entry of FOIL_SEED_ENTRIES) {
-      const existing = collection.find((c) => c.printingId === entry.printingId && (c.foiling || 'S') === entry.foiling);
-      if (existing) {
-        if (existing.quantity < entry.quantity) {
-          added += entry.quantity - existing.quantity;
-          existing.quantity = entry.quantity;
-        }
-      } else {
-        collection.push({ ...entry });
-        added += entry.quantity;
-      }
+    const items = FOIL_SEED_ENTRIES.map((e) => ({
+      cardId: e.cardId,
+      foiling: e.foiling,
+      quantity: e.quantity,
+    }));
+    try {
+      const { collection } = await grantCards(items);
+      onUpdateProfile({ ...profile, collection });
+      this.addLog(`Seeded ${items.reduce((s, i) => s + i.quantity, 0)} foil cards (${items.length} unique)`);
+    } catch (e) {
+      this.addLog(`Failed to seed foils: ${e.message}`);
     }
-    const updated = { ...profile, collection };
-    onUpdateProfile(updated);
-    saveArenaProfile(updated).catch(() => {});
-    this.addLog(`Seeded ${added} foil cards (${FOIL_SEED_ENTRIES.length} unique)`);
   };
 
   // ─── Add gold ────────────────────────────────────────
@@ -81,58 +75,69 @@ export default class AdminPanel extends Component {
   };
 
   // ─── Generate packs ──────────────────────────────────
-  handleGeneratePacks = () => {
-    const { profile, sorceryCards, onUpdateProfile } = this.props;
+  //
+  // Uses the real purchase + open endpoints so this path exercises the
+  // same server-side logic as the store. Admins can top up coins with
+  // the "Add Gold" button above before running this, then immediately
+  // open every purchased pack to dump the cards into their collection.
+  handleGeneratePacks = async () => {
+    const { profile, onUpdateProfile } = this.props;
     const count = parseInt(this.state.packCount, 10) || 1;
     const setKey = this.state.packSet;
-    const packs = [];
-    for (let i = 0; i < count; i++) {
-      packs.push(generatePack(sorceryCards, setKey));
+
+    let purchaseResult;
+    try {
+      purchaseResult = await purchasePacks(setKey, count);
+    } catch (e) {
+      this.addLog(`Failed to purchase ${count} ${setKey} packs: ${e.message}`);
+      return;
     }
-    // Add all cards from packs directly to collection
-    const collection = [...(profile.collection || [])];
+
+    let latestCollection = profile.collection;
     let totalCards = 0;
-    for (const pack of packs) {
-      for (const entry of pack.cards) {
-        if (!entry.card) continue;
-        const cardId = entry.card.unique_id;
-        const printingId = entry.printing?.unique_id || '';
-        const foiling = entry.printing?.foiling || 'S';
-        const existing = collection.find(
-          (c) => c.cardId === cardId && c.printingId === printingId && (c.foiling || 'S') === foiling
-        );
-        if (existing) existing.quantity++;
-        else collection.push({ cardId, printingId, foiling, quantity: 1 });
-        totalCards++;
+    for (const pack of purchaseResult.packs || []) {
+      try {
+        const { collection } = await openPendingPack(pack.id);
+        latestCollection = collection;
+        totalCards += pack.contents?.length || 0;
+      } catch (e) {
+        this.addLog(`Failed to open pack ${pack.id}: ${e.message}`);
       }
     }
-    const updated = { ...profile, collection };
-    onUpdateProfile(updated);
-    saveArenaProfile(updated).catch(() => {});
+
+    onUpdateProfile({ ...profile, coins: purchaseResult.coins, collection: latestCollection });
     this.addLog(`Opened ${count} ${setKey} packs → ${totalCards} cards added to collection`);
   };
 
   // ─── Grant all cards ─────────────────────────────────
-  handleGrantAllCards = () => {
+  //
+  // Grants 4 standard copies of every card the player doesn't already
+  // own. Doesn't try to top up partial ownership — that would require
+  // computing per-card deltas, and the admin tool only needs to give a
+  // fully-stocked collection for testing.
+  handleGrantAllCards = async () => {
     const { profile, sorceryCards, onUpdateProfile } = this.props;
-    const collection = [...(profile.collection || [])];
-    let added = 0;
+    const ownedSet = new Set(
+      (profile.collection || [])
+        .filter((c) => (c.foiling || 'S') === 'S' && c.quantity >= 4)
+        .map((c) => c.cardId)
+    );
+    const items = [];
     for (const card of (sorceryCards || [])) {
-      const cardId = card.unique_id;
-      const existing = collection.find((c) => c.cardId === cardId);
-      if (!existing) {
-        const printingId = card.printings?.[0]?.unique_id || '';
-        collection.push({ cardId, printingId, foiling: 'S', quantity: 4 });
-        added++;
-      } else if (existing.quantity < 4) {
-        added++;
-        existing.quantity = 4;
-      }
+      if (ownedSet.has(card.unique_id)) continue;
+      items.push({ cardId: card.unique_id, foiling: 'S', quantity: 4 });
     }
-    const updated = { ...profile, collection };
-    onUpdateProfile(updated);
-    saveArenaProfile(updated).catch(() => {});
-    this.addLog(`Granted all cards (${added} new/updated, ${sorceryCards?.length || 0} total in game)`);
+    if (items.length === 0) {
+      this.addLog('All cards already granted (4 standard copies each)');
+      return;
+    }
+    try {
+      const { collection } = await grantCards(items);
+      onUpdateProfile({ ...profile, collection });
+      this.addLog(`Granted ${items.length} cards (${sorceryCards?.length || 0} total in game)`);
+    } catch (e) {
+      this.addLog(`Failed to grant cards: ${e.message}`);
+    }
   };
 
   // ─── Friend search & add ─────────────────────────────

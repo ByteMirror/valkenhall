@@ -4,6 +4,7 @@ import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   GOLD_BTN, BEVELED_BTN, FourCorners, getViewportScale,
 } from '../lib/medievalTheme';
+import VikingOrnament from './VikingOrnament';
 
 export default class ToastManager extends Component {
   render() {
@@ -15,15 +16,17 @@ export default class ToastManager extends Component {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="pointer-events-auto relative w-80 p-4 animate-[slideIn_0.3s_ease-out]"
+            className="pointer-events-auto relative w-80 p-4 pb-7 animate-[slideIn_0.3s_ease-out]"
             style={{
               background: PANEL_BG,
               border: `1px solid ${GOLD} 0.25)`,
               borderRadius: '8px',
               boxShadow: `0 20px 60px rgba(0,0,0,0.5), 0 0 20px ${GOLD} 0.04)`,
+              isolation: 'isolate',
             }}
           >
             <FourCorners />
+            <VikingOrnament ornament="urnes009" variant="footer" opacity={0.42} />
             <div className="flex items-start gap-3">
               {toast.avatar ? (
                 <img src={toast.avatar} alt="" className="w-8 h-8 rounded-lg object-cover object-top shrink-0" style={{ border: `1px solid ${GOLD} 0.2)` }} />

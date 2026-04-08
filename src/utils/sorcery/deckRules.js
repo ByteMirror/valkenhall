@@ -32,6 +32,35 @@ export function getMaxCopies(card) {
 }
 
 /**
+ * Counts how many entries in the current deck contribute to the copy
+ * limit of `card`. For singleton types (e.g. Avatar) the limit applies
+ * to the whole type — a deck may contain exactly one Avatar total, not
+ * one of each different Avatar card — so we count all chosen cards of
+ * the same type. For everything else we count copies of the specific
+ * card by `unique_id`.
+ */
+function countTowardLimit(card, chosenCards) {
+  if (SINGLETON_TYPES.has(card.type)) {
+    return chosenCards.filter((e) => e.card?.type === card.type).length;
+  }
+  return chosenCards.filter((e) => e.card?.unique_id === card.unique_id).length;
+}
+
+/**
+ * Returns how many more copies of `card` can still be added to the
+ * current deck without violating its copy limit. Handles both rarity-
+ * based limits and singleton-type limits (see countTowardLimit).
+ *
+ * Use this in UI code that needs to know "can the player click this
+ * tile right now?" — it's the single source of truth for the remaining
+ * slot count so the deck builder and the rule validator agree.
+ */
+export function getRemainingCopies(card, chosenCards) {
+  if (!card) return 0;
+  return Math.max(0, getMaxCopies(card) - countTowardLimit(card, chosenCards || []));
+}
+
+/**
  * Validates whether a card can be added to the current deck.
  * Returns `{ allowed: true }` or `{ allowed: false, reason: string }`.
  *
@@ -45,10 +74,10 @@ export function canAddCard(card, chosenCards, { ownedMap, usedElsewhereMap } = {
   if (!card) return { allowed: false, reason: 'Invalid card' };
 
   const maxCopies = getMaxCopies(card);
-  const inDeck = chosenCards.filter((e) => e.card.unique_id === card.unique_id).length;
+  const countForLimit = countTowardLimit(card, chosenCards);
 
-  // Check rarity / singleton limit
-  if (inDeck >= maxCopies) {
+  // Rarity / singleton limit check
+  if (countForLimit >= maxCopies) {
     if (SINGLETON_TYPES.has(card.type)) {
       return { allowed: false, reason: `Only one ${card.type} is allowed per deck` };
     }
@@ -58,11 +87,16 @@ export function canAddCard(card, chosenCards, { ownedMap, usedElsewhereMap } = {
     };
   }
 
-  // Check ownership if ownedMap is provided
+  // Ownership check uses per-card counting — you can own several avatars
+  // even though only one can be slotted at a time; the singleton check
+  // above already prevents a second avatar of any kind, so here we only
+  // need to know whether you still have a physical copy of THIS card
+  // that isn't locked up in another deck or already placed in this one.
   if (ownedMap) {
     const owned = ownedMap.get(card.unique_id) || 0;
     const usedElsewhere = usedElsewhereMap?.get(card.unique_id) || 0;
-    const available = owned - usedElsewhere - inDeck;
+    const sameCardInDeck = chosenCards.filter((e) => e.card?.unique_id === card.unique_id).length;
+    const available = owned - usedElsewhere - sameCardInDeck;
     if (available <= 0) {
       return {
         allowed: false,

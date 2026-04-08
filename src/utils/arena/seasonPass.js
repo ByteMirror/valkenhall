@@ -2,17 +2,25 @@ const CYCLE_DAYS = 14;
 const CYCLE_EPOCH = new Date('2026-01-05T00:00:00Z').getTime();
 const SETS = ['gothic', 'arthurian', 'beta'];
 
+// Balanced for a 14-day season: with an average of ~100 XP per match
+// (winner 120 / loser 80), the full pass is reachable in ~36 matches,
+// or ~2-3 matches per day.
+//
+// Arcana Shards are awarded at every second tier (2, 4, 6, 8) for a
+// total of 330 shards — the main incentive to finish the pass. Combined
+// with the per-match drip (~1/3 the rate of coins) this funds roughly
+// one Elite card or half a Unique per full season.
 const TIER_TABLE = [
-  { level: 1,  xpRequired: 200,   reward: { coins: 50 } },
-  { level: 2,  xpRequired: 500,   reward: { coins: 100 } },
-  { level: 3,  xpRequired: 900,   reward: { foilRarity: 'Ordinary', foilIndex: 0 } },
-  { level: 4,  xpRequired: 1400,  reward: { coins: 75 } },
-  { level: 5,  xpRequired: 2000,  reward: { foilRarity: 'Ordinary', foilIndex: 1 } },
-  { level: 6,  xpRequired: 2800,  reward: { coins: 150 } },
-  { level: 7,  xpRequired: 3800,  reward: { foilRarity: 'Exceptional', foilIndex: 0 } },
-  { level: 8,  xpRequired: 5000,  reward: { coins: 200 } },
-  { level: 9,  xpRequired: 6500,  reward: { coins: 100 } },
-  { level: 10, xpRequired: 8500,  reward: { coins: 500, foilRarity: 'Elite', foilIndex: 0 } },
+  { level: 1,  xpRequired: 150,   reward: { coins: 50 } },
+  { level: 2,  xpRequired: 350,   reward: { coins: 100, arcanaShards: 30 } },
+  { level: 3,  xpRequired: 600,   reward: { foilRarity: 'Ordinary', foilIndex: 0 } },
+  { level: 4,  xpRequired: 900,   reward: { coins: 75, arcanaShards: 60 } },
+  { level: 5,  xpRequired: 1250,  reward: { foilRarity: 'Ordinary', foilIndex: 1 } },
+  { level: 6,  xpRequired: 1650,  reward: { coins: 150, arcanaShards: 90 } },
+  { level: 7,  xpRequired: 2100,  reward: { foilRarity: 'Exceptional', foilIndex: 0 } },
+  { level: 8,  xpRequired: 2600,  reward: { coins: 100, arcanaShards: 150 } },
+  { level: 9,  xpRequired: 3100,  reward: { coins: 200 } },
+  { level: 10, xpRequired: 3600,  reward: { coins: 500, foilRarity: 'Elite', foilIndex: 0 } },
 ];
 
 const QUEST_TEMPLATES = [
@@ -32,7 +40,31 @@ const QUEST_TEMPLATES = [
   { id: 'sell_auction', name: 'Merchant', description: 'List a card in the Auction House', xpReward: 200, target: 1, type: 'auction_listed' },
 ];
 
-const SEASON_XP = { WIN: 100, LOSS: 40 };
+// Legacy constant — rewards are now computed server-side from authoritative
+// match duration (see valkenhall-server/src/utils/rewards.js). Kept only as a
+// fallback reference for any non-ranked code paths that still need a flat
+// per-match number.
+const SEASON_XP = { WIN: 120, LOSS: 80 };
+
+// The server returns the season without a questPool — quest tracking is
+// still client-side because quest progress is driven by local actions
+// (deck saves, pack opens, element-only wins, etc.). Re-attach the quest
+// pool deterministically per cycle so every player on the same cycle
+// gets the same starter quest selection. The cycle number lives in the
+// seasonId ("cycle-N"); we use it to seed the same RNG the old
+// client-side generator used.
+export function attachQuestPool(season) {
+  if (!season || season.questPool) return season;
+  const m = (season.seasonId || '').match(/^cycle-(-?\d+)$/);
+  const cycleNum = m ? parseInt(m[1], 10) : 0;
+  const rng = seededRandom(cycleNum * 7919);
+  const questPool = [...QUEST_TEMPLATES];
+  for (let i = questPool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [questPool[i], questPool[j]] = [questPool[j], questPool[i]];
+  }
+  return { ...season, questPool };
+}
 
 function seededRandom(seed) {
   let s = seed;
@@ -158,9 +190,15 @@ export function getTimeRemaining(endsAt) {
   return { days, hours, expired: false };
 }
 
-export function processMatchResult(progress, season, won) {
-  const xpGain = won ? SEASON_XP.WIN : SEASON_XP.LOSS;
-  let updated = { ...progress, seasonXp: progress.seasonXp + xpGain };
+// Apply a match result to a player's season progress. The base match XP
+// is passed in explicitly so the server can remain the authoritative source
+// of the per-match reward (see computeMatchRewards on the server). Quest
+// progression and quest-completion bonus XP remain client-driven for now.
+export function processMatchResult(progress, season, won, baseMatchXp) {
+  const matchXpEarned = baseMatchXp != null
+    ? baseMatchXp
+    : (won ? SEASON_XP.WIN : SEASON_XP.LOSS);
+  let updated = { ...progress, seasonXp: progress.seasonXp + matchXpEarned };
 
   const newActiveQuests = updated.activeQuests.map(aq => {
     const template = season.questPool.find(q => q.id === aq.questId);
@@ -187,7 +225,7 @@ export function processMatchResult(progress, season, won) {
   updated = { ...updated, seasonXp: updated.seasonXp + bonusXp, activeQuests: stillActive, completedQuestIds: completedIds };
   updated = initializeQuests(updated, season);
 
-  return { progress: updated, questXpEarned: bonusXp, matchXpEarned: xpGain };
+  return { progress: updated, questXpEarned: bonusXp, matchXpEarned };
 }
 
 export { SEASON_XP, TIER_TABLE };

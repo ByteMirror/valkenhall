@@ -1,4 +1,4 @@
-import { Component } from 'preact';
+import { Component, createRef } from 'preact';
 import { Mail, Users, Sparkles } from 'lucide-react';
 import AppHeader from './AppHeader';
 import AmbientParticles from './AmbientParticles';
@@ -6,6 +6,7 @@ import StoreTorchFX from './StoreTorchFX';
 import DeckCardTile from './DeckCardTile';
 import CardInspector from './CardInspector';
 import RuneSpinner from './RuneSpinner';
+import { CoinIcon } from './ui/icons';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil.js';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import { cn } from '../lib/utils';
@@ -17,7 +18,10 @@ import {
   cancelListing,
 } from '../utils/arena/auctionApi';
 import { loadArenaProfile } from '../utils/arena/profileApi';
-import { buildOwnedMap, buildUsedMap, getAvailableQuantity } from '../utils/arena/collectionUtils';
+import {
+  buildOwnedMap, buildUsedMap, buildFoilingOwnedMap, buildUsedFoilingMap,
+  getAvailableQuantity, getAvailableQtyForFoiling, getOwnedQty,
+} from '../utils/arena/collectionUtils';
 import {
   BG_ATMOSPHERE, VIGNETTE, GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   PANEL_BG, PANEL_BORDER, BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
@@ -25,6 +29,47 @@ import {
   DIALOG_STYLE, FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
+import VikingOrnament from './VikingOrnament';
+import TutorialOverlay from './TutorialOverlay';
+import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
+
+const AUCTION_TUTORIAL_KEY = 'auction-house';
+
+const AUCTION_TUTORIAL_STEPS = [
+  {
+    key: 'welcome',
+    title: 'Welcome to the Auction House',
+    body: 'The auction house is the player-driven marketplace. Browse listings put up by other players and buy cards with gold, or list your own duplicates for sale. Everything is peer-to-peer — the game takes a small cut on each sale.',
+  },
+  {
+    key: 'browse-tab',
+    title: 'Browse',
+    body: 'Start on Browse to see every active listing. Use the filters to narrow by element, rarity, or name, and sort by price or newest. Click any listing to preview the card, then Buy to claim it — the card arrives in your mailbox moments later.',
+    selector: '[data-tutorial="auction-tab-browse"]',
+  },
+  {
+    key: 'listings-grid',
+    title: 'Listings Grid',
+    body: 'Every listing shows the card, rarity, foiling, asking price, and the seller\'s name. A gold glow means you\'re looking at a foil or rainbow foil. Clicking a listing opens a detail view with a bigger preview.',
+    selector: '[data-tutorial="auction-content"]',
+  },
+  {
+    key: 'sell-tab',
+    title: 'Sell & My Listings',
+    body: 'Switch to Sell to put your own cards up for auction and to manage listings you\'ve already posted. You can cancel an active listing at any time — the card comes back through your mailbox, same as a purchase.',
+    selector: '[data-tutorial="auction-tab-sell"]',
+  },
+  {
+    key: 'sell-picker',
+    title: 'Pick a Card to List',
+    body: 'Your sellable cards appear on the left. Cards already in a saved deck are hidden automatically so you never accidentally list something you\'re playing with. Pick a card, set a price, and hit List to post it for sale.',
+  },
+  {
+    key: 'mail-delivery',
+    title: 'Mail Delivery',
+    body: 'Every auction transfer happens through the mailbox — sold cards arrive as mail attachments, so nothing lives in limbo. Same for cancelled listings: the card is returned to you via mail and you claim it like any other delivery. Check your mailbox regularly.',
+  },
+];
 
 function cardImageUrl(card, printingId) {
   if (printingId && card?.printings) {
@@ -126,7 +171,15 @@ export default class AuctionHouse extends Component {
       now: Date.now(),
       hoveredCard: null,
       inspectedEntry: null,
+      // Progressive render window for the Sell tab's collection grid.
+      // Players with large collections can have hundreds of owned-card
+      // entries and rendering them all at once tanks performance. Browse
+      // tab uses server-side pagination and doesn't need this.
+      sellVisibleCount: 60,
+      showAuctionTutorial: false,
     };
+    this.sellScrollRef = createRef();
+    this.sellObserver = null;
   }
 
   componentDidMount() {
@@ -135,14 +188,62 @@ export default class AuctionHouse extends Component {
     this.doSync();
     this.loadListings();
     document.addEventListener('keydown', this.handleInspectorKeyDown);
+
+    // First-run onboarding, deferred so the listings grid paints
+    // before the overlay measures its targets. Waits on hydration
+    // so the on-disk seen flag is read first.
+    const profileId = this.props.profile?.id;
+    if (profileId) {
+      hydrateTutorialState().then(() => {
+        if (this._unmounted) return;
+        if (!shouldAutoPlay(profileId, AUCTION_TUTORIAL_KEY)) return;
+        this._tutorialTimer = setTimeout(() => {
+          if (!this._unmounted) this.setState({ showAuctionTutorial: true });
+        }, 600);
+      });
+    }
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
+    if (this._tutorialTimer) clearTimeout(this._tutorialTimer);
     this.unsubScale?.();
     clearInterval(this._tickTimer);
     clearTimeout(this._purchaseMsgTimer);
     document.removeEventListener('keydown', this.handleInspectorKeyDown);
+    if (this.sellObserver) {
+      this.sellObserver.disconnect();
+      this.sellObserver = null;
+    }
   }
+
+  handleAuctionTutorialDismiss = () => {
+    const profileId = this.props.profile?.id;
+    if (profileId) markTutorialSeen(profileId, AUCTION_TUTORIAL_KEY);
+    this.setState({ showAuctionTutorial: false });
+  };
+
+  // IntersectionObserver callback ref for the Sell tab's "load more"
+  // sentinel. Re-attaches each time the sentinel mounts (which happens
+  // on filter changes since the sentinel is only rendered when there
+  // are still more cards to show).
+  attachSellSentinel = (el) => {
+    if (this.sellObserver) {
+      this.sellObserver.disconnect();
+      this.sellObserver = null;
+    }
+    if (!el) return;
+    const root = this.sellScrollRef.current || null;
+    this.sellObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          this.setState((s) => ({ sellVisibleCount: s.sellVisibleCount + 60 }));
+        }
+      },
+      { root, rootMargin: '600px' }
+    );
+    this.sellObserver.observe(el);
+  };
 
   handleInspectorKeyDown = (e) => {
     if ((e.key === ' ' || e.code === 'Space') && !e.target?.isContentEditable && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) {
@@ -331,8 +432,11 @@ export default class AuctionHouse extends Component {
       const next = new Set(s.elementFilters);
       if (next.has(el)) next.delete(el);
       else next.add(el);
-      return { elementFilters: next };
+      // Reset the sell tab's progressive render window so filter
+      // changes snap back to the top of the filtered collection.
+      return { elementFilters: next, sellVisibleCount: 60 };
     });
+    if (this.sellScrollRef.current) this.sellScrollRef.current.scrollTop = 0;
   };
 
   renderBrowse() {
@@ -417,7 +521,10 @@ export default class AuctionHouse extends Component {
                   : { ...TAB_INACTIVE, borderRadius: '4px', aspectRatio: '1' }
                 }
                 title="Show foil cards only"
-                onClick={() => this.setState((s) => ({ foilOnly: !s.foilOnly }))}
+                onClick={() => {
+                  this.setState((s) => ({ foilOnly: !s.foilOnly, sellVisibleCount: 60 }));
+                  if (this.sellScrollRef.current) this.sellScrollRef.current.scrollTop = 0;
+                }}
               >
                 <Sparkles size={13} style={{ color: this.state.foilOnly ? ACCENT_GOLD : TEXT_MUTED }} />
               </button>
@@ -467,6 +574,7 @@ export default class AuctionHouse extends Component {
                         {foil && <span className="ml-1 text-[9px]" style={{ color: foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>{FOIL_LABEL[foiling]}</span>}
                       </div>
                       <div className="flex items-center justify-center gap-1 mt-0.5">
+                        <CoinIcon size={11} />
                         <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>{listing.price}</span>
                         <span className="text-[9px]" style={{ color: TEXT_MUTED }}>gold</span>
                       </div>
@@ -514,8 +622,9 @@ export default class AuctionHouse extends Component {
 
         {/* Right column: Card Preview — no scroll, image shrinks to fit */}
         <div className="flex-[35] min-h-0 overflow-hidden" style={SIDEBAR_PANEL}>
-          <div className="relative p-4 h-full flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+          <div className="relative p-4 h-full flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px', isolation: 'isolate' }}>
             <FourCorners />
+            <VikingOrnament ornament="ringerike004" variant="centerpiece" opacity={0.08} />
             {previewListing && previewCard ? (
               <div className="flex flex-col items-center gap-2 h-full min-h-0">
                 <img
@@ -589,10 +698,7 @@ export default class AuctionHouse extends Component {
                   <div className="flex justify-between items-center">
                     <span style={{ color: TEXT_MUTED }}>Price</span>
                     <span className="flex items-center gap-1.5">
-                      <span
-                        className="inline-block w-3 h-3 rounded-full"
-                        style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 4px ${GOLD} 0.4)` }}
-                      />
+                      <CoinIcon size={14} />
                       <span className="text-lg font-bold" style={{ color: COIN_COLOR, textShadow: `0 0 10px ${GOLD} 0.3)` }}>
                         {previewListing.price}
                       </span>
@@ -627,17 +733,7 @@ export default class AuctionHouse extends Component {
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3">
-                <div className="w-16 h-16 rounded-lg flex items-center justify-center" style={{ background: `${GOLD} 0.04)`, border: `1px dashed ${GOLD} 0.15)` }}>
-                  <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" stroke={`${GOLD} 0.2)`} strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="3" />
-                    <path d="M9 9h6M9 12h6M9 15h4" />
-                  </svg>
-                </div>
-                <div className="text-sm" style={{ color: TEXT_MUTED }}>Select a listing to preview</div>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -653,6 +749,8 @@ export default class AuctionHouse extends Component {
 
     const ownedMap = buildOwnedMap(profile.collection || []);
     const usedMap = buildUsedMap(this.props.savedDecks || []);
+    const foilingOwned = buildFoilingOwnedMap(profile.collection || []);
+    const usedFoiling = buildUsedFoilingMap(this.props.savedDecks || []);
     const { sortBy, sortOrder, elementFilters } = this.state;
 
     let availableCards = (sorceryCards || []).filter(
@@ -683,48 +781,34 @@ export default class AuctionHouse extends Component {
       });
     }
 
-    // Expand cards into per-foiling entries (standard vs foil vs rainbow)
-    const collection = profile.collection || [];
-    const printingOwned = new Map();
-    for (const entry of collection) {
-      if (entry.printingId) {
-        printingOwned.set(entry.printingId, (printingOwned.get(entry.printingId) || 0) + entry.quantity);
-      }
-    }
+    // Expand each owned card into one tile per foiling variant. Each
+    // tile shows the *available* quantity (owned minus the copies used
+    // in saved decks for that exact foiling), so a foil copy can still
+    // be listed even when the standard copy is in a deck.
+    const pickPrintingForFoiling = (card, foiling) => {
+      const printings = card.printings || [];
+      return printings.find(p => (p.foiling || 'S') === foiling) || printings[0];
+    };
 
     const sellEntries = [];
     for (const card of availableCards) {
-      const printings = card.printings || [];
-      const foilGroups = new Map();
-      for (const p of printings) {
-        const f = p.foiling || 'S';
-        const qty = printingOwned.get(p.unique_id) || 0;
-        if (!foilGroups.has(f)) {
-          foilGroups.set(f, { printing: p, ownedQty: qty });
-        } else {
-          const existing = foilGroups.get(f);
-          existing.ownedQty += qty;
-        }
+      const ownedByFoiling = foilingOwned.get(card.unique_id) || new Map();
+      // Iterate in canonical order so standard always comes first.
+      const orderedFoilings = ['S', 'F', 'R'];
+      for (const f of orderedFoilings) {
+        const available = getAvailableQtyForFoiling(card.unique_id, f, foilingOwned, usedFoiling);
+        if (available <= 0) continue;
+        const printing = pickPrintingForFoiling(card, f);
+        if (!printing) continue;
+        sellEntries.push({ card, printing, foiling: f, qty: available });
       }
-      // Standard version
-      let addedForCard = 0;
-      const stdGroup = foilGroups.get('S');
-      if (stdGroup && stdGroup.ownedQty > 0) {
-        sellEntries.push({ card, printing: stdGroup.printing, foiling: 'S', qty: stdGroup.ownedQty });
-        addedForCard++;
-      }
-      // Foil/rainbow variants
-      for (const [f, group] of foilGroups) {
-        if (f === 'S') continue;
-        if (group.ownedQty > 0) {
-          sellEntries.push({ card, printing: group.printing, foiling: f, qty: group.ownedQty });
-          addedForCard++;
-        }
-      }
-      // Fallback: if no printing-level tracking, show card-level qty
-      if (addedForCard === 0 && getAvailableQuantity(card.unique_id, ownedMap, usedMap) > 0) {
-        const p = printings[0] || {};
-        sellEntries.push({ card, printing: p, foiling: p.foiling || 'S', qty: getAvailableQuantity(card.unique_id, ownedMap, usedMap) });
+      // Surface any foilings outside the canonical set (future-proofing).
+      for (const f of ownedByFoiling.keys()) {
+        if (orderedFoilings.includes(f)) continue;
+        const available = getAvailableQtyForFoiling(card.unique_id, f, foilingOwned, usedFoiling);
+        if (available <= 0) continue;
+        const printing = pickPrintingForFoiling(card, f);
+        if (printing) sellEntries.push({ card, printing, foiling: f, qty: available });
       }
     }
 
@@ -733,7 +817,10 @@ export default class AuctionHouse extends Component {
       : sellEntries;
 
     const selectedCard = selectedCardId ? findCard(sorceryCards, selectedCardId) : null;
-    const selectedQty = selectedCardId ? getAvailableQuantity(selectedCardId, ownedMap, usedMap) : 0;
+    const selectedFoiling = this.state.selectedFoiling || 'S';
+    const selectedQty = selectedCardId
+      ? getAvailableQtyForFoiling(selectedCardId, selectedFoiling, foilingOwned, usedFoiling)
+      : 0;
 
     const active = myListings.filter((l) => l.status === 'active');
     const sold = myListings.filter((l) => l.status === 'sold');
@@ -748,7 +835,10 @@ export default class AuctionHouse extends Component {
               type="text"
               placeholder="Search your cards..."
               value={sellSearch}
-              onInput={(e) => this.setState({ sellSearch: e.target.value })}
+              onInput={(e) => {
+                this.setState({ sellSearch: e.target.value, sellVisibleCount: 60 });
+                if (this.sellScrollRef.current) this.sellScrollRef.current.scrollTop = 0;
+              }}
               className="flex-1 min-w-[180px] px-3 py-2 text-sm outline-none"
               style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
             />
@@ -791,7 +881,10 @@ export default class AuctionHouse extends Component {
                   : { ...TAB_INACTIVE, borderRadius: '4px', aspectRatio: '1' }
                 }
                 title="Show foil cards only"
-                onClick={() => this.setState((s) => ({ foilOnly: !s.foilOnly }))}
+                onClick={() => {
+                  this.setState((s) => ({ foilOnly: !s.foilOnly, sellVisibleCount: 60 }));
+                  if (this.sellScrollRef.current) this.sellScrollRef.current.scrollTop = 0;
+                }}
               >
                 <Sparkles size={13} style={{ color: this.state.foilOnly ? ACCENT_GOLD : TEXT_MUTED }} />
               </button>
@@ -799,37 +892,48 @@ export default class AuctionHouse extends Component {
           </div>
 
           {/* Card grid */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div ref={this.sellScrollRef} className="flex-1 overflow-y-auto min-h-0">
             {filteredSellEntries.length === 0 ? (
               <div className="text-center py-16 text-sm" style={{ color: TEXT_MUTED }}>No available cards to sell</div>
             ) : (
-              <div className="card-grid px-4">
-                {filteredSellEntries.map((entry, idx) => {
-                  const { card, printing, foiling, qty } = entry;
-                  const key = `${card.unique_id}-${foiling}`;
-                  const isSelected = selectedCardId === card.unique_id;
-                  const foil = isFoilFinish(foiling);
-                  return (
-                    <div key={key}>
-                      <DeckCardTile
-                        entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: idx }}
-                        isSelected={isSelected}
-                        onClick={() => this.setState({ selectedCardId: card.unique_id, selectedFoiling: foiling, sellPrice: '', sellQuantity: 1, sellError: null })}
-                        onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { card, printing: { ...printing, foiling } } : null })}
-                      />
-                      <div className="flex items-center justify-center gap-1 mt-1">
-                        {qty > 1 && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: PANEL_BG, color: ACCENT_GOLD, border: `1px solid ${GOLD} 0.3)` }}>
-                            ×{qty}
-                          </span>
-                        )}
-                        {foil && <span className="text-[9px] font-semibold" style={{ color: foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>{FOIL_LABEL[foiling]}</span>}
+              <>
+                <div className="card-grid px-4">
+                  {filteredSellEntries.slice(0, this.state.sellVisibleCount).map((entry, idx) => {
+                    const { card, printing, foiling, qty } = entry;
+                    const key = `${card.unique_id}-${foiling}`;
+                    const isSelected = selectedCardId === card.unique_id && (this.state.selectedFoiling || 'S') === foiling;
+                    const foil = isFoilFinish(foiling);
+                    return (
+                      <div key={key}>
+                        <DeckCardTile
+                          entry={{ card, printing: { ...printing, foiling }, zone: 'spellbook', entryIndex: idx }}
+                          isSelected={isSelected}
+                          onClick={() => this.setState({ selectedCardId: card.unique_id, selectedFoiling: foiling, sellPrice: '', sellQuantity: 1, sellError: null })}
+                          onHoverChange={(hovered) => this.setState({ hoveredCard: hovered ? { card, printing: { ...printing, foiling } } : null })}
+                        />
+                        <div className="flex items-center justify-center gap-1 mt-1">
+                          {qty > 1 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: PANEL_BG, color: ACCENT_GOLD, border: `1px solid ${GOLD} 0.3)` }}>
+                              ×{qty}
+                            </span>
+                          )}
+                          {foil && <span className="text-[9px] font-semibold" style={{ color: foiling === 'R' ? '#c480e0' : '#6ec8d4' }}>{FOIL_LABEL[foiling]}</span>}
+                        </div>
+                        <div className="text-[10px] truncate mt-0.5 text-center px-0.5" style={{ color: TEXT_MUTED }}>{card.name}</div>
                       </div>
-                      <div className="text-[10px] truncate mt-0.5 text-center px-0.5" style={{ color: TEXT_MUTED }}>{card.name}</div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+                {filteredSellEntries.length > this.state.sellVisibleCount ? (
+                  <div ref={this.attachSellSentinel} className="flex items-center justify-center py-6 text-[10px] uppercase tracking-widest" style={{ color: TEXT_MUTED }}>
+                    Loading more cards · {this.state.sellVisibleCount} / {filteredSellEntries.length}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-[10px]" style={{ color: 'rgba(166,160,155,0.3)' }}>
+                    {filteredSellEntries.length} card{filteredSellEntries.length !== 1 ? 's' : ''}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -923,8 +1027,9 @@ export default class AuctionHouse extends Component {
 
         {/* Right column: Active Listings + Sold */}
         <div className="flex-[35] min-h-0 overflow-y-auto" style={SIDEBAR_PANEL}>
-          <div className="relative p-4 h-full" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+          <div className="relative p-4 h-full" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px', isolation: 'isolate' }}>
             <FourCorners />
+            <VikingOrnament ornament="ringerike004" variant="centerpiece" opacity={0.08} />
 
             {myListingsLoading ? (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -971,8 +1076,9 @@ export default class AuctionHouse extends Component {
                               </div>
                             </div>
                             <div className="flex flex-col items-end shrink-0 gap-0.5">
-                              <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>
-                                {listing.price}g
+                              <span className="text-xs font-bold flex items-center gap-1" style={{ color: COIN_COLOR }}>
+                                <CoinIcon size={11} />
+                                {listing.price}
                               </span>
                               {listing.createdAt && (
                                 <span className="text-[9px] tabular-nums" style={{ color: TEXT_MUTED }}>
@@ -1026,8 +1132,9 @@ export default class AuctionHouse extends Component {
                                 <Sparkles size={10} className="shrink-0" style={{ color: listing.foiling === 'R' ? '#c480e0' : ACCENT_GOLD }} />
                               )}
                             </span>
-                            <span className="text-xs font-semibold shrink-0" style={{ color: '#6ab04c' }}>
-                              +{listing.price}g
+                            <span className="text-xs font-semibold shrink-0 flex items-center gap-1" style={{ color: '#6ab04c' }}>
+                              +{listing.price}
+                              <CoinIcon size={10} />
                             </span>
                           </div>
                         );
@@ -1093,6 +1200,7 @@ export default class AuctionHouse extends Component {
               <button
                 key={t.key}
                 type="button"
+                data-tutorial={t.key === 'browse' ? 'auction-tab-browse' : 'auction-tab-sell'}
                 className="px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer"
                 style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
                 onClick={() => this.switchTab(t.key)}
@@ -1127,7 +1235,7 @@ export default class AuctionHouse extends Component {
         )}
 
         {/* Content area */}
-        <div className="relative flex-1 flex flex-col min-h-0 px-6 py-4" style={{ zoom: viewScale }}>
+        <div data-tutorial="auction-content" className="relative flex-1 flex flex-col min-h-0 px-6 py-4" style={{ zoom: viewScale }}>
           {tab === 'browse' && this.renderBrowse()}
           {tab === 'sell' && this.renderSell()}
         </div>
@@ -1156,6 +1264,14 @@ export default class AuctionHouse extends Component {
             onClose={() => this.setState({ inspectedEntry: null })}
           />
         ) : null}
+
+        {/* First-run auction house tutorial. */}
+        {this.state.showAuctionTutorial && (
+          <TutorialOverlay
+            steps={AUCTION_TUTORIAL_STEPS}
+            onDismiss={this.handleAuctionTutorialDismiss}
+          />
+        )}
       </div>
     );
   }

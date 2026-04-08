@@ -1,5 +1,56 @@
 import { Toaster as Sonner } from 'sonner';
 import { getViewportScale } from '../../lib/medievalTheme';
+import { getLocalApiOrigin } from '../../utils/localApi';
+
+// Inject the Urnes serpent ornament rule once on module load. We
+// can't put this in app.css because Bun's CSS bundler tries to
+// resolve url(...) at build time and the runtime asset path
+// (/game-assets/...) doesn't exist on disk at build time. Going
+// through document.head.appendChild lets us interpolate the URL as
+// a JS string the bundler never touches.
+//
+// Each Sonner toast gets a ::after pseudo-element with the Urnes
+// horizontal serpent band as a CSS mask. The band sits at the bottom
+// of the toast as ambient ornamentation — no visible divider, no
+// occupied layout space, just embossed decoration carved into the
+// toast surface via mix-blend-mode: overlay.
+if (typeof document !== 'undefined' && !document.getElementById('valkenhall-toast-ornament')) {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'valkenhall-toast-ornament';
+  // Cache-bust per session — see VikingOrnament.jsx for the rationale.
+  const ornamentUrl = `${getLocalApiOrigin()}/game-assets/ornaments/viking-urnes-009.svg?v=${Date.now()}`;
+  styleEl.textContent = `
+    [data-sonner-toast] {
+      isolation: isolate;
+      padding-bottom: 28px !important;
+    }
+    [data-sonner-toast]::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 6px;
+      transform: translateX(-50%);
+      width: 78%;
+      max-width: 320px;
+      height: 20px;
+      pointer-events: none;
+      mask-image: url("${ornamentUrl}");
+      -webkit-mask-image: url("${ornamentUrl}");
+      mask-size: contain;
+      -webkit-mask-size: contain;
+      mask-repeat: no-repeat;
+      -webkit-mask-repeat: no-repeat;
+      mask-position: center;
+      -webkit-mask-position: center;
+      background-color: rgba(232, 200, 130, 1);
+      filter: drop-shadow(0 1px 0 rgba(255, 235, 195, 0.35)) drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.85));
+      mix-blend-mode: overlay;
+      opacity: 0.45;
+      z-index: -1;
+    }
+  `;
+  document.head.appendChild(styleEl);
+}
 
 function Toaster(props) {
   const scale = getViewportScale();

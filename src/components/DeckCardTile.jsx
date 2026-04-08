@@ -1,6 +1,7 @@
 import { Component, createRef } from 'preact';
 import { cn } from '../lib/utils';
 import { isFoilFinish } from '../utils/sorcery/foil.js';
+import CardImagePlaceholder from './CardImagePlaceholder';
 
 const TILT_MAX_DEG = 10;
 const HOVER_SCALE = 1.04;
@@ -22,13 +23,33 @@ export default class DeckCardTile extends Component {
       mx: 50, my: 50,
       originX: 'center', originY: 'center',
       nudgeX: 0, nudgeY: 0,
+      // Image load tracking — starts false so the medieval placeholder
+      // shows while the fetch is in flight, then flips true on the
+      // <img>'s onLoad to fade the real image in over the placeholder.
+      imgLoaded: false,
     };
     this.ref = createRef();
+  }
+
+  componentDidUpdate(prevProps) {
+    // If the underlying image URL changed (e.g. user switched printings
+    // or the parent swapped in a different card entry), reset so the
+    // placeholder shows again until the new image loads.
+    const prevUrl = getImageUrl(prevProps.entry);
+    const nextUrl = getImageUrl(this.props.entry);
+    if (prevUrl !== nextUrl && this.state.imgLoaded) {
+      // eslint-disable-next-line react/no-did-update-set-state
+      this.setState({ imgLoaded: false });
+    }
   }
 
   componentWillUnmount() {
     if (this._moveRaf) cancelAnimationFrame(this._moveRaf);
   }
+
+  handleImageLoad = () => {
+    this.setState({ imgLoaded: true });
+  };
 
   handleMouseMove = (e) => {
     // Store raw event coords and throttle to one update per frame
@@ -206,7 +227,7 @@ export default class DeckCardTile extends Component {
           {/* Inner card — overflow:hidden for image masking, foil effects */}
           <div
             className={cn(
-              'deck-card-tile-inner h-full w-full overflow-hidden rounded-[14px]',
+              'deck-card-tile-inner relative h-full w-full overflow-hidden rounded-[14px]',
               isFoil && 'foil-overlay',
               isFoil && !hovering && 'foil-overlay--idle',
               isFoil && hovering && 'foil-overlay--active'
@@ -214,12 +235,22 @@ export default class DeckCardTile extends Component {
             data-foil={isFoil ? foiling : undefined}
             style={foilStyle}
           >
+            {/* Medieval placeholder behind the image — visible until the
+                network fetch finishes, then remains underneath while the
+                real image fades in on top. Unmounted after load so there's
+                zero cost when the tile is eventually cached. */}
+            {!this.state.imgLoaded ? <CardImagePlaceholder /> : null}
             <img
               src={imgUrl}
               alt={entry.card.name}
               loading="lazy"
               decoding="async"
-              className="deck-card-tile-image h-full w-full object-cover"
+              onLoad={this.handleImageLoad}
+              className="deck-card-tile-image relative h-full w-full object-cover"
+              style={{
+                opacity: this.state.imgLoaded ? 1 : 0,
+                transition: 'opacity 0.35s ease-out',
+              }}
             />
             {hovering ? (
               <div

@@ -13,7 +13,7 @@ import { emitGameAction, onGameAction, offGameAction } from './socketClient';
  * caused a re-emit loop. This class gives every action exactly one home.
  *
  * Design:
- *   - Typed methods per message type (moveCard, tapCard, syncPile, …).
+ *   - Typed methods per message type (claimCard, tapCard, syncPile, …).
  *   - Internal suppressBroadcast flag. Callers don't check it — they call
  *     the method and trust the bridge to skip the emit if suppressed.
  *   - `withSuppressed(fn)` wraps a synchronous block. For calls that need
@@ -70,12 +70,32 @@ export class GameSyncBridge {
   }
 
   /**
-   * Move a card's 3D position, optionally with grid coordinates, action,
-   * path, and aura flag. The shape is passed through verbatim because the
-   * receiver branches on several optional fields.
+   * Claim ownership of a card. Sent the moment a local action wakes up
+   * the card's body (drag start, or auto-claim from a cascade collision).
+   * Receivers flip the body to kinematic + non-colliding so it can't
+   * fight the incoming pose stream.
    */
-  moveCard(payload) {
-    this._send('card:move', payload);
+  claimCard(cardId) {
+    this._send('card:claim', { cardId });
+  }
+
+  /**
+   * Stream the current physics pose of a locally-owned card. Throttled
+   * to ~30 Hz by the caller via CardOwnership.shouldBroadcast. The pose
+   * arrays are flat [x, y, z] and [x, y, z, w] for cheap JSON encoding.
+   */
+  streamCardPose(cardId, pos, quat) {
+    this._send('card:pose', { cardId, pos, quat });
+  }
+
+  /**
+   * Release ownership and report the final settled pose. Sent when the
+   * card's body sleeps after the local player stopped interacting.
+   * Receivers apply the pose, sleep the body, and return it to dynamic
+   * + colliding so future actions on either side can wake it again.
+   */
+  releaseCard(cardId, pos, quat) {
+    this._send('card:release', { cardId, pos, quat });
   }
 
   /** Tap / untap a card. */
@@ -96,6 +116,24 @@ export class GameSyncBridge {
   /** Change card level (surface / underground / underwater). */
   setCardLevel(cardId, level) {
     this._send('card:level', { cardId, level });
+  }
+
+  // --- Groups ----------------------------------------------------------
+
+  /**
+   * Broadcast that a set of cards on the table have been grouped together
+   * under a shared groupId. Receivers write the groupId onto each card
+   * instance and rebuild their groups map so the cards drag together on
+   * the opponent's board too. Group membership is fully replaceable —
+   * sending the same groupId with a different card list replaces it.
+   */
+  setGroup(groupId, cardIds) {
+    this._send('group:set', { groupId, cardIds });
+  }
+
+  /** Dissolve a group. Receivers clear the groupId from every member. */
+  clearGroup(groupId) {
+    this._send('group:clear', { groupId });
   }
 
   // --- Pile sync -------------------------------------------------------

@@ -17,20 +17,21 @@ import ArenaStarterPicker from './components/ArenaStarterPicker';
 import ArenaStore from './components/ArenaStore';
 import AuctionHouse from './components/AuctionHouse';
 import ArenaPackOpening from './components/ArenaPackOpening';
-import { loadArenaProfile, saveArenaProfile } from './utils/arena/profileApi';
+import { loadArenaProfile, saveArenaProfile, grantCards } from './utils/arena/profileApi';
+import { purchasePacks, openPendingPack, resolvePendingPacks, resolvePack } from './utils/arena/packsApi';
 import { playMusic, stopMusic } from './utils/arena/musicManager';
 import { playUI, UI, preloadUISounds } from './utils/arena/uiSounds';
 import { createDefaultProfile, CURRENCY, isArenaDebugMode } from './utils/arena/profileDefaults';
 import { checkAchievements, getAchievement } from './utils/arena/achievements';
-import { generatePack } from './utils/arena/packGenerator';
 import { resolveStarterDeck } from './utils/arena/starterDecks';
-import { generateSeason, createDefaultSeasonProgress, initializeQuests, processMatchResult } from './utils/arena/seasonPass';
+import { createDefaultSeasonProgress, initializeQuests, processMatchResult, attachQuestPool } from './utils/arena/seasonPass';
+import { loadCurrentSeason, claimSeasonTier as apiClaimSeasonTier } from './utils/arena/seasonApi';
 import ArenaMatchmaking from './components/ArenaMatchmaking';
 import ArenaDeckSelect from './components/ArenaDeckSelect';
 import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
 import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
-import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus, reportMatchResult } from './utils/arena/matchmakingApi';
+import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus } from './utils/arena/matchmakingApi';
 import { getStoredToken, validateToken, clearStoredToken } from './utils/authApi';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
@@ -39,7 +40,7 @@ import RuneSpinner from './components/RuneSpinner';
 import LoadingIndicator from './components/LoadingIndicator';
 import FirstRunDownload from './components/FirstRunDownload';
 import TradeWindow from './components/TradeWindow';
-import { startPresence, stopPresence, updateActivity } from './utils/presenceManager';
+import { startPresence, stopPresence, updateActivity, refreshFriendList } from './utils/presenceManager';
 import * as friendsApi from './utils/friendsApi';
 import { createUpdateManager } from './utils/updateManager';
 import UpdateModal from './components/UpdateModal';
@@ -245,6 +246,22 @@ export default class App extends Component {
   }
 
   componentDidUpdate(_prevProps, prevState) {
+    // Hydrate pending packs once both the server profile and the sorcery
+    // card database are available. The two load in parallel, so we react
+    // whenever either becomes ready. The `_pendingPacksRaw` marker is
+    // removed in the same setState so this block only runs once.
+    const raw = this.state.arenaProfile?._pendingPacksRaw;
+    if (raw && Array.isArray(this.state.sorceryCards) && this.state.sorceryCards.length > 0) {
+      const resolved = resolvePendingPacks(raw, this.state.sorceryCards);
+      this.setState((state) => {
+        const { _pendingPacksRaw, ...rest } = state.arenaProfile || {};
+        return {
+          arenaProfile: rest,
+          arenaPendingPacks: [...(state.arenaPendingPacks || []), ...resolved],
+        };
+      });
+    }
+
     if (!this.state.arenaLoading) {
       const view = this.state.arenaView;
       const prevView = prevState.arenaView;
@@ -315,6 +332,9 @@ export default class App extends Component {
       name: serverProfile.name || null,
       coins: serverProfile.coins || 0,
       xp: serverProfile.xp || 0,
+      arcanaShards: serverProfile.arcanaShards || 0,
+      wins: serverProfile.wins || 0,
+      losses: serverProfile.losses || 0,
       starterDeck: serverProfile.starterDeck || null,
       profileAvatar: serverProfile.profileAvatar || null,
       serverToken: token,
@@ -324,6 +344,10 @@ export default class App extends Component {
       matchHistory: serverProfile.matchHistory || [],
       achievements: serverProfile.achievements || [],
       seasonProgress: serverProfile.seasonProgress || null,
+      // Pending packs arrive in wire format from the server. They're
+      // resolved against sorceryCards in hydratePendingPacks() once both
+      // the profile and the card database have loaded.
+      _pendingPacksRaw: serverProfile.pendingPacks || [],
     };
   };
 
@@ -341,9 +365,18 @@ export default class App extends Component {
     this.postLoginInit();
   };
 
-  initSeason = () => {
-    if (!this.state.sorceryCards?.length || !this.state.arenaProfile) return;
-    const season = generateSeason(this.state.sorceryCards);
+  initSeason = async () => {
+    if (!this.state.arenaProfile) return;
+    let season;
+    try {
+      const result = await loadCurrentSeason();
+      season = attachQuestPool(result.season);
+    } catch (e) {
+      console.error('Failed to load current season:', e);
+      return;
+    }
+    if (!season) return;
+
     let progress = this.state.arenaProfile.seasonProgress;
     if (!progress || progress.seasonId !== season.seasonId) {
       progress = createDefaultSeasonProgress(season.seasonId);
@@ -351,6 +384,8 @@ export default class App extends Component {
     progress = initializeQuests(progress, season);
     const updatedProfile = { ...this.state.arenaProfile, seasonProgress: progress };
     this.setState({ currentSeason: season, arenaProfile: updatedProfile });
+    // Persist the (possibly newly-initialized) progress so quests/seasonId
+    // round-trip even before the player claims a tier.
     saveArenaProfile(updatedProfile).catch(() => {});
   };
 
@@ -777,13 +812,18 @@ export default class App extends Component {
     const cardIndex = new Map();
     for (const c of sorceryCards) cardIndex.set(c.unique_id, c);
 
-    const collection = [];
+    // Aggregate the starter deck cards by (cardId, foiling) into the
+    // shape grantCards expects. Avatars get the foil printing — see
+    // resolveStarterDeck. The server returns the new collection so we
+    // never have to compute it locally.
+    const grantItems = [];
     for (const card of resolvedCards) {
-      const existing = collection.find((c) => c.cardId === card.cardId && c.printingId === card.printingId);
+      const foiling = card.foiling || 'S';
+      const existing = grantItems.find((i) => i.cardId === card.cardId && i.foiling === foiling);
       if (existing) {
         existing.quantity++;
       } else {
-        collection.push({ cardId: card.cardId, printingId: card.printingId, quantity: 1 });
+        grantItems.push({ cardId: card.cardId, foiling, quantity: 1 });
       }
     }
 
@@ -807,7 +847,17 @@ export default class App extends Component {
         id: deckId,
         name: deck.name,
         format: 'constructed',
-        cards: resolvedCards.map((c) => ({ cardId: c.cardId, cardName: cardIndex.get(c.cardId)?.name || '', printingId: c.printingId, isSideboard: false })),
+        // Zone info from resolveStarterDeck drives the deck compartment
+        // each card lands in. The saved-deck format uses `isSideboard`
+        // for Collection cards; Avatar / Spellbook / Atlas all live in
+        // the main deck and are reconstructed from card type on load.
+        cards: resolvedCards.map((c) => ({
+          cardId: c.cardId,
+          cardName: cardIndex.get(c.cardId)?.name || '',
+          printingId: c.printingId,
+          foiling: c.foiling || 'S',
+          isSideboard: c.zone === 'collection',
+        })),
         previewCards,
       }, 'sorcery');
       previewUrl = savedSummary.previewUrl || null;
@@ -815,16 +865,25 @@ export default class App extends Component {
       console.warn('Failed to save starter deck for preview:', e);
     }
 
-    const avatarCard = resolvedCards.find((c) => {
-      const card = cardIndex.get(c.cardId);
-      return card?.type === 'Avatar';
-    });
+    const avatarCard = resolvedCards.find((c) => c.zone === 'avatar');
+
+    // Grant the starter cards through the atomic server endpoint and use
+    // the returned collection as the new authoritative state. Then save
+    // the other profile fields (starterDeck, profileAvatar) separately.
+    let serverCollection;
+    try {
+      const grantResult = await grantCards(grantItems);
+      serverCollection = grantResult.collection;
+    } catch (e) {
+      console.error('Failed to grant starter deck cards:', e);
+      serverCollection = arenaProfile.collection || [];
+    }
 
     const updatedProfile = {
       ...arenaProfile,
       starterDeck: deck.id,
       profileAvatar: avatarCard?.cardId || null,
-      collection,
+      collection: serverCollection,
     };
 
     this.setState({ arenaProfile: updatedProfile });
@@ -855,33 +914,42 @@ export default class App extends Component {
     const { currentSeason, arenaProfile } = this.state;
     if (!currentSeason || !arenaProfile?.seasonProgress) return;
 
-    const tier = currentSeason.tiers.find(t => t.level === level);
-    if (!tier) return;
-
-    const progress = arenaProfile.seasonProgress;
-    if (progress.seasonXp < tier.xpRequired || progress.claimedTiers.includes(level)) return;
-
-    const updatedProgress = {
-      ...progress,
-      claimedTiers: [...progress.claimedTiers, level],
-    };
-
-    let coins = arenaProfile.coins;
-    if (tier.reward.coins) coins += tier.reward.coins;
-
-    let collection = [...arenaProfile.collection];
-    if (tier.reward.foilCardId && tier.reward.foilPrintingId) {
-      const existing = collection.find(c => c.cardId === tier.reward.foilCardId && c.printingId === tier.reward.foilPrintingId);
-      if (existing) existing.quantity++;
-      else collection.push({ cardId: tier.reward.foilCardId, printingId: tier.reward.foilPrintingId, quantity: 1 });
+    // Server is authoritative — it validates the tier against its own
+    // table + the player's stored progress, applies the reward
+    // atomically, and returns the new totals + collection. The client
+    // only sends the tier number.
+    let result;
+    try {
+      result = await apiClaimSeasonTier(level);
+    } catch (e) {
+      const msg = e?.message || 'Failed to claim reward';
+      console.error('Season tier claim failed:', e);
+      toast.error(msg);
+      return;
     }
 
-    const updatedProfile = { ...arenaProfile, coins, collection, seasonProgress: updatedProgress };
+    const updatedProfile = {
+      ...arenaProfile,
+      coins: result.newTotals?.coins ?? arenaProfile.coins,
+      arcanaShards: result.newTotals?.arcanaShards ?? arenaProfile.arcanaShards,
+      collection: result.collection ?? arenaProfile.collection,
+      seasonProgress: result.seasonProgress ?? arenaProfile.seasonProgress,
+    };
     this.setState({ arenaProfile: updatedProfile });
-    await saveArenaProfile(updatedProfile).catch(() => {});
 
-    if (tier.reward.coins) toast.success(`+${tier.reward.coins} coins!`);
-    if (tier.reward.foilCardName) toast.success(`Foil ${tier.reward.foilRarity}: ${tier.reward.foilCardName}!`, { duration: 5000 });
+    // Resolve a display name for the foil reward against the local
+    // catalog so we can toast a friendly message. The server only
+    // returns cardId — the client owns the name lookup.
+    const reward = result.reward || {};
+    let foilName = null;
+    if (reward.foilCardId && Array.isArray(this.state.sorceryCards)) {
+      const card = this.state.sorceryCards.find((c) => c.unique_id === reward.foilCardId);
+      foilName = card?.name || null;
+    }
+
+    if (reward.coins) toast.success(`+${reward.coins} coins!`);
+    if (reward.arcanaShards) toast.success(`+${reward.arcanaShards} Arcana!`);
+    if (foilName) toast.success(`Foil ${reward.foilRarity}: ${foilName}!`, { duration: 5000 });
   };
 
   openArcaneTrials = () => {
@@ -968,45 +1036,105 @@ export default class App extends Component {
     const opp = this.state.arenaMatchmakingOpponent;
     const opponentName = opp?.name || opp?.username || opp?.displayName || 'Opponent';
 
+    // The server already applied coins/xp/shards/wins/losses and the
+    // ranked ladder update (tier/division/LP/shields) atomically in
+    // POST /profile/me/match/claim and wrote a match_history row as
+    // part of the same transaction. Sync the client cache from the
+    // returned totals and append a local history entry for immediate UI.
+    const newCoins = reward.newTotals?.coins ?? (arenaProfile.coins + (reward.coins || 0));
+    const newXp = reward.newTotals?.xp ?? (arenaProfile.xp + (reward.xp || 0));
+    const newWins = reward.newTotals?.wins ?? ((arenaProfile.wins || 0) + (reward.won ? 1 : 0));
+    const newLosses = reward.newTotals?.losses ?? ((arenaProfile.losses || 0) + (reward.won ? 0 : 1));
+    const newShards = reward.newTotals?.arcanaShards ?? ((arenaProfile.arcanaShards || 0) + (reward.arcanaShards || 0));
+    const newRank = reward.newTotals?.rank ?? arenaProfile.rank;
+    const newShieldGames = reward.newTotals?.shieldGamesLeft ?? arenaProfile.shieldGamesLeft ?? 0;
+
     const updatedProfile = {
       ...arenaProfile,
-      coins: arenaProfile.coins + reward.coins,
-      xp: arenaProfile.xp + reward.xp,
+      coins: newCoins,
+      xp: newXp,
+      arcanaShards: newShards,
+      wins: newWins,
+      losses: newLosses,
+      rank: newRank,
+      shieldGamesLeft: newShieldGames,
       matchHistory: [
         {
           date: new Date().toISOString(),
           opponentName,
           won: reward.won,
-          coinsEarned: reward.coins,
-          xpEarned: reward.xp,
-          durationMinutes: Math.round(reward.xp / 10),
+          coinsEarned: reward.coins || 0,
+          xpEarned: reward.xp || 0,
+          durationMinutes: reward.durationMinutes || 0,
         },
-        ...arenaProfile.matchHistory,
+        ...(arenaProfile.matchHistory || []),
       ],
     };
 
     let withAchievements = this.processAchievements(updatedProfile);
-    if (this.state.currentSeason && withAchievements.seasonProgress) {
-      const seasonResult = processMatchResult(withAchievements.seasonProgress, this.state.currentSeason, reward.won);
-      withAchievements = { ...withAchievements, seasonProgress: seasonResult.progress };
-      const totalSeasonXp = seasonResult.matchXpEarned + seasonResult.questXpEarned;
-      toast(`Season XP: +${totalSeasonXp}`, { duration: 3000 });
-    }
-    this.setState({ arenaProfile: withAchievements });
-    await saveArenaProfile(withAchievements).catch((e) => console.error('Failed to save profile:', e));
 
-    // Record match in server-side history (rank updates are now client-driven)
-    if (arenaProfile.serverToken && this.state.isRankedMatch) {
+    // Lazy-init the season if the user finished a match before visiting
+    // Arcane Trials. The season comes from the server (deterministic
+    // per cycle), so a single call is enough.
+    let currentSeason = this.state.currentSeason;
+    if (!currentSeason) {
       try {
-        await reportMatchResult(arenaProfile.serverToken, null, reward.won ? 'me' : 'opponent', {
-          opponentName,
-          coinsEarned: reward.coins,
-          xpEarned: reward.xp,
-        });
-      } catch (error) {
-        console.error('Failed to report match result:', error);
+        const result = await loadCurrentSeason();
+        currentSeason = attachQuestPool(result.season);
+      } catch (e) {
+        console.error('Failed to load current season:', e);
       }
     }
+    let seasonProgress = withAchievements.seasonProgress;
+    if (currentSeason && (!seasonProgress || seasonProgress.seasonId !== currentSeason.seasonId)) {
+      seasonProgress = initializeQuests(createDefaultSeasonProgress(currentSeason.seasonId), currentSeason);
+    }
+
+    if (currentSeason && seasonProgress) {
+      // Pass the server-computed season XP as the base amount so a
+      // tampered client cannot inflate it.
+      const seasonResult = processMatchResult(seasonProgress, currentSeason, reward.won, reward.seasonXp || 0);
+      withAchievements = { ...withAchievements, seasonProgress: seasonResult.progress };
+      if (seasonResult.questXpEarned > 0) {
+        toast(`Quest complete! +${seasonResult.questXpEarned} Season XP`, { duration: 3000 });
+      }
+    }
+    this.setState({ arenaProfile: withAchievements, currentSeason });
+    // Persist season progress (coins/xp/wins/losses were already applied
+    // server-side by the claim endpoint, so this PUT just mirrors them
+    // back alongside the updated seasonProgress).
+    await saveArenaProfile(withAchievements).catch((e) => console.error('Failed to save profile:', e));
+  };
+
+  // Applied by the Card Singles tab after a successful server-side purchase.
+  // The server already deducted shards and added the card atomically; we
+  // just sync the client cache. Shard purchases are always non-foil, so
+  // the local collection delta uses foiling 'S'.
+  handleShardPurchaseUpdate = ({ arcanaShards, collectionDelta }) => {
+    this.setState((state) => {
+      const profile = state.arenaProfile;
+      if (!profile) return null;
+
+      let collection = profile.collection || [];
+      if (collectionDelta) {
+        const { cardId, quantity } = collectionDelta;
+        const foiling = 'S';
+        collection = [...collection];
+        const existing = collection.find((c) => c.cardId === cardId && (c.foiling || 'S') === foiling);
+        if (existing) {
+          existing.quantity = (existing.quantity || 0) + quantity;
+        } else {
+          collection.push({ cardId, foiling, quantity });
+        }
+      }
+
+      const updated = {
+        ...profile,
+        arcanaShards: arcanaShards != null ? arcanaShards : profile.arcanaShards,
+        collection,
+      };
+      return { arenaProfile: updated };
+    });
   };
 
   openArenaStore = () => {
@@ -1020,27 +1148,34 @@ export default class App extends Component {
     this.setState({ arenaView: 'auction-house' });
   };
 
-  buyArenaPack = (setKey, quantity = 1) => {
+  buyArenaPack = async (setKey, quantity = 1) => {
     playUI(UI.PURCHASE);
-    const debug = isArenaDebugMode();
-    const totalCost = quantity * CURRENCY.PACK_PRICE;
 
-    const newPacks = [];
-    for (let i = 0; i < quantity; i++) {
-      newPacks.push(generatePack(this.state.sorceryCards, setKey));
+    // The server is authoritative for both the coin debit and the pack
+    // roll. If the player can't afford it the server returns 402 and
+    // nothing has changed locally yet. On success we update coins from
+    // the server response and append the server-rolled packs (resolved
+    // against the local card index) to the pending queue.
+    let result;
+    try {
+      result = await purchasePacks(setKey, quantity);
+    } catch (err) {
+      console.error('Failed to purchase packs:', err);
+      return;
     }
 
-    this.setState((state) => {
-      const { arenaProfile, arenaPendingPacks } = state;
-      if (!debug && arenaProfile.coins < totalCost) return null;
+    const resolved = (result.packs || []).map((p) => resolvePack(p, this.state.sorceryCards));
 
-      return {
-        arenaProfile: { ...arenaProfile, coins: debug ? arenaProfile.coins : arenaProfile.coins - totalCost },
-        arenaPendingPacks: [...(arenaPendingPacks || []), ...newPacks],
-      };
-    }, () => {
-      try { const base = getLocalApiOrigin(); const a = new Audio(`${base}/game-assets/snd-purchase-pack.mp3`); a.volume = 0.6; a.play().catch(() => {}); } catch {}
-      saveArenaProfile(this.state.arenaProfile).catch((e) => console.error('Failed to save profile:', e));
+    this.setState((state) => ({
+      arenaProfile: { ...state.arenaProfile, coins: result.coins },
+      arenaPendingPacks: [...(state.arenaPendingPacks || []), ...resolved],
+    }), () => {
+      try {
+        const base = getLocalApiOrigin();
+        const a = new Audio(`${base}/game-assets/snd-purchase-pack.mp3`);
+        a.volume = 0.6;
+        a.play().catch(() => {});
+      } catch {}
     });
   };
 
@@ -1075,7 +1210,10 @@ export default class App extends Component {
   };
 
   openFromSet = (setKey) => {
-    const { arenaPendingPacks, arenaOpenedPack, arenaProfile } = this.state;
+    // Visually swap in the chosen pack so the animation starts immediately.
+    // The actual server open call happens in handlePackOpened once the
+    // animation finishes, so the grant stays atomic with the reveal.
+    const { arenaPendingPacks, arenaOpenedPack } = this.state;
     const allPacks = [arenaOpenedPack, ...(arenaPendingPacks || [])].filter(Boolean);
     const targetIdx = allPacks.findIndex((p) => p.setKey === setKey);
     if (targetIdx < 0) return;
@@ -1083,52 +1221,48 @@ export default class App extends Component {
     const targetPack = allPacks[targetIdx];
     const remaining = allPacks.filter((_, i) => i !== targetIdx);
 
-    const updatedProfile = { ...arenaProfile };
-    for (const entry of targetPack.cards) {
-      if (!entry.card) continue;
-      const cardId = entry.card.unique_id;
-      const printingId = entry.printing?.unique_id || entry.card.printings?.[0]?.unique_id || '';
-      const existing = updatedProfile.collection.find((c) => c.cardId === cardId && c.printingId === printingId);
-      if (existing) existing.quantity++;
-      else updatedProfile.collection.push({ cardId, printingId, quantity: 1 });
-    }
-
     this.setState({
-      arenaProfile: updatedProfile,
       arenaOpenedPack: targetPack,
       arenaPendingPacks: remaining,
       arenaAutoOpenPack: true,
     });
-    saveArenaProfile(updatedProfile).catch(() => {});
   };
 
-  handlePackOpened = () => {
+  handlePackOpened = async () => {
     const { arenaOpenedPack, arenaProfile } = this.state;
     if (!arenaOpenedPack) return;
 
-    const updatedProfile = { ...arenaProfile };
-    for (const entry of arenaOpenedPack.cards) {
-      if (!entry.card) continue;
-      const cardId = entry.card.unique_id;
-      const printingId = entry.printing?.unique_id || entry.card.printings?.[0]?.unique_id || '';
-      const foiling = entry.printing?.foiling || 'S';
-      const existing = updatedProfile.collection.find(
-        (c) => c.cardId === cardId && c.printingId === printingId && (c.foiling || 'S') === foiling
-      );
-      if (existing) {
-        existing.quantity++;
-      } else {
-        updatedProfile.collection.push({ cardId, printingId, foiling, quantity: 1 });
+    // The server holds the pre-rolled pack contents and grants them
+    // atomically when we open it by id. The response includes the new
+    // collection so we can sync without a separate fetch. If the call
+    // fails (network hiccup, server restart, pack already opened) we
+    // fall back to the pre-animation collection — the animation already
+    // ran so dropping the reward silently is the least bad option.
+    let serverCollection = arenaProfile.collection;
+    if (arenaOpenedPack.id) {
+      try {
+        const { collection } = await openPendingPack(arenaOpenedPack.id);
+        serverCollection = collection;
+      } catch (e) {
+        console.error('Failed to open pack on server:', e);
       }
     }
 
-    updatedProfile.packsOpened = (updatedProfile.packsOpened || 0) + 1;
-    if (!updatedProfile.packsOpenedBySet) updatedProfile.packsOpenedBySet = {};
     const setKey = arenaOpenedPack.setKey || 'unknown';
-    updatedProfile.packsOpenedBySet[setKey] = (updatedProfile.packsOpenedBySet[setKey] || 0) + 1;
+    const updatedProfile = {
+      ...arenaProfile,
+      collection: serverCollection,
+      packsOpened: (arenaProfile.packsOpened || 0) + 1,
+      packsOpenedBySet: {
+        ...(arenaProfile.packsOpenedBySet || {}),
+        [setKey]: ((arenaProfile.packsOpenedBySet || {})[setKey] || 0) + 1,
+      },
+    };
 
     const withAchievements = this.processAchievements(updatedProfile);
     this.setState({ arenaProfile: withAchievements });
+    // Persist achievement/coin deltas from processAchievements. The
+    // collection is already authoritative on the server.
     saveArenaProfile(withAchievements).catch(() => {});
   };
 
@@ -1251,9 +1385,56 @@ export default class App extends Component {
     }
   };
 
+  handleToggleFriendsSidebar = () => {
+    this.setState((s) => {
+      const next = !s.friendsSidebarOpen;
+      // Snap to fresh data the moment the user looks at the sidebar — covers
+      // the gap between background poll cycles so opening it never shows a
+      // stale avatar from a friend who just changed it.
+      if (next) refreshFriendList();
+      return { friendsSidebarOpen: next };
+    });
+  };
+
   handleGameMenuResume = () => this.setState({ gameMenuOpen: false });
 
   handleGameMenuQuit = () => window.close();
+
+  handleGameMenuMainMenu = () => {
+    // If the player is matchmaking, leave the queue first (fire-and-forget —
+    // we don't want network errors to block returning to the menu).
+    if (this.state.arenaMatchmaking) {
+      try { leaveQueue(); } catch {}
+      clearQueueState();
+    }
+
+    // If the game board is mounted, dropping `isGameBoardOpen` will unmount
+    // GameBoard, which triggers its componentWillUnmount → autoSave →
+    // disconnectSocket → scene.dispose. That's the same graceful shutdown
+    // path used by the in-game "Leave game" button.
+    if (this.state.isGameBoardOpen) {
+      this.gameBoardRef = null;
+      stopMusic(2000);
+    }
+
+    this.setState({
+      gameMenuOpen: false,
+      settingsOpen: false,
+      mailboxOpen: false,
+      isGameBoardOpen: false,
+      sessionMode: null,
+      sessionId: null,
+      roomCode: null,
+      isArenaMatch: false,
+      isRankedMatch: false,
+      arenaMatchmaking: false,
+      arenaMatchmakingOpponent: null,
+      arenaMatchId: null,
+      arenaOpenedPack: null,
+      editingDeckData: null,
+      arenaView: 'hub',
+    });
+  };
 
   handleGlobalContextMenu = (event) => {
     // Allow context menu on input fields for cut/copy/paste
@@ -1427,7 +1608,7 @@ export default class App extends Component {
                 composeRecipientId={this.state.mailboxComposeRecipientId}
               />
             }
-            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            onToggleFriends={this.handleToggleFriendsSidebar}
             friendListData={this.state.friendListData}
           />
           </motion.div>
@@ -1456,7 +1637,7 @@ export default class App extends Component {
                 composeRecipientId={this.state.mailboxComposeRecipientId}
               />
             }
-            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            onToggleFriends={this.handleToggleFriendsSidebar}
             friendListData={this.state.friendListData}
           />
           </motion.div>
@@ -1478,6 +1659,7 @@ export default class App extends Component {
         {this.state.isGameBoardOpen && this.state.sessionMode ? (
           <GameBoard
             ref={(ref) => { this.gameBoardRef = ref; }}
+            profile={this.state.arenaProfile}
             sorceryCards={this.state.sorceryCards}
             savedDecks={this.state.isArenaMatch ? this.getArenaDecksForGameBoard() : this.state.savedDecks}
             onOpenSettings={this.handleOpenSettings}
@@ -1537,10 +1719,12 @@ export default class App extends Component {
             onUpdateAvatar={this.updateArenaAvatar}
             onUpdateProfile={(profile) => this.setState({ arenaProfile: profile })}
             friendListData={this.state.friendListData}
-            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            onToggleFriends={this.handleToggleFriendsSidebar}
             onOpenSettings={this.handleOpenSettings}
             onViewProfile={this.handleViewFriendProfile}
             updateStatus={this.state.updateStatus}
+            replayHubTutorial={this.state.replayHubTutorialRequested}
+            onHubTutorialDismissed={() => this.setState({ replayHubTutorialRequested: false })}
             onToggleMailbox={this.handleToggleMailbox}
             mailboxUnreadCount={this.state.mailboxUnreadCount}
             mailboxDropdown={
@@ -1563,6 +1747,24 @@ export default class App extends Component {
             season={this.state.currentSeason}
             progress={this.state.arenaProfile?.seasonProgress}
             sorceryCards={this.state.sorceryCards}
+            profile={this.state.arenaProfile}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+              />
+            }
+            onToggleFriends={this.handleToggleFriendsSidebar}
+            friendListData={this.state.friendListData}
             onClaimReward={this.handleClaimSeasonReward}
             onBack={() => { playUI(UI.CLOSE); this.setState({ arenaView: 'hub' }); }}
           />
@@ -1577,6 +1779,16 @@ export default class App extends Component {
             onBack={this.handleCloseSettings}
             onLogout={this.handleLogout}
             onQuit={() => window.close()}
+            onReplayHubTutorial={() => {
+              // Close settings, return to the hub, and raise the
+              // replay flag so ArenaHub.componentDidUpdate re-mounts
+              // the overlay the moment it becomes visible again.
+              this.setState({
+                settingsOpen: false,
+                arenaView: 'hub',
+                replayHubTutorialRequested: true,
+              });
+            }}
           />
           </motion.div>
         ) : null}
@@ -1598,9 +1810,11 @@ export default class App extends Component {
           <motion.div key="store" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
           <ArenaStore
             profile={this.state.arenaProfile}
+            sorceryCards={this.state.sorceryCards}
             pendingPacks={this.state.arenaPendingPacks}
             onBuyPack={this.buyArenaPack}
             onOpenPacks={this.openNextPack}
+            onProfileUpdate={this.handleShardPurchaseUpdate}
             onBack={() => this.setState({ arenaView: 'hub' })}
             onToggleMailbox={this.handleToggleMailbox}
             mailboxUnreadCount={this.state.mailboxUnreadCount}
@@ -1617,7 +1831,7 @@ export default class App extends Component {
                 composeRecipientId={this.state.mailboxComposeRecipientId}
               />
             }
-            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            onToggleFriends={this.handleToggleFriendsSidebar}
             friendListData={this.state.friendListData}
           />
           </motion.div>
@@ -1646,7 +1860,7 @@ export default class App extends Component {
                 composeRecipientId={this.state.mailboxComposeRecipientId}
               />
             }
-            onToggleFriends={() => this.setState((s) => ({ friendsSidebarOpen: !s.friendsSidebarOpen }))}
+            onToggleFriends={this.handleToggleFriendsSidebar}
             friendListData={this.state.friendListData}
           />
           </motion.div>
@@ -1708,7 +1922,15 @@ export default class App extends Component {
           />
         ) : null}
         <Toaster />
-        {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} /> : null}
+        {this.state.gameMenuOpen ? (
+          <GameMenu
+            onResume={this.handleGameMenuResume}
+            onQuit={this.handleGameMenuQuit}
+            onOpenSettings={this.handleOpenSettings}
+            onMainMenu={(this.state.isGameBoardOpen || this.state.arenaView !== 'hub') ? this.handleGameMenuMainMenu : null}
+            inSession={this.state.isGameBoardOpen && !!this.state.sessionMode}
+          />
+        ) : null}
         {this.renderAuthOverlay()}
       </>
     );

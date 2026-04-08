@@ -38,8 +38,11 @@ function statToString(value) {
   return String(value);
 }
 
+// Card images are stored and served as WebP — the server converts PNGs
+// from the upstream Sorcery CDN on the fly (see src/bun/runtime.js
+// handleSorceryImage + downloadBatch). Clients always request .webp URLs.
 function buildSorceryImageUrl(variantSlug, imageBaseUrl) {
-  return `${imageBaseUrl}/sorcery-images/${variantSlug}.png`;
+  return `${imageBaseUrl}/sorcery-images/${variantSlug}.webp`;
 }
 
 export function normalizeSorceryCard(raw, imageBaseUrl = '') {

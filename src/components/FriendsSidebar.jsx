@@ -4,7 +4,9 @@ import { cn } from '../lib/utils';
 import { searchPlayers, sendFriendRequest, acceptFriendRequest, declineFriendRequest, removeFriend } from '../utils/friendsApi';
 import { formatRank, TIER_COLORS } from '../utils/arena/rankUtils';
 import { levelFromXp } from '../utils/arena/profileDefaults';
+import { resolveAvatarUrl } from '../utils/arena/avatarUtils';
 import { UI } from '../utils/arena/uiSounds';
+import VikingOrnament from './VikingOrnament';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   GOLD_BTN, DANGER_BTN, BEVELED_BTN, INPUT_STYLE,
@@ -12,12 +14,6 @@ import {
   FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
-
-function resolveAvatarUrl(cardId, sorceryCards) {
-  if (!cardId || !sorceryCards) return null;
-  const card = sorceryCards.find((c) => c.unique_id === cardId);
-  return card?.printings?.[0]?.image_url || null;
-}
 
 const ACTIVITY_LABELS = {
   hub: 'In Hub',
@@ -37,10 +33,31 @@ const ACTIVITY_STYLES = {
 
 const DEFAULT_ACTIVITY_STYLE = { color: `${GOLD} 0.6)`, background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.15)` };
 
+// Floating dialog-style sidebar — same medieval framing language as the
+// rest of the modal panels (gold border, gradient background, drop
+// shadow, isolated stacking context for any embossed ornaments).
+//
+// The background is a STACK of three layers, painted top to bottom:
+//
+//   1. radial vignette darkening the centre — gives the centerpiece
+//      ornament a recessed feel and adds physical depth to the panel
+//   2. radial gold edge glow brightening the rim — sells the "lit
+//      from outside" feel that complements the dark middle
+//   3. the existing vertical warm-dark base gradient
+//
+// All three combine into a single `background` shorthand. The order
+// matters: earlier layers paint ON TOP of later ones, so the vignette
+// sits over the edge glow, which sits over the base.
 const SIDEBAR_STYLE = {
-  background: 'rgb(12, 10, 8)',
-  borderLeft: `1px solid ${GOLD} 0.15)`,
-  boxShadow: '-20px 0 60px rgba(0,0,0,0.5), 0 0 30px rgba(180,140,60,0.03)',
+  background: `
+    radial-gradient(ellipse 95% 70% at 50% 52%, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 45%, transparent 78%),
+    radial-gradient(ellipse 110% 110% at 50% 50%, transparent 55%, rgba(212,168,67,0.06) 100%),
+    linear-gradient(180deg, rgba(25,20,10,0.98) 0%, rgba(15,12,6,0.98) 100%)
+  `,
+  border: `1px solid ${GOLD} 0.3)`,
+  borderRadius: '14px',
+  boxShadow: '-12px 24px 60px rgba(0,0,0,0.55), 0 0 40px rgba(180,140,60,0.06), inset 0 1px 0 rgba(255,220,140,0.06)',
+  isolation: 'isolate',
 };
 
 export default class FriendsSidebar extends Component {
@@ -132,19 +149,22 @@ export default class FriendsSidebar extends Component {
     return (
       <div className="fixed inset-0 z-[70]" style={{ zoom: this.state.viewScale }} onClick={onClose}>
         <div
-          className="absolute top-0 right-0 h-full w-[340px] flex flex-col animate-[slideInRight_0.25s_cubic-bezier(0.16,1,0.3,1)]"
-          style={SIDEBAR_STYLE}
+          className="absolute right-5 bottom-5 w-[340px] flex flex-col animate-[friendsSidebarSlideIn_0.25s_cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
+          style={{ ...SIDEBAR_STYLE, top: '64px' }}
           onClick={(e) => e.stopPropagation()}
         >
+          <FourCorners radius={14} />
+          <VikingOrnament ornament="figurative005" variant="centerpiece" opacity={0.10} />
+
           {/* Header */}
-          <div className="px-5 py-4" style={{ borderBottom: `1px solid ${GOLD} 0.1)` }}>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-bold arena-heading tracking-wide" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>Friends</h2>
+          <div className="px-5 pt-5 pb-4 relative" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold arena-heading tracking-wider uppercase" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.6), 0 0 14px rgba(212,168,67,0.18)' }}>Friends</h2>
               <button
                 type="button"
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer"
+                className="w-7 h-7 rounded-md flex items-center justify-center transition-colors cursor-pointer"
                 style={{ color: TEXT_MUTED }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.1)`; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
                 data-sound={UI.CANCEL}
                 onClick={onClose}
@@ -152,29 +172,29 @@ export default class FriendsSidebar extends Component {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
               </button>
             </div>
-            {/* Tab bar */}
-            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: `${GOLD} 0.04)` }}>
+            {/* Tab bar — medieval beveled tabs with stone texture */}
+            <div className="flex gap-1.5">
               <button
                 type="button"
-                className="flex-1 rounded-md py-1.5 text-[11px] font-medium transition-all cursor-pointer"
-                style={activeTab === 'friends' ? { background: `${GOLD} 0.12)`, color: ACCENT_GOLD } : { color: TEXT_MUTED }}
+                className="flex-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-all cursor-pointer"
+                style={activeTab === 'friends' ? TAB_ACTIVE : TAB_INACTIVE}
                 onClick={() => this.setState({ activeTab: 'friends' })}
               >
                 Friends{totalFriends > 0 ? ` (${totalFriends})` : ''}
               </button>
               <button
                 type="button"
-                className="flex-1 rounded-md py-1.5 text-[11px] font-medium transition-all relative cursor-pointer"
-                style={activeTab === 'search' ? { background: `${GOLD} 0.12)`, color: ACCENT_GOLD } : { color: TEXT_MUTED }}
+                className="flex-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-all relative cursor-pointer"
+                style={activeTab === 'search' ? TAB_ACTIVE : TAB_INACTIVE}
                 onClick={() => this.setState({ activeTab: 'search' })}
               >
-                Add Friends
+                Add
               </button>
               {pendingCount > 0 ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-md py-1.5 text-[11px] font-medium transition-all relative cursor-pointer"
-                  style={activeTab === 'requests' ? { background: `${GOLD} 0.12)`, color: ACCENT_GOLD } : { color: TEXT_MUTED }}
+                  className="flex-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-all relative cursor-pointer"
+                  style={activeTab === 'requests' ? TAB_ACTIVE : TAB_INACTIVE}
                   onClick={() => this.setState({ activeTab: 'requests' })}
                 >
                   Requests
@@ -188,14 +208,14 @@ export default class FriendsSidebar extends Component {
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {/* === FRIENDS TAB === */}
             {activeTab === 'friends' ? (
-              <div className="py-2">
+              <div className="py-3">
                 {onlineFriends.length > 0 ? (
-                  <div className="mb-1">
+                  <div className="mb-2">
                     <div className="px-5 py-2 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: ACCENT_GOLD }} />
                       <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.6)` }}>Online — {onlineFriends.length}</span>
                     </div>
-                    <div className="px-2">
+                    <div className="px-4">
                       {onlineFriends.map((f) => this.renderFriendCard(f, false))}
                     </div>
                   </div>
@@ -207,39 +227,18 @@ export default class FriendsSidebar extends Component {
                       <div className="w-1.5 h-1.5 rounded-full" style={{ background: `${GOLD} 0.15)` }} />
                       <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: TEXT_MUTED }}>Offline — {offlineFriends.length}</span>
                     </div>
-                    <div className="px-2">
+                    <div className="px-4">
                       {offlineFriends.map((f) => this.renderFriendCard(f, true))}
                     </div>
                   </div>
                 ) : null}
 
-                {friends.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 px-6">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.1)` }}>
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: `${GOLD} 0.2)` }}>
-                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <circle cx="9" cy="7" r="4" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M19 8v6M22 11h-6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <div className="text-sm font-medium mb-1" style={{ color: TEXT_MUTED }}>No friends yet</div>
-                    <div className="text-xs text-center mb-4" style={{ color: `${GOLD} 0.2)` }}>Search for other players to add them as friends</div>
-                    <button
-                      type="button"
-                      className="px-4 py-1.5 text-xs font-medium cursor-pointer transition-all"
-                      style={{ ...BEVELED_BTN, color: ACCENT_GOLD, borderRadius: '6px' }}
-                      onClick={() => this.setState({ activeTab: 'search' })}
-                    >
-                      Find Players
-                    </button>
-                  </div>
-                ) : null}
               </div>
             ) : null}
 
             {/* === SEARCH TAB === */}
             {activeTab === 'search' ? (
-              <div className="py-3 px-4">
+              <div className="py-4 px-5">
                 <div className="relative mb-3">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: `${GOLD} 0.25)` }}>
                     <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
@@ -268,7 +267,7 @@ export default class FriendsSidebar extends Component {
                       </div>
                     ) : (
                       searchResults.map((r) => {
-                        const avatarUrl = resolveAvatarUrl(r.avatar, sorceryCards);
+                        const avatarUrl = resolveAvatarUrl(r, sorceryCards);
                         return (
                         <div key={r.id} className="relative flex items-center gap-3 px-3 py-2.5 transition-colors" style={{ background: `${GOLD} 0.03)`, border: `1px solid ${GOLD} 0.08)`, borderRadius: '8px' }}
                           onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.2)`; }}
@@ -318,7 +317,7 @@ export default class FriendsSidebar extends Component {
 
             {/* === REQUESTS TAB === */}
             {activeTab === 'requests' ? (
-              <div className="py-3 px-3">
+              <div className="py-4 px-5">
                 {pendingRequests.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-sm" style={{ color: TEXT_MUTED }}>No pending requests</div>
@@ -392,7 +391,7 @@ export default class FriendsSidebar extends Component {
     const lastSeenText = friend.lastSeen ? getRelativeTime(friend.lastSeen) : '';
     const level = levelFromXp(friend.xp || 0);
     const activityStyle = ACTIVITY_STYLES[friend.activity] || DEFAULT_ACTIVITY_STYLE;
-    const avatarUrl = resolveAvatarUrl(friend.avatar, sorceryCards);
+    const avatarUrl = resolveAvatarUrl(friend, sorceryCards);
 
     return (
       <div

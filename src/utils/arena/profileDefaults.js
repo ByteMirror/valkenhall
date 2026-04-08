@@ -16,6 +16,21 @@ export const CURRENCY = {
   PACK_PRICE: 50,
 };
 
+// Arcana Shards: secondary currency for targeted, single-card purchases.
+// Mirrors the server's authoritative price table in
+// valkenhall-server/src/utils/shardPrices.js — the server always validates
+// the price on a purchase request, this is display-only.
+export const SHARD_PRICES = {
+  Ordinary: 25,
+  Exceptional: 75,
+  Elite: 100,
+  Unique: 300,
+};
+
+export function shardPriceForRarity(rarity) {
+  return SHARD_PRICES[rarity] ?? null;
+}
+
 export const XP = {
   PER_MINUTE: 10,
 };
@@ -85,6 +100,7 @@ export function createDefaultProfile() {
     name: null,
     coins: 0,
     xp: 0,
+    arcanaShards: 0,
     starterDeck: null,
     profileAvatar: null,
     serverToken: null,

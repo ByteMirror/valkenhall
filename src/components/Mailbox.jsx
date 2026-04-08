@@ -1,11 +1,13 @@
 import { Component } from 'preact';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ScrollText } from 'lucide-react';
 import RuneSpinner from './RuneSpinner';
 import { fetchInbox, sendMail, claimMail, deleteMail } from '../utils/arena/mailApi';
 import { loadArenaProfile } from '../utils/arena/profileApi';
 import { refreshMailbox } from '../utils/presenceManager';
 import { playUI, UI } from '../utils/arena/uiSounds';
+import VikingOrnament from './VikingOrnament';
+import { Select } from './ui/select';
+import { CoinIcon } from './ui/icons';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   PANEL_BG, DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, INPUT_STYLE,
@@ -13,6 +15,58 @@ import {
   FourCorners, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
+
+// The mailbox dialog has a centerpiece Viking ornament rendered behind
+// its content. Most shared theme styles use semi-transparent backgrounds
+// (e.g. INPUT_STYLE = rgba(0,0,0,0.25), GOLD_BTN gradient at 0.85-0.9
+// alpha), which let the ornament strokes bleed through any input or
+// button rendered on top. To fix that, we layer an opaque base color
+// underneath the existing styles by setting backgroundColor AFTER the
+// spread of the shared style. The CSS `background` shorthand resets
+// background-color to transparent; the explicit backgroundColor that
+// follows reinstates a fully opaque base layer that the gradients and
+// textures composite on top of, hiding the ornament behind them.
+const SOLID_BASE = '#0e0a06';
+const SOLID_GOLD_BASE = '#3a2812';
+
+// Medieval "carved stone well" input style. Uses the project's shared
+// stone / chisel / scratches / cracks textures on top of a deep dark
+// base, with a thin gold rim and a heavy inset shadow so the field
+// reads as if it were chiselled INTO the panel rather than sitting on
+// top of it. Blend modes keep the textures subtle — you want to feel
+// the surface, not see the tiles. Both <input> and <textarea> use this.
+const MAILBOX_INPUT_STYLE = {
+  backgroundImage: [
+    "url('/tex-stone.webp')",
+    "url('/tex-chisel.webp')",
+    "url('/tex-scratches.webp')",
+    "url('/tex-cracks.webp')",
+    'linear-gradient(180deg, rgba(18,12,6,0.98) 0%, rgba(8,5,2,0.98) 100%)',
+  ].join(', '),
+  backgroundBlendMode: 'soft-light, soft-light, overlay, multiply, normal',
+  backgroundColor: SOLID_BASE,
+  backgroundSize: '260px, 320px, 200px, 380px, 100% 100%',
+  backgroundRepeat: 'repeat, repeat, repeat, repeat, no-repeat',
+  border: `1px solid ${GOLD} 0.32)`,
+  borderRadius: '6px',
+  color: TEXT_PRIMARY,
+  boxShadow: [
+    'inset 0 3px 10px rgba(0,0,0,0.85)',
+    'inset 0 -1px 0 rgba(212,168,67,0.10)',
+    'inset 0 0 0 1px rgba(0,0,0,0.35)',
+    '0 1px 0 rgba(212,168,67,0.06)',
+  ].join(', '),
+  textShadow: '0 1px 1px rgba(0,0,0,0.55)',
+  fontFamily: 'inherit',
+};
+const MAILBOX_GOLD_BTN = { ...GOLD_BTN, backgroundColor: SOLID_GOLD_BASE };
+const MAILBOX_BEVELED_BTN = { ...BEVELED_BTN, backgroundColor: SOLID_BASE };
+const MAILBOX_DANGER_BTN = { ...DANGER_BTN, backgroundColor: SOLID_BASE };
+// TAB_ACTIVE/TAB_INACTIVE both use mostly-transparent backgrounds
+// (rgba(GOLD, 0.12) and `transparent` respectively). Add an opaque base
+// underneath so the centerpiece ornament can't bleed through the tab bar.
+const MAILBOX_TAB_ACTIVE = { ...TAB_ACTIVE, backgroundColor: SOLID_GOLD_BASE };
+const MAILBOX_TAB_INACTIVE = { ...TAB_INACTIVE, backgroundColor: SOLID_BASE };
 
 function resolveCardImage(cardId, sorceryCards) {
   if (!cardId || !sorceryCards) return null;
@@ -73,6 +127,7 @@ export default class Mailbox extends Component {
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
     this.unsubScale?.();
   }
 
@@ -237,30 +292,40 @@ export default class Mailbox extends Component {
     const { composeRecipient, composeSubject, composeBody, composeCards, composeCoins } = this.state;
     if (!composeRecipient) return;
 
+    // composeCards is an array of { cardId, foiling } items where each
+    // entry represents one copy. Aggregate into the server's
+    // { cardId, foiling, quantity } payload.
+    const cardPayload = [];
+    for (const entry of composeCards) {
+      const existing = cardPayload.find(
+        (c) => c.cardId === entry.cardId && c.foiling === entry.foiling
+      );
+      if (existing) existing.quantity++;
+      else cardPayload.push({ cardId: entry.cardId, foiling: entry.foiling, quantity: 1 });
+    }
+
     this.setState({ sending: true, error: null });
     try {
-      const result = await sendMail({
+      await sendMail({
         recipientId: composeRecipient.id,
         subject: composeSubject,
         body: composeBody,
-        cards: composeCards.length > 0 ? composeCards : undefined,
+        cards: cardPayload.length > 0 ? cardPayload : undefined,
         coins: composeCoins > 0 ? composeCoins : undefined,
       });
 
-      if (this.props.onProfileUpdate && result.newBalance != null) {
-        const collection = [...(this.props.profile.collection || [])];
-        for (const cardId of composeCards) {
-          const existing = collection.find(c => c.cardId === cardId);
-          if (existing && existing.quantity > 0) {
-            existing.quantity -= 1;
-          }
+      // Reload the full profile from the server so coins + collection
+      // reflect the deductions. Avoids local recomputation drift.
+      const token = this.props.profile?.serverToken;
+      if (token && this.props.onProfileUpdate) {
+        const fresh = await loadArenaProfile(token).catch(() => null);
+        if (fresh) {
+          this.props.onProfileUpdate({
+            ...this.props.profile,
+            coins: fresh.coins ?? this.props.profile.coins,
+            collection: fresh.collection ?? this.props.profile.collection,
+          });
         }
-        const filtered = collection.filter(c => c.quantity > 0);
-        this.props.onProfileUpdate({
-          ...this.props.profile,
-          coins: result.newBalance,
-          collection: filtered,
-        });
       }
 
       playUI(UI.MAIL_SEND);
@@ -272,16 +337,18 @@ export default class Mailbox extends Component {
     }
   };
 
-  addCardToCompose = (cardId) => {
+  addCardToCompose = (cardId, foiling = 'S') => {
     this.setState(s => {
       if (s.composeCards.length >= 10) return null;
-      return { composeCards: [...s.composeCards, cardId] };
+      return { composeCards: [...s.composeCards, { cardId, foiling }] };
     });
   };
 
-  removeCardFromCompose = (cardId) => {
+  removeCardFromCompose = (cardId, foiling = 'S') => {
     this.setState(s => {
-      const idx = s.composeCards.lastIndexOf(cardId);
+      const idx = s.composeCards.findLastIndex(
+        (c) => c.cardId === cardId && c.foiling === foiling
+      );
       if (idx < 0) return null;
       const next = [...s.composeCards];
       next.splice(idx, 1);
@@ -298,7 +365,7 @@ export default class Mailbox extends Component {
             key={t.key}
             type="button"
             className="flex-1 py-1.5 text-[11px] font-medium text-center transition-all cursor-pointer"
-            style={tab === t.key ? TAB_ACTIVE : TAB_INACTIVE}
+            style={tab === t.key ? MAILBOX_TAB_ACTIVE : MAILBOX_TAB_INACTIVE}
             onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null })}
           >
             {t.label}
@@ -323,17 +390,7 @@ export default class Mailbox extends Component {
     const filtered = tab === 'all' ? mail : mail.filter(m => (m.type || 'friend') === tab);
 
     if (filtered.length === 0) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div
-            className="w-16 h-16 rounded-xl flex items-center justify-center mb-3"
-            style={{ background: `${GOLD} 0.04)`, border: `1px solid ${GOLD} 0.1)` }}
-          >
-            <ScrollText size={28} style={{ color: `${GOLD} 0.15)` }} />
-          </div>
-          <div className="text-xs font-medium" style={{ color: TEXT_MUTED }}>No messages</div>
-        </div>
-      );
+      return null;
     }
 
     return (
@@ -393,7 +450,8 @@ export default class Mailbox extends Component {
                 </div>
               </div>
               {tab === 'auction' && (m.attachedCoins || m.coins || 0) > 0 && (
-                <span className="text-[10px] font-bold shrink-0" style={{ color: COIN_COLOR }}>
+                <span className="text-[10px] font-bold shrink-0 flex items-center gap-1" style={{ color: COIN_COLOR }}>
+                  <CoinIcon size={10} />
                   {m.attachedCoins || m.coins || 0}
                 </span>
               )}
@@ -564,10 +622,7 @@ export default class Mailbox extends Component {
                     this.handleSlotCollect(m, 'coins', { type: 'coins', amount: coins }, cards, true);
                   }}
                 >
-                  <span
-                    className="w-6 h-6 rounded-full"
-                    style={{ background: `radial-gradient(circle at 35% 35%, #ffe680, ${COIN_COLOR}, #b8860b)`, boxShadow: `0 0 6px ${GOLD} 0.4)` }}
-                  />
+                  <CoinIcon size={26} />
                   <span className="text-xs font-bold" style={{ color: COIN_COLOR }}>{coins}</span>
                   <span className="text-[7px]" style={{ color: TEXT_MUTED }}>gold</span>
                   {claimedSlots.has('coins') && !effectiveClaimed && (
@@ -663,7 +718,7 @@ export default class Mailbox extends Component {
                 <button
                   type="button"
                   className="px-3 py-1 text-[10px] cursor-pointer transition-all"
-                  style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                  style={{ ...MAILBOX_BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                   data-sound={UI.CANCEL}
                   onClick={() => this.setState({ confirmDeleteMail: null })}
                 >
@@ -672,7 +727,7 @@ export default class Mailbox extends Component {
                 <button
                   type="button"
                   className="px-3 py-1 text-[10px] cursor-pointer transition-all"
-                  style={DANGER_BTN}
+                  style={MAILBOX_DANGER_BTN}
                   data-sound={UI.CANCEL}
                   onClick={() => {
                     this.setState({ confirmDeleteMail: null });
@@ -700,6 +755,12 @@ export default class Mailbox extends Component {
     const collection = profile?.collection || [];
     const canSend = composeRecipient && (composeSubject.trim() || composeBody.trim());
 
+    // Friends list mapped into the shared Select component's option
+    // shape. The Select handles searchable typeahead, arrow-key
+    // navigation, Enter-to-pick, and click selection — all the
+    // autocomplete behavior we need lives in one shared component.
+    const recipientOptions = friends.map((f) => ({ value: f.id, label: f.name || 'Unknown' }));
+
     return (
       <div className="flex flex-col h-full">
         <div className="px-3 pt-3 pb-2">
@@ -722,53 +783,35 @@ export default class Mailbox extends Component {
         <OrnamentalDivider className="px-3 my-1" />
 
         <div className="flex-1 overflow-hidden px-3 py-2 flex flex-col gap-2.5">
-          {/* Recipient */}
+          {/* Recipient — shared shadcn Select with searchable typeahead.
+              Click the field to open the dropdown, type to filter,
+              arrow keys / Enter to pick. All autocomplete behavior is
+              encapsulated in src/components/ui/select.jsx. */}
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-widest block mb-1" style={{ color: `${GOLD} 0.55)` }}>
               To
             </label>
-            {composeRecipient ? (
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md" style={{ background: `${GOLD} 0.06)`, border: `1px solid ${GOLD} 0.12)` }}>
-                <span className="text-xs font-medium flex-1" style={{ color: TEXT_PRIMARY }}>
-                  {composeRecipient.name}
-                </span>
-                <button
-                  type="button"
-                  className="text-[10px] cursor-pointer"
-                  style={{ color: TEXT_MUTED }}
-                  onClick={() => this.setState({ composeRecipient: null })}
-                >
-                  change
-                </button>
+            {friends.length === 0 ? (
+              <div
+                className="text-[11px] px-2.5 py-2 text-center rounded-md"
+                style={{ background: SOLID_BASE, border: `1px solid ${GOLD} 0.18)`, color: TEXT_MUTED }}
+              >
+                No friends to send to
               </div>
             ) : (
-              <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto rounded-md" style={{ background: 'rgba(0,0,0,0.15)', border: `1px solid ${GOLD} 0.08)` }}>
-                {friends.length === 0 ? (
-                  <div className="text-[11px] px-2.5 py-3 text-center" style={{ color: TEXT_MUTED }}>
-                    No friends to send to
-                  </div>
-                ) : (
-                  friends.map(f => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      className="flex items-center gap-2 px-2.5 py-1.5 text-left transition-all cursor-pointer"
-                      style={{ color: TEXT_BODY }}
-                      onMouseEnter={e => { e.currentTarget.style.background = `${GOLD} 0.06)`; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                      onClick={() => this.setState({ composeRecipient: f })}
-                    >
-                      <div
-                        className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium shrink-0"
-                        style={{ background: `${GOLD} 0.08)`, color: TEXT_MUTED }}
-                      >
-                        {(f.name || '?')[0].toUpperCase()}
-                      </div>
-                      <span className="text-xs truncate">{f.name}</span>
-                    </button>
-                  ))
-                )}
-              </div>
+              <Select
+                ariaLabel="Recipient"
+                options={recipientOptions}
+                value={composeRecipient?.id || ''}
+                onValueChange={(id) => {
+                  const friend = friends.find((f) => f.id === id);
+                  this.setState({ composeRecipient: friend || null });
+                }}
+                placeholder="Choose a friend..."
+                searchable
+                menuSearchPlaceholder="Type to filter friends..."
+                noOptionsMessage="No matching friends"
+              />
             )}
           </div>
 
@@ -783,7 +826,7 @@ export default class Mailbox extends Component {
               value={composeSubject}
               placeholder="Subject..."
               className="w-full px-2.5 py-1.5 text-xs outline-none"
-              style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+              style={{ ...MAILBOX_INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
               onInput={e => this.setState({ composeSubject: e.target.value })}
             />
           </div>
@@ -799,7 +842,7 @@ export default class Mailbox extends Component {
               value={composeBody}
               placeholder="Write your message..."
               className="w-full px-2.5 py-1.5 text-xs outline-none resize-none"
-              style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+              style={{ ...MAILBOX_INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
               onInput={e => this.setState({ composeBody: e.target.value })}
             />
             <div className="text-[9px] text-right mt-0.5" style={{ color: TEXT_MUTED }}>
@@ -824,16 +867,19 @@ export default class Mailbox extends Component {
             </div>
             {composeCards.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {composeCards.map((cardId, i) => {
+                {composeCards.map((entry, i) => {
+                  const { cardId, foiling } = entry;
                   const imgUrl = resolveCardImage(cardId, sorceryCards);
                   const name = resolveCardName(cardId, sorceryCards);
+                  const isFoil = foiling === 'F' || foiling === 'R';
+                  const borderColor = foiling === 'R' ? '#c480e0' : ACCENT_GOLD;
                   return (
                     <div
-                      key={`${cardId}-${i}`}
+                      key={`${cardId}-${foiling}-${i}`}
                       className="relative rounded overflow-hidden cursor-pointer"
-                      style={{ border: `1px solid ${ACCENT_GOLD}`, width: 36 }}
-                      title={`${name} — click to remove`}
-                      onClick={() => this.removeCardFromCompose(cardId)}
+                      style={{ border: `1px solid ${borderColor}`, width: 36 }}
+                      title={`${name}${isFoil ? ` (${foiling === 'R' ? 'Rainbow Foil' : 'Foil'})` : ''} — click to remove`}
+                      onClick={() => this.removeCardFromCompose(cardId, foiling)}
                     >
                       {imgUrl ? (
                         <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
@@ -841,6 +887,14 @@ export default class Mailbox extends Component {
                         <div className="w-full aspect-[5/7] flex items-center justify-center text-[6px]" style={{ background: `${GOLD} 0.08)`, color: TEXT_MUTED }}>
                           {name}
                         </div>
+                      )}
+                      {isFoil && (
+                        <span
+                          className="absolute top-0 right-0 text-[6px] font-bold px-0.5 rounded-bl"
+                          style={{ background: 'rgba(0,0,0,0.85)', color: borderColor }}
+                        >
+                          {foiling === 'R' ? 'RF' : 'F'}
+                        </span>
                       )}
                     </div>
                   );
@@ -855,6 +909,7 @@ export default class Mailbox extends Component {
               Attach Coins
             </label>
             <div className="flex items-center gap-2">
+              <CoinIcon size={14} />
               <input
                 type="number"
                 min="0"
@@ -862,7 +917,7 @@ export default class Mailbox extends Component {
                 value={composeCoins || ''}
                 placeholder="0"
                 className="w-24 px-2.5 py-1.5 text-xs outline-none"
-                style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
+                style={{ ...MAILBOX_INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
                 onInput={e => {
                   const val = Math.max(0, Math.min(parseInt(e.target.value, 10) || 0, profile?.coins || 0));
                   this.setState({ composeCoins: val });
@@ -906,6 +961,7 @@ export default class Mailbox extends Component {
           onClick={e => e.stopPropagation()}
         >
           <FourCorners radius={12} />
+          <VikingOrnament ornament="broa016" variant="centerpiece" opacity={0.04} />
 
           {/* Header */}
           <div className="flex items-center justify-between px-3 pt-3 pb-0">
@@ -947,7 +1003,7 @@ export default class Mailbox extends Component {
               <button
                 type="button"
                 className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"
-                style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                style={{ ...MAILBOX_GOLD_BTN, borderRadius: '6px' }}
                 data-sound={UI.CONFIRM}
                 onClick={() => this.openCompose()}
               >
@@ -966,7 +1022,7 @@ export default class Mailbox extends Component {
                     <button
                       type="button"
                       className="px-3 py-1.5 text-[11px] font-medium cursor-pointer transition-all"
-                      style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                      style={{ ...MAILBOX_BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
                       onClick={() => this.openReply(m)}
                     >
                       Reply
@@ -975,7 +1031,7 @@ export default class Mailbox extends Component {
                   <button
                     type="button"
                     className="px-3 py-1.5 text-[10px] cursor-pointer transition-all ml-auto"
-                    style={DANGER_BTN}
+                    style={MAILBOX_DANGER_BTN}
                     data-sound={UI.CANCEL}
                     onClick={() => {
                       if (hasAtt && !m.claimed) {
@@ -1001,7 +1057,7 @@ export default class Mailbox extends Component {
                   type="button"
                   disabled={!(this.state.composeRecipient && (this.state.composeSubject.trim() || this.state.composeBody.trim())) || this.state.sending}
                   className="px-5 py-1.5 text-[11px] font-semibold cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                  style={{ ...MAILBOX_GOLD_BTN, borderRadius: '6px' }}
                   data-sound={UI.CONFIRM}
                   onClick={this.handleSend}
                 >
@@ -1027,6 +1083,9 @@ export default class Mailbox extends Component {
     const { composeCards, cardPickerSearch, viewScale } = this.state;
     const collection = profile?.collection || [];
 
+    // Each (cardId, foiling) pair becomes its own tile so the sender can
+    // pick the foil version explicitly. The collection from the server
+    // is already structured this way.
     const searchLower = cardPickerSearch.toLowerCase();
     const filtered = searchLower
       ? collection.filter(entry => {
@@ -1082,23 +1141,28 @@ export default class Mailbox extends Component {
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <div className="grid grid-cols-4 gap-2">
             {filtered.map(entry => {
+              const foiling = entry.foiling || 'S';
               const imgUrl = resolveCardImage(entry.cardId, sorceryCards);
               const name = resolveCardName(entry.cardId, sorceryCards);
-              const selectedCount = composeCards.filter(c => c === entry.cardId).length;
+              const selectedCount = composeCards.filter(
+                c => c.cardId === entry.cardId && c.foiling === foiling
+              ).length;
               const isSelected = selectedCount > 0;
               const canAddMore = selectedCount < entry.quantity && composeCards.length < 10;
+              const isFoil = foiling === 'F' || foiling === 'R';
+              const foilColor = foiling === 'R' ? '#c480e0' : ACCENT_GOLD;
               return (
-                <div key={entry.cardId} className="relative">
+                <div key={`${entry.cardId}-${foiling}`} className="relative">
                   <button
                     type="button"
                     className="relative w-full rounded-lg overflow-hidden transition-all cursor-pointer"
                     style={isSelected
-                      ? { border: `2px solid ${ACCENT_GOLD}`, boxShadow: `0 0 10px ${GOLD} 0.25)` }
-                      : { border: `2px solid ${GOLD} 0.1)` }
+                      ? { border: `2px solid ${isFoil ? foilColor : ACCENT_GOLD}`, boxShadow: `0 0 10px ${GOLD} 0.25)` }
+                      : { border: `2px solid ${isFoil ? foilColor + '55' : `${GOLD} 0.1)`}` }
                     }
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = `${GOLD} 0.1)`; }}
-                    onClick={() => { if (canAddMore) this.addCardToCompose(entry.cardId); }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = isFoil ? foilColor : `${GOLD} 0.3)`; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = isFoil ? foilColor + '55' : `${GOLD} 0.1)`; }}
+                    onClick={() => { if (canAddMore) this.addCardToCompose(entry.cardId, foiling); }}
                   >
                     {imgUrl ? (
                       <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
@@ -1113,8 +1177,16 @@ export default class Mailbox extends Component {
                     >
                       x{entry.quantity - selectedCount}
                     </span>
+                    {isFoil && (
+                      <span
+                        className="absolute top-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded"
+                        style={{ background: 'rgba(0,0,0,0.8)', color: foilColor }}
+                      >
+                        {foiling === 'R' ? 'RF' : 'F'}
+                      </span>
+                    )}
                     {isSelected && (
-                      <div className="absolute top-1 left-1 min-w-[18px] h-[18px] rounded flex items-center justify-center text-[9px] font-bold" style={{ background: ACCENT_GOLD, color: '#1a1408', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                      <div className="absolute bottom-7 left-1 min-w-[18px] h-[18px] rounded flex items-center justify-center text-[9px] font-bold" style={{ background: ACCENT_GOLD, color: '#1a1408', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
                         {selectedCount}
                       </div>
                     )}
@@ -1130,7 +1202,7 @@ export default class Mailbox extends Component {
                       type="button"
                       className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold cursor-pointer z-10"
                       style={{ background: '#c45050', color: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
-                      onClick={() => this.removeCardFromCompose(entry.cardId)}
+                      onClick={() => this.removeCardFromCompose(entry.cardId, foiling)}
                     >
                       −
                     </button>

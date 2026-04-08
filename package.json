@@ -31,6 +31,7 @@
     "@fontsource-variable/geist": "^5.2.8",
     "@radix-ui/react-dialog": "^1.1.15",
     "@smithy/protocol-http": "^5.3.7",
+    "cannon-es": "^0.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",

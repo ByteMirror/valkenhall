@@ -38,4 +38,60 @@ document.addEventListener('keydown', (e) => {
   }
 }, true);
 
+// Disable browser-level zoom: trackpad pinch, Ctrl/Cmd + wheel, and the
+// Ctrl/Cmd + (+/-/0) keyboard shortcuts. Valkenhall is a desktop game, not
+// a web page — the medieval theme has its own viewport scale system, and a
+// stray pinch-to-zoom would warp the entire UI out of alignment.
+// Chromium delivers trackpad pinch as a `wheel` event with `ctrlKey: true`,
+// so a single wheel listener catches both the gesture and the modifier+wheel.
+window.addEventListener('wheel', (e) => {
+  if (e.ctrlKey) e.preventDefault();
+}, { passive: false, capture: true });
+
+window.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  // `=` covers Cmd+= which most keyboards send for "zoom in" (no Shift required).
+  if (e.key === '+' || e.key === '-' || e.key === '_' || e.key === '=' || e.key === '0') {
+    e.preventDefault();
+  }
+}, true);
+
+// Safari-style gesture events. Chromium normally suppresses these, but on
+// some macOS builds it forwards them — defensive coverage costs nothing.
+['gesturestart', 'gesturechange', 'gestureend'].forEach((evt) => {
+  document.addEventListener(evt, (e) => e.preventDefault());
+});
+
+// Disable native browser tooltips globally.
+// The browser renders a tooltip for any element with a `title` attribute, which
+// looks out of place in a game. Strip `title` on insertion and on mutation so
+// Preact renders, third-party components (sonner, framer-motion, shadcn), and
+// runtime-added titles are all covered without hardcoding per element.
+;(() => {
+  const stripTitlesIn = (node) => {
+    if (node.nodeType !== 1) return;
+    if (node.hasAttribute('title')) node.removeAttribute('title');
+    const descendants = node.querySelectorAll('[title]');
+    for (let i = 0; i < descendants.length; i++) descendants[i].removeAttribute('title');
+  };
+
+  stripTitlesIn(document.documentElement);
+
+  new MutationObserver((mutations) => {
+    for (let i = 0; i < mutations.length; i++) {
+      const m = mutations[i];
+      if (m.type === 'attributes') {
+        m.target.removeAttribute('title');
+      } else {
+        m.addedNodes.forEach(stripTitlesIn);
+      }
+    }
+  }).observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['title'],
+  });
+})();
+
 render(<App />, document.getElementById('app'))

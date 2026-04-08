@@ -1,68 +1,75 @@
 import { levelFromXp } from './profileDefaults';
 
+// Every achievement awards the same flat coin reward. Achievements are
+// meant to mark progression milestones, not act as the player's primary
+// income — match rewards and the season pass cover that. Keeping the
+// payout uniform also makes balancing trivial: tweak this constant when
+// the economy needs adjusting and every achievement scales with it.
+const ACHIEVEMENT_COIN_REWARD = 10;
+
 export const ACHIEVEMENTS = [
-  // First steps (1-2 packs each)
-  { id: 'first_match', name: 'Trial by Fire', description: 'Play your first match', icon: '⚔️', coins: 50 },
-  { id: 'first_win', name: 'Victorious', description: 'Win your first match', icon: '🏆', coins: 100 },
-  { id: 'first_pack', name: 'Collector', description: 'Open your first booster pack', icon: '📦', coins: 50 },
-  { id: 'first_deck', name: 'Decksmith', description: 'Build your first custom deck', icon: '🃏', coins: 50 },
+  // First steps
+  { id: 'first_match', name: 'Trial by Fire', description: 'Play your first match', icon: '⚔️', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'first_win', name: 'Victorious', description: 'Win your first match', icon: '🏆', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'first_pack', name: 'Collector', description: 'Open your first booster pack', icon: '📦', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'first_deck', name: 'Decksmith', description: 'Build your first custom deck', icon: '🃏', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Win streaks
-  { id: 'win_3_streak', name: 'On a Roll', description: 'Win 3 matches in a row', icon: '🔥', coins: 150 },
-  { id: 'win_5_streak', name: 'Unstoppable', description: 'Win 5 matches in a row', icon: '💥', coins: 250 },
-  { id: 'win_10_streak', name: 'Legendary Streak', description: 'Win 10 matches in a row', icon: '👑', coins: 500 },
+  { id: 'win_3_streak', name: 'On a Roll', description: 'Win 3 matches in a row', icon: '🔥', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'win_5_streak', name: 'Unstoppable', description: 'Win 5 matches in a row', icon: '💥', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'win_10_streak', name: 'Legendary Streak', description: 'Win 10 matches in a row', icon: '👑', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Win milestones
-  { id: 'win_10', name: 'Seasoned Fighter', description: 'Win 10 matches', icon: '🗡️', coins: 150 },
-  { id: 'win_25', name: 'Veteran', description: 'Win 25 matches', icon: '🛡️', coins: 250 },
-  { id: 'win_50', name: 'Champion', description: 'Win 50 matches', icon: '⭐', coins: 500 },
-  { id: 'win_100', name: 'Legend', description: 'Win 100 matches', icon: '🌟', coins: 1000 },
+  { id: 'win_10', name: 'Seasoned Fighter', description: 'Win 10 matches', icon: '🗡️', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'win_25', name: 'Veteran', description: 'Win 25 matches', icon: '🛡️', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'win_50', name: 'Champion', description: 'Win 50 matches', icon: '⭐', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'win_100', name: 'Legend', description: 'Win 100 matches', icon: '🌟', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Match milestones
-  { id: 'play_10', name: 'Regular', description: 'Play 10 matches', icon: '📊', coins: 100 },
-  { id: 'play_50', name: 'Dedicated', description: 'Play 50 matches', icon: '📈', coins: 250 },
+  { id: 'play_10', name: 'Regular', description: 'Play 10 matches', icon: '📊', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'play_50', name: 'Dedicated', description: 'Play 50 matches', icon: '📈', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Level milestones
-  { id: 'level_5', name: 'Rising Star', description: 'Reach level 5', icon: '✨', coins: 100 },
-  { id: 'level_10', name: 'Experienced', description: 'Reach level 10', icon: '🔶', coins: 150 },
-  { id: 'level_20', name: 'Master', description: 'Reach level 20', icon: '💎', coins: 250 },
-  { id: 'level_30', name: 'Grandmaster', description: 'Reach level 30', icon: '🏅', coins: 500 },
-  { id: 'level_50', name: 'Ascendant', description: 'Reach level 50', icon: '🌠', coins: 1000 },
+  { id: 'level_5', name: 'Rising Star', description: 'Reach level 5', icon: '✨', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'level_10', name: 'Experienced', description: 'Reach level 10', icon: '🔶', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'level_20', name: 'Master', description: 'Reach level 20', icon: '💎', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'level_30', name: 'Grandmaster', description: 'Reach level 30', icon: '🏅', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'level_50', name: 'Ascendant', description: 'Reach level 50', icon: '🌠', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Pack milestones
-  { id: 'open_5_packs', name: 'Pack Rat', description: 'Open 5 booster packs', icon: '🎁', coins: 100 },
-  { id: 'open_20_packs', name: 'Hoarder', description: 'Open 20 booster packs', icon: '💰', coins: 250 },
+  { id: 'open_5_packs', name: 'Pack Rat', description: 'Open 5 booster packs', icon: '🎁', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'open_20_packs', name: 'Hoarder', description: 'Open 20 booster packs', icon: '💰', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Set-specific packs
-  { id: 'open_gothic', name: 'Gothic Explorer', description: 'Open a Gothic booster pack', icon: '🦇', coins: 50 },
-  { id: 'open_arthurian', name: 'Knight Errant', description: 'Open an Arthurian Legends pack', icon: '🏰', coins: 50 },
-  { id: 'open_beta', name: 'Beta Tester', description: 'Open a Beta booster pack', icon: '🧪', coins: 50 },
+  { id: 'open_gothic', name: 'Gothic Explorer', description: 'Open a Gothic booster pack', icon: '🦇', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'open_arthurian', name: 'Knight Errant', description: 'Open an Arthurian Legends pack', icon: '🏰', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'open_beta', name: 'Beta Tester', description: 'Open a Beta booster pack', icon: '🧪', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Avatar variety
-  { id: 'avatar_water', name: 'Tidewalker', description: 'Play a match with a Water avatar', icon: '🌊', coins: 50 },
-  { id: 'avatar_fire', name: 'Flamecaller', description: 'Play a match with a Fire avatar', icon: '🔥', coins: 50 },
-  { id: 'avatar_earth', name: 'Earthshaper', description: 'Play a match with an Earth avatar', icon: '🌿', coins: 50 },
-  { id: 'avatar_air', name: 'Windwalker', description: 'Play a match with an Air avatar', icon: '💨', coins: 50 },
+  { id: 'avatar_water', name: 'Tidewalker', description: 'Play a match with a Water avatar', icon: '🌊', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'avatar_fire', name: 'Flamecaller', description: 'Play a match with a Fire avatar', icon: '🔥', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'avatar_earth', name: 'Earthshaper', description: 'Play a match with an Earth avatar', icon: '🌿', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'avatar_air', name: 'Windwalker', description: 'Play a match with an Air avatar', icon: '💨', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Rank achievements
-  { id: 'rank_adept', name: 'Adept', description: 'Reach Adept rank', icon: '🔵', coins: 150 },
-  { id: 'rank_mage', name: 'Mage', description: 'Reach Mage rank', icon: '🟣', coins: 250 },
-  { id: 'rank_archon', name: 'Archon', description: 'Reach Archon rank', icon: '🔴', coins: 500 },
-  { id: 'rank_sovereign', name: 'Sovereign', description: 'Reach Sovereign rank', icon: '🟡', coins: 1000 },
+  { id: 'rank_adept', name: 'Adept', description: 'Reach Adept rank', icon: '🔵', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'rank_mage', name: 'Mage', description: 'Reach Mage rank', icon: '🟣', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'rank_archon', name: 'Archon', description: 'Reach Archon rank', icon: '🔴', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'rank_sovereign', name: 'Sovereign', description: 'Reach Sovereign rank', icon: '🟡', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Collection milestones
-  { id: 'collect_50', name: 'Archivist', description: 'Collect 50 unique cards', icon: '📚', coins: 150 },
-  { id: 'collect_100', name: 'Curator', description: 'Collect 100 unique cards', icon: '🏛️', coins: 250 },
-  { id: 'collect_200', name: 'Grand Curator', description: 'Collect 200 unique cards', icon: '🏛️', coins: 500 },
-  { id: 'collect_500', name: 'Lorekeeper', description: 'Collect 500 unique cards', icon: '📜', coins: 1000 },
-  { id: 'collect_1000', name: 'Omniscient', description: 'Collect 1000 unique cards', icon: '🌌', coins: 2500 },
-  { id: 'collect_all', name: 'The Completionist', description: 'Collect every card in the game', icon: '✦', coins: 5000 },
+  { id: 'collect_50', name: 'Archivist', description: 'Collect 50 unique cards', icon: '📚', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'collect_100', name: 'Curator', description: 'Collect 100 unique cards', icon: '🏛️', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'collect_200', name: 'Grand Curator', description: 'Collect 200 unique cards', icon: '🏛️', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'collect_500', name: 'Lorekeeper', description: 'Collect 500 unique cards', icon: '📜', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'collect_1000', name: 'Omniscient', description: 'Collect 1000 unique cards', icon: '🌌', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'collect_all', name: 'The Completionist', description: 'Collect every card in the game', icon: '✦', coins: ACHIEVEMENT_COIN_REWARD },
 
   // Complete a set
-  { id: 'complete_gothic', name: 'Gothic Complete', description: 'Collect every Gothic card', icon: '🦇', coins: 1500 },
-  { id: 'complete_arthurian', name: 'Arthurian Complete', description: 'Collect every Arthurian Legends card', icon: '🏰', coins: 1500 },
-  { id: 'complete_beta', name: 'Beta Complete', description: 'Collect every Beta card', icon: '🧪', coins: 1500 },
-  { id: 'complete_alpha', name: 'Alpha Complete', description: 'Collect every Alpha card', icon: '⚡', coins: 1500 },
+  { id: 'complete_gothic', name: 'Gothic Complete', description: 'Collect every Gothic card', icon: '🦇', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'complete_arthurian', name: 'Arthurian Complete', description: 'Collect every Arthurian Legends card', icon: '🏰', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'complete_beta', name: 'Beta Complete', description: 'Collect every Beta card', icon: '🧪', coins: ACHIEVEMENT_COIN_REWARD },
+  { id: 'complete_alpha', name: 'Alpha Complete', description: 'Collect every Alpha card', icon: '⚡', coins: ACHIEVEMENT_COIN_REWARD },
 ];
 
 const ACHIEVEMENT_MAP = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));

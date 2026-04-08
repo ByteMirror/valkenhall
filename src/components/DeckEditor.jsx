@@ -17,6 +17,41 @@ import {
 } from '../lib/medievalTheme';
 import { buildOwnedMap, buildUsedMap } from '../utils/arena/collectionUtils';
 import { canAddCard } from '../utils/sorcery/deckRules';
+import TutorialOverlay from './TutorialOverlay';
+import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
+
+const DECK_TUTORIAL_KEY = 'deck-builder';
+
+const DECK_TUTORIAL_STEPS = [
+  {
+    key: 'welcome',
+    title: 'Welcome to the Deck Builder',
+    body: 'This is where you craft the decks you bring into matches. Cards you own are browsable on the left, and your current deck builds in the sidebar on the right.',
+  },
+  {
+    key: 'collection',
+    title: 'Your Collection',
+    body: 'Every card you own sits here, grouped by rarity and filterable by element, type, set, and owned vs. all. Use the scope toggle (In Deck / Owned / All Cards) to control which cards appear. Click a card to add it to your deck; right-click to remove one copy.',
+    selector: '[data-tutorial="deck-collection"]',
+  },
+  {
+    key: 'sidebar',
+    title: 'Deck Sidebar',
+    body: 'Your active deck lives here, split by zone (Avatar, Spellbook, Atlas, Sideboard). Cards show their ownership count vs. how many you have in the deck. Hover any card to see a big preview; click the + / − buttons to adjust copies.',
+    selector: '[data-tutorial="deck-sidebar"]',
+  },
+  {
+    key: 'save',
+    title: 'Save Your Deck',
+    body: 'When you\'re happy with the build, hit Save Deck up in the header. Decks are saved to your account and available in every future match — you can keep multiple decks and pick one at matchmaking time.',
+    selector: '[data-tutorial="deck-save"]',
+  },
+  {
+    key: 'deckrules',
+    title: 'Deck Rules',
+    body: 'Sorcery decks have rarity limits: up to 4 copies of Ordinary cards, 3 Exceptional, 2 Elite, and 1 Unique. Avatars go in their own zone, and Sites go in your Atlas. The builder will let you know if a deck breaks the rules.',
+  },
+];
 
 export default class DeckEditor extends Component {
   constructor(props) {
@@ -40,11 +75,26 @@ export default class DeckEditor extends Component {
       hoveredSidebarCard: null,
       hoveredSidebarRect: null,
       viewScale: getViewportScale(),
+      showDeckTutorial: false,
     };
   }
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+
+    // First-run onboarding, deferred a beat so the collection grid
+    // and sidebar have laid out before the overlay measures them.
+    // Waits on hydration so the on-disk seen flag is read first.
+    const profileId = this.props.arenaProfile?.id;
+    if (profileId) {
+      hydrateTutorialState().then(() => {
+        if (this._unmounted) return;
+        if (!shouldAutoPlay(profileId, DECK_TUTORIAL_KEY)) return;
+        this._tutorialTimer = setTimeout(() => {
+          if (!this._unmounted) this.setState({ showDeckTutorial: true });
+        }, 500);
+      });
+    }
   }
 
   componentDidUpdate(prevProps) {
@@ -56,8 +106,16 @@ export default class DeckEditor extends Component {
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
+    if (this._tutorialTimer) clearTimeout(this._tutorialTimer);
     this.unsubScale?.();
   }
+
+  handleDeckTutorialDismiss = () => {
+    const profileId = this.props.arenaProfile?.id;
+    if (profileId) markTutorialSeen(profileId, DECK_TUTORIAL_KEY);
+    this.setState({ showDeckTutorial: false });
+  };
 
   handleAddCard = (card, specificPrinting) => {
     const ownedMap = this.props.arenaProfile ? buildOwnedMap(this.props.arenaProfile.collection) : null;
@@ -409,6 +467,7 @@ export default class DeckEditor extends Component {
           </button>
           <button
             type="button"
+            data-tutorial="deck-save"
             data-sound={UI.CONFIRM}
             className="px-5 py-1.5 text-sm font-bold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none"
             style={GOLD_BTN}
@@ -425,7 +484,7 @@ export default class DeckEditor extends Component {
           style={{ zoom: viewScale }}
         >
           {/* Collection browser */}
-          <div className="flex-1 min-w-0 px-4 py-2">
+          <div data-tutorial="deck-collection" className="flex-1 min-w-0 px-4 py-2">
             <DeckEditorCollection
               sorceryCards={sorceryCards}
               collection={arenaProfile?.collection}
@@ -439,7 +498,7 @@ export default class DeckEditor extends Component {
           </div>
 
           {/* Sidebar */}
-          <div className="w-[300px] shrink-0 overflow-hidden h-full">
+          <div data-tutorial="deck-sidebar" className="w-[300px] shrink-0 overflow-hidden h-full">
             <DeckEditorSidebar
               chosenCards={chosenCards}
               onIncrement={this.handleIncrement}
@@ -527,6 +586,14 @@ export default class DeckEditor extends Component {
 
         {/* Sidebar hover card preview */}
         {this.renderSidebarPreview()}
+
+        {/* First-run deck builder onboarding overlay. */}
+        {this.state.showDeckTutorial && (
+          <TutorialOverlay
+            steps={DECK_TUTORIAL_STEPS}
+            onDismiss={this.handleDeckTutorialDismiss}
+          />
+        )}
       </div>
     );
   }

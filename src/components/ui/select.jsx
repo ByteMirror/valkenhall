@@ -1,12 +1,68 @@
 import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Button } from './button';
 import { Input } from './input';
 import { IconChevronDown, IconSearch } from './icons';
 import { cn } from '../../lib/utils';
+import {
+  GOLD, ACCENT_GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
+  DIALOG_BG, DIALOG_BORDER, BEVELED_BTN, INPUT_STYLE,
+} from '../../lib/medievalTheme';
 
 const MENU_VIEWPORT_PADDING = 16;
 const MENU_VERTICAL_OFFSET = 8;
+
+// Medieval-themed surface tokens for the Select component. Inline
+// styles are used here (instead of Tailwind utility classes) so the
+// component renders identically regardless of which CSS layer is
+// loaded — and so the rest of the codebase's gold/parchment palette
+// stays the single source of truth.
+const SELECT_TRIGGER_STYLE = {
+  ...BEVELED_BTN,
+  borderRadius: '6px',
+  color: TEXT_PRIMARY,
+  height: '40px',
+  // Solid base layer underneath the textures so nothing behind the
+  // trigger can bleed through (the rest of the medieval UI assumes
+  // dialogs sit on opaque surfaces).
+  backgroundColor: '#0e0a06',
+};
+
+const SELECT_MENU_STYLE = {
+  background: DIALOG_BG,
+  backgroundColor: '#0e0a06',
+  border: `1px solid ${DIALOG_BORDER}`,
+  borderRadius: '8px',
+  boxShadow: '0 12px 32px rgba(0,0,0,0.6), 0 0 24px rgba(180,140,60,0.08)',
+  color: TEXT_BODY,
+};
+
+const SELECT_SEARCH_STYLE = {
+  ...INPUT_STYLE,
+  backgroundColor: '#0e0a06',
+  borderRadius: '6px',
+  color: TEXT_PRIMARY,
+  height: '32px',
+};
+
+const OPTION_BASE_STYLE = {
+  borderRadius: '6px',
+  color: TEXT_BODY,
+  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+  transition: 'background-color 120ms ease, color 120ms ease',
+};
+
+const OPTION_ACTIVE_STYLE = {
+  ...OPTION_BASE_STYLE,
+  background: `${GOLD} 0.18)`,
+  color: TEXT_PRIMARY,
+  border: `1px solid ${GOLD} 0.4)`,
+};
+
+const OPTION_HIGHLIGHTED_STYLE = {
+  ...OPTION_BASE_STYLE,
+  background: `${GOLD} 0.1)`,
+  color: TEXT_PRIMARY,
+};
 
 function matchesOptionSearch(option, query) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
@@ -44,8 +100,13 @@ function Select({
   const [open, setOpen] = useState(false);
   const [menuQuery, setMenuQuery] = useState('');
   const [menuPosition, setMenuPosition] = useState(null);
+  // Index of the keyboard-highlighted option in filteredOptions. Defaults
+  // to 0 so the first match is selectable with a single Enter — the
+  // standard autocomplete affordance.
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const rootRef = useRef(null);
   const menuRef = useRef(null);
+  const optionRefs = useRef([]);
   const selectedOption = options.find((option) => option.value === value) || null;
   const filteredOptions = searchable ? options.filter((option) => matchesOptionSearch(option, menuQuery)) : options;
 
@@ -145,8 +206,28 @@ function Select({
     if (!open) {
       setMenuQuery('');
       setMenuPosition(null);
+      setHighlightedIndex(0);
     }
   }, [open]);
+
+  // Reset the highlight to the first match whenever the filter changes
+  // so a single Enter always picks the top result. Also clamp it within
+  // the new filteredOptions length so an out-of-range index doesn't
+  // linger after a narrowing filter.
+  useEffect(() => {
+    setHighlightedIndex((idx) =>
+      filteredOptions.length === 0 ? 0 : Math.min(idx, filteredOptions.length - 1)
+    );
+  }, [filteredOptions.length, menuQuery]);
+
+  // Scroll the highlighted option into view as the user navigates with
+  // the arrow keys. block: 'nearest' avoids fighting with the browser's
+  // default scroll behavior on the first reveal.
+  useEffect(() => {
+    if (!open) return;
+    const el = optionRefs.current[highlightedIndex];
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex, open]);
 
   useEffect(() => {
     if (!open || !portalMenu) {
@@ -164,25 +245,35 @@ function Select({
       aria-label={ariaLabel}
       className={cn(
         portalMenu
-          ? 'fixed z-[140] overflow-hidden rounded-2xl border border-border/70 bg-popover/96 p-1.5 text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl'
-          : 'absolute left-0 top-full z-30 mt-2 w-full overflow-hidden rounded-2xl border border-border/70 bg-popover/96 p-1.5 text-popover-foreground shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl',
+          ? 'fixed z-[140] overflow-hidden p-1.5'
+          : 'absolute left-0 top-full z-30 mt-2 w-full overflow-hidden p-1.5',
         menuClassName
       )}
       style={
         portalMenu
           ? {
+              ...SELECT_MENU_STYLE,
               left: `${menuPosition?.left ?? MENU_VIEWPORT_PADDING}px`,
               top: `${menuPosition?.top ?? MENU_VIEWPORT_PADDING}px`,
               width: `${menuPosition?.width ?? menuPreferredWidth ?? 0}px`,
               visibility: menuPosition ? 'visible' : 'hidden',
             }
-          : undefined
+          : SELECT_MENU_STYLE
       }
     >
       {searchable ? (
-        <div className="sticky top-0 z-10 -m-1.5 mb-1.5 border-b border-border/60 bg-popover px-1.5 py-1.5 backdrop-blur-xl">
+        <div
+          className="sticky top-0 z-10 -mx-1.5 -mt-1.5 mb-2 px-1.5 py-1.5"
+          style={{
+            backgroundColor: '#0e0a06',
+            borderBottom: `1px solid ${GOLD} 0.2)`,
+          }}
+        >
           <label className="relative block">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <IconSearch
+              className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2"
+              style={{ color: TEXT_MUTED }}
+            />
             <Input
               autoFocus
               type="search"
@@ -190,46 +281,77 @@ function Select({
               aria-label={menuSearchAriaLabel || `Search ${ariaLabel}`}
               value={menuQuery}
               onInput={(event) => setMenuQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  if (filteredOptions.length === 0) return;
+                  setHighlightedIndex((idx) => (idx + 1) % filteredOptions.length);
+                } else if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  if (filteredOptions.length === 0) return;
+                  setHighlightedIndex((idx) => (idx - 1 + filteredOptions.length) % filteredOptions.length);
+                } else if (event.key === 'Enter') {
+                  if (filteredOptions.length === 0) return;
+                  event.preventDefault();
+                  const safeIdx = Math.min(highlightedIndex, filteredOptions.length - 1);
+                  const choice = filteredOptions[safeIdx];
+                  if (choice) {
+                    onValueChange(choice.value);
+                    setOpen(false);
+                  }
+                }
+              }}
               placeholder={menuSearchPlaceholder}
-              className="h-9 border-border/60 bg-background/50 pl-9 shadow-none"
+              className="pl-9 shadow-none border-0"
+              style={SELECT_SEARCH_STYLE}
             />
           </label>
         </div>
       ) : null}
 
       {filteredOptions.length === 0 ? (
-        <div className="px-3 py-2 text-sm text-muted-foreground">{noOptionsMessage}</div>
+        <div className="px-3 py-2 text-sm" style={{ color: TEXT_MUTED }}>{noOptionsMessage}</div>
       ) : null}
 
-      {filteredOptions.map((option) => {
+      {filteredOptions.map((option, optionIdx) => {
         const isActive = option.value === value;
+        const isHighlighted = optionIdx === Math.min(highlightedIndex, filteredOptions.length - 1);
         const accessory = renderOptionAccessory?.({
           option,
           isActive,
           closeMenu: () => setOpen(false),
         });
+        const optionStyle = isActive
+          ? OPTION_ACTIVE_STYLE
+          : isHighlighted
+            ? OPTION_HIGHLIGHTED_STYLE
+            : OPTION_BASE_STYLE;
         const optionButton = (
           <button
             key={option.value}
+            ref={(el) => { optionRefs.current[optionIdx] = el; }}
             type="button"
             role="menuitemradio"
             aria-checked={isActive}
-            className={cn(
-              'flex w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors',
-              isActive ? 'bg-primary/12 text-foreground' : 'hover:bg-muted text-popover-foreground'
-            )}
+            data-highlighted={isHighlighted ? 'true' : undefined}
+            className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm cursor-pointer"
+            style={optionStyle}
+            onMouseEnter={() => setHighlightedIndex(optionIdx)}
             onClick={() => {
               onValueChange(option.value);
               setOpen(false);
             }}
           >
-            <span className={cn('flex size-4 shrink-0 items-center justify-center', isActive ? 'text-primary' : 'text-transparent')}>
+            <span
+              className="flex size-4 shrink-0 items-center justify-center"
+              style={{ color: isActive ? ACCENT_GOLD : 'transparent' }}
+            >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate">{option.label}</span>
               {option.description ? (
-                <span className="mt-0.5 block truncate text-xs text-muted-foreground">{option.description}</span>
+                <span className="mt-0.5 block truncate text-xs" style={{ color: TEXT_MUTED }}>{option.description}</span>
               ) : null}
             </span>
           </button>
@@ -251,22 +373,31 @@ function Select({
 
   return (
     <div ref={rootRef} className={cn('relative', className)}>
-      <Button
+      <button
         type="button"
-        variant={triggerVariant}
         aria-label={ariaLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
         className={cn(
-          'h-10 w-full justify-between rounded-xl border-input bg-input/40 px-3.5 text-sm font-normal text-foreground shadow-sm',
+          'flex h-10 w-full items-center justify-between px-3 text-sm font-normal cursor-pointer transition-all',
+          'disabled:opacity-50 disabled:cursor-not-allowed',
           triggerClassName
         )}
+        style={SELECT_TRIGGER_STYLE}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className={cn('text-left', triggerLabelClassName)}>{selectedOption?.label || placeholder}</span>
-        <IconChevronDown className={cn('size-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
-      </Button>
+        <span
+          className={cn('text-left', triggerLabelClassName)}
+          style={{ color: selectedOption ? TEXT_PRIMARY : TEXT_MUTED }}
+        >
+          {selectedOption?.label || placeholder}
+        </span>
+        <IconChevronDown
+          className={cn('size-4 transition-transform', open && 'rotate-180')}
+          style={{ color: ACCENT_GOLD }}
+        />
+      </button>
 
       {portalMenu && menuContent && typeof document !== 'undefined' ? createPortal(menuContent, document.body) : menuContent}
     </div>

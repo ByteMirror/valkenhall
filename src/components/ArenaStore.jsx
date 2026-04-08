@@ -1,7 +1,7 @@
 import { Component } from 'preact';
 import { Mail, Users } from 'lucide-react';
 import { CURRENCY, SET_UNLOCK_LEVELS, levelFromXp, isArenaDebugMode } from '../utils/arena/profileDefaults';
-import { BOOSTER_SETS } from '../utils/arena/packGenerator';
+import { BOOSTER_SETS } from '../utils/arena/packsApi';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { cn } from '../lib/utils';
 import { GOLD, GOLD_TEXT, ACCENT_GOLD, BEVELED_BTN, GOLD_BTN, PANEL_BG, PANEL_BORDER, CornerPlating, getViewportScale, onViewportScaleChange } from '../lib/medievalTheme';
@@ -9,6 +9,54 @@ import AppHeader from './AppHeader';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import AmbientParticles from './AmbientParticles';
 import StoreTorchFX from './StoreTorchFX';
+import StoreSinglesTab from './StoreSinglesTab';
+import { CoinIcon } from './ui/icons';
+import TutorialOverlay from './TutorialOverlay';
+import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
+
+const STORE_TUTORIAL_KEY = 'store';
+
+const STORE_TUTORIAL_STEPS = [
+  {
+    key: 'welcome',
+    title: 'Welcome to the Store',
+    body: 'The store has two sides: booster packs you open for random cards, and Spellcraft — a targeted shop where you spend Arcana Shards on specific singles. You\'ll see how both work in a moment.',
+  },
+  {
+    key: 'tab-boosters',
+    title: 'Booster Packs',
+    body: 'Start on the Booster Packs tab. Each pack contains 15 cards — mostly Ordinary with a chance of Exceptional, Elite, or Unique rarities, plus occasional foils. Packs cost 50 gold each.',
+    selector: '[data-tutorial="store-tab-boosters"]',
+  },
+  {
+    key: 'booster-grid',
+    title: 'Pick a Set',
+    body: 'Each set has its own booster pack. Click + to add packs to your cart, or type a number directly. Sets unlock at specific player levels — anything still locked is greyed out until you hit the required level.',
+    selector: '[data-tutorial="store-booster-grid"]',
+  },
+  {
+    key: 'checkout',
+    title: 'Checkout',
+    body: 'When your cart is ready, hit Purchase. Your gold is spent and the fresh packs drop into your Pending Packs queue, waiting to be opened. Once a pack is rolled, its contents are fixed — so no matter where you open it, you\'ll get the same cards.',
+    selector: '[data-tutorial="store-purchase"]',
+  },
+  {
+    key: 'spellcraft-tab',
+    title: 'Spellcraft',
+    body: 'Switch to the Spellcraft tab to buy specific card singles with Arcana Shards instead of gambling on boosters.',
+    selector: '[data-tutorial="store-tab-singles"]',
+  },
+  {
+    key: 'shards',
+    title: 'Arcana Shards',
+    body: 'Shards are a secondary currency you earn from match rewards and the Arcane Trials season pass. Rarity determines the price: Ordinary 25, Exceptional 75, Elite 100, Unique 300. Foils aren\'t sold through Spellcraft — those come from packs and the season pass only.',
+  },
+  {
+    key: 'buy-single',
+    title: 'Buying a Single',
+    body: 'Filter or search for the card you want, click it, and hit Purchase. Your shards are spent and the card joins your collection right away — ready to slot into any deck the next time you open the deck builder.',
+  },
+];
 
 const SET_ORDER = ['gothic', 'arthurian', 'beta'];
 
@@ -32,16 +80,39 @@ export default class ArenaStore extends Component {
       showConfirm: false,
       purchaseFlash: false,
       viewScale: getViewportScale(),
+      showStoreTutorial: false,
     };
   }
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+
+    // First-run onboarding. Deferred so the booster grid lays out
+    // before the overlay measures its targets. Awaits tutorial
+    // state hydration first so the on-disk seen flag is honoured.
+    const profileId = this.props.profile?.id;
+    if (profileId) {
+      hydrateTutorialState().then(() => {
+        if (this._unmounted) return;
+        if (!shouldAutoPlay(profileId, STORE_TUTORIAL_KEY)) return;
+        this._tutorialTimer = setTimeout(() => {
+          if (!this._unmounted) this.setState({ showStoreTutorial: true });
+        }, 500);
+      });
+    }
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
+    if (this._tutorialTimer) clearTimeout(this._tutorialTimer);
     this.unsubScale?.();
   }
+
+  handleStoreTutorialDismiss = () => {
+    const profileId = this.props.profile?.id;
+    if (profileId) markTutorialSeen(profileId, STORE_TUTORIAL_KEY);
+    this.setState({ showStoreTutorial: false });
+  };
 
   setCart = (setKey, value) => {
     const qty = Math.max(0, Math.min(99, parseInt(value, 10) || 0));
@@ -99,6 +170,21 @@ export default class ArenaStore extends Component {
         {/* Ambient particles */}
         <AmbientParticles preset="store" />
 
+        {/* Extra darkening for the Card Singles tab — blurs the busy store
+            background (torches, particles, texture) so browsing 1000+ card
+            tiles stays legible. Only active on the singles tab; boosters
+            still get the full atmospheric treatment. */}
+        {tab === 'singles' ? (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.5) 70%, rgba(0,0,0,0.75) 100%)',
+            }}
+          />
+        ) : null}
+
         {purchaseFlash ? (
           <div className="fixed inset-0 z-[60] pointer-events-none" style={{ background: 'rgba(245,158,11,0.08)', animation: 'fadeOut 1.5s ease-out forwards' }} />
         ) : null}
@@ -139,11 +225,12 @@ export default class ArenaStore extends Component {
         <div className="relative z-10 flex justify-center py-1" style={{ background: 'rgba(8,6,4,0.7)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${GOLD} 0.12)` }}>
           {[
             { id: 'boosters', label: 'Booster Packs' },
-            { id: 'decks', label: 'Pre-constructed Decks' },
+            { id: 'singles', label: 'Spellcraft' },
           ].map((t) => (
             <button
               key={t.id}
               type="button"
+              data-tutorial={t.id === 'boosters' ? 'store-tab-boosters' : 'store-tab-singles'}
               className="px-8 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all relative"
               style={{
                 color: tab === t.id ? '#e8d5a0' : 'rgba(166,160,155,0.5)',
@@ -160,17 +247,19 @@ export default class ArenaStore extends Component {
         </div>
 
         {/* ─── CONTENT ─────────────────────────────── */}
-        <div className="relative z-10 flex-1 flex items-center justify-center p-6 overflow-y-auto">
-          {tab === 'boosters' ? (
+        {tab === 'boosters' ? (
+          <div className="relative z-10 flex-1 flex items-center justify-center p-6 overflow-y-auto min-h-0">
             <div className="w-full max-w-4xl">
               {/* Title */}
               <div className="text-center mb-8">
                 <h1 className="text-3xl font-bold arena-heading mb-1" style={{ color: '#e8d5a0', textShadow: '0 2px 8px rgba(0,0,0,0.6), 0 0 30px rgba(180,140,60,0.15)' }}>Booster Packs</h1>
-                <p className="text-sm" style={{ color: 'rgba(166,160,155,0.6)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>Each pack contains 15 cards · {CURRENCY.PACK_PRICE} gold per pack</p>
+                <p className="text-sm inline-flex items-center gap-1.5" style={{ color: 'rgba(166,160,155,0.6)', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                  Each pack contains 15 cards · {CURRENCY.PACK_PRICE}<CoinIcon size={12} />per pack
+                </p>
               </div>
 
               {/* Booster grid */}
-              <div className="grid grid-cols-3 gap-8 mb-8">
+              <div data-tutorial="store-booster-grid" className="grid grid-cols-3 gap-8 mb-8">
                 {SET_ORDER.map((setKey) => {
                   const set = BOOSTER_SETS[setKey];
                   const requiredLevel = SET_UNLOCK_LEVELS[setKey];
@@ -273,11 +362,15 @@ export default class ArenaStore extends Component {
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <div className="text-lg font-bold tabular-nums" style={{ color: cartPacks > 0 ? '#f0d060' : 'rgba(166,160,155,0.2)' }}>{cartCost}</div>
+                    <div className="text-lg font-bold tabular-nums flex items-center justify-end gap-1.5" style={{ color: cartPacks > 0 ? '#f0d060' : 'rgba(166,160,155,0.2)' }}>
+                      {cartPacks > 0 ? <CoinIcon size={14} /> : null}
+                      {cartCost}
+                    </div>
                     <div className="text-[10px]" style={{ color: 'rgba(166,160,155,0.3)' }}>gold</div>
                   </div>
                   <button
                     type="button"
+                    data-tutorial="store-purchase"
                     disabled={cartPacks === 0 || !canAffordCart}
                     className="px-8 py-3 text-sm font-semibold arena-heading uppercase tracking-wider transition-all hover:scale-[1.03] active:scale-[0.97]"
                     style={cartPacks > 0 && canAffordCart
@@ -295,18 +388,18 @@ export default class ArenaStore extends Component {
                 </div>
               </div>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {tab === 'decks' ? (
-            <div className="w-full max-w-4xl">
-              <div className="text-center py-20">
-                <div className="text-5xl mb-4 opacity-20">🃏</div>
-                <div className="text-lg font-semibold arena-heading" style={{ color: 'rgba(166,160,155,0.4)' }}>Coming Soon</div>
-                <p className="text-sm mt-2 max-w-sm mx-auto" style={{ color: 'rgba(166,160,155,0.25)' }}>Pre-constructed decks will be available in a future update.</p>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        {tab === 'singles' ? (
+          <div className="relative z-10 flex-1 flex flex-col min-h-0 px-6 py-4">
+            <StoreSinglesTab
+              sorceryCards={this.props.sorceryCards}
+              profile={profile}
+              onProfileUpdate={this.props.onProfileUpdate}
+            />
+          </div>
+        ) : null}
 
         {/* ─── CONFIRMATION DIALOG ─────────────────── */}
         {showConfirm ? (
@@ -329,13 +422,19 @@ export default class ArenaStore extends Component {
                       <img src={getBoosterImage(k)} alt="" className="w-8 h-auto" draggable={false} />
                       <span style={{ color: '#A6A09B' }}>{cart[k]}× {BOOSTER_SETS[k].label}</span>
                     </div>
-                    <span className="tabular-nums font-semibold" style={{ color: '#f0d060' }}>{cart[k] * CURRENCY.PACK_PRICE}</span>
+                    <span className="tabular-nums font-semibold inline-flex items-center gap-1.5" style={{ color: '#f0d060' }}>
+                      <CoinIcon size={12} />
+                      {cart[k] * CURRENCY.PACK_PRICE}
+                    </span>
                   </div>
                 ))}
               </div>
               <div className="flex items-center justify-between py-3 mb-5" style={{ borderTop: `1px solid ${GOLD} 0.15)` }}>
                 <span className="text-sm font-semibold" style={{ color: '#e8d5a0' }}>Total</span>
-                <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060' }}>{cartCost} gold</span>
+                <span className="text-lg font-bold tabular-nums inline-flex items-center gap-1.5" style={{ color: '#f0d060' }}>
+                  <CoinIcon size={14} />
+                  {cartCost}
+                </span>
               </div>
               <div className="flex gap-3">
                 <button
@@ -367,6 +466,14 @@ export default class ArenaStore extends Component {
             100% { opacity: 0; }
           }
         `}</style>
+
+        {/* First-run store tutorial. */}
+        {this.state.showStoreTutorial && (
+          <TutorialOverlay
+            steps={STORE_TUTORIAL_STEPS}
+            onDismiss={this.handleStoreTutorialDismiss}
+          />
+        )}
       </div>
     );
   }

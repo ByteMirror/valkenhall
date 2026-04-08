@@ -37,10 +37,10 @@ export default class ArenaMatchmaking extends Component {
     if (opponent) {
       const rankColor = TIER_COLORS[opponent.tier] || 'text-white';
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: BG_ATMOSPHERE, zoom: viewScale }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: BG_ATMOSPHERE }}>
           <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-          <div className="relative text-center p-10" style={DIALOG_STYLE}>
-            <FourCorners radius={12} />
+          <div className="relative text-center p-10" style={{ ...DIALOG_STYLE, zoom: viewScale }}>
+            <FourCorners radius={12} knots />
             <OrnamentalDivider className="mb-5" />
             <h2 className="text-2xl font-bold arena-heading mb-4" style={{ color: '#d4a843', textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,160,60,0.15)' }}>Opponent Found!</h2>
             <div className="text-lg font-semibold mb-1 arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{opponent.name}</div>
@@ -57,10 +57,10 @@ export default class ArenaMatchmaking extends Component {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: BG_ATMOSPHERE }}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-        <div className="relative text-center p-10" style={DIALOG_STYLE}>
-          <FourCorners radius={12} />
-          <div className="mb-6">
-            <div className="mx-auto"><RuneSpinner size={64} /></div>
+        <div className="relative text-center p-10" style={{ ...DIALOG_STYLE, zoom: viewScale }}>
+          <FourCorners radius={12} knots />
+          <div className="mb-6 flex justify-center">
+            <RuneSpinner size={64} />
           </div>
           <h2 className="text-xl font-bold arena-heading mb-2" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Finding Opponent</h2>
           <div className="text-sm mb-1" style={{ color: TEXT_BODY }}>

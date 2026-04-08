@@ -1,4 +1,10 @@
-// Procedural game sound effects via Web Audio API — zero noise, instant playback
+// Game sound effects. Most are procedural Web Audio API for instant
+// playback with zero noise; the card shuffle / draw / place sounds use
+// real recorded samples loaded from /game-assets/ for a higher-quality
+// tactile feel — those are routed through playSampleRandom().
+
+import { getEffectiveSfxVolume } from '../arena/soundSettings';
+import { getLocalApiOrigin } from '../localApi';
 
 let ctx = null;
 let volume = 0.5;
@@ -9,6 +15,60 @@ function getCtx() {
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
 }
+
+// --- Recorded sample playback -------------------------------------
+
+const sampleCache = new Map();
+
+function getSampleUrl(filename) {
+  return `${getLocalApiOrigin()}/game-assets/${filename}`;
+}
+
+function preloadSample(filename) {
+  if (sampleCache.has(filename)) return;
+  const audio = new Audio(getSampleUrl(filename));
+  audio.preload = 'auto';
+  sampleCache.set(filename, audio);
+}
+
+/**
+ * Play one randomly chosen filename from `filenames` at the given gain.
+ * Each invocation clones the cached Audio so overlapping plays don't
+ * truncate one another (useful for staggered multi-card draws).
+ */
+function playSampleRandom(filenames, gain = 1) {
+  if (muted) return;
+  const sfxVol = getEffectiveSfxVolume();
+  if (sfxVol <= 0) return;
+  const filename = filenames[Math.floor(Math.random() * filenames.length)];
+  try {
+    const cached = sampleCache.get(filename);
+    const audio = cached ? cached.cloneNode() : new Audio(getSampleUrl(filename));
+    audio.volume = Math.min(1, gain * sfxVol);
+    audio.play().catch(() => {});
+  } catch {}
+}
+
+const SHUFFLE_LIGHT_FILES = [
+  'snd-card-shuffle-light-1.mp3',
+  'snd-card-shuffle-light-2.mp3',
+  'snd-card-shuffle-light-3.mp3',
+];
+const SHUFFLE_FILES = [
+  'snd-card-shuffle-1.mp3',
+  'snd-card-shuffle-3.mp3',
+];
+const DEAL_FILES = [
+  'snd-card-deal-1.mp3',
+  'snd-card-deal-2.mp3',
+  'snd-card-deal-3.mp3',
+];
+const DEAL_SMALL_FILES = ['snd-card-deal-small-1.mp3'];
+
+function cardShuffleAtlas() { playSampleRandom(SHUFFLE_LIGHT_FILES); }
+function cardShuffleSpellbook() { playSampleRandom(SHUFFLE_FILES); }
+function cardPlaceSample() { playSampleRandom(DEAL_SMALL_FILES); }
+function cardDrawSample() { playSampleRandom(DEAL_FILES); }
 
 function makeGain(ac, vol) {
   const g = ac.createGain();
@@ -50,26 +110,6 @@ function cardPickup() {
   noise.stop(now + 0.06);
 }
 
-function cardPlace() {
-  const ac = getCtx();
-  const now = ac.currentTime;
-  const gain = ac.createGain();
-  gain.gain.setValueAtTime(volume * 0.35, now);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-  gain.connect(ac.destination);
-
-  const filter = ac.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 1800;
-  filter.Q.value = 0.5;
-  filter.connect(gain);
-
-  const noise = whiteNoise(ac, 0.09);
-  noise.connect(filter);
-  noise.start(now);
-  noise.stop(now + 0.09);
-}
-
 function cardFlip() {
   const ac = getCtx();
   const now = ac.currentTime;
@@ -88,30 +128,6 @@ function cardFlip() {
   noise.connect(filter);
   noise.start(now);
   noise.stop(now + 0.05);
-}
-
-function cardShuffle() {
-  const ac = getCtx();
-  const now = ac.currentTime;
-
-  for (let i = 0; i < 6; i++) {
-    const t = now + i * 0.045 + Math.random() * 0.015;
-    const gain = ac.createGain();
-    gain.gain.setValueAtTime(volume * (0.12 + Math.random() * 0.08), t);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-    gain.connect(ac.destination);
-
-    const filter = ac.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 2000 + Math.random() * 2000;
-    filter.Q.value = 0.6;
-    filter.connect(gain);
-
-    const noise = whiteNoise(ac, 0.04);
-    noise.connect(filter);
-    noise.start(t);
-    noise.stop(t + 0.04);
-  }
 }
 
 function diceRoll() {
@@ -140,44 +156,6 @@ function diceRoll() {
   }
 }
 
-function cardDraw() {
-  const ac = getCtx();
-  const now = ac.currentTime;
-
-  // Quick slide sound (card being pulled from pile)
-  const slideGain = ac.createGain();
-  slideGain.gain.setValueAtTime(0.0001, now);
-  slideGain.gain.exponentialRampToValueAtTime(volume * 0.25, now + 0.02);
-  slideGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-  slideGain.connect(ac.destination);
-
-  const slideFilter = ac.createBiquadFilter();
-  slideFilter.type = 'bandpass';
-  slideFilter.frequency.setValueAtTime(2000, now);
-  slideFilter.frequency.exponentialRampToValueAtTime(4500, now + 0.12);
-  slideFilter.Q.value = 0.6;
-  slideFilter.connect(slideGain);
-
-  const slideNoise = whiteNoise(ac, 0.12);
-  slideNoise.connect(slideFilter);
-  slideNoise.start(now);
-  slideNoise.stop(now + 0.12);
-
-  // Subtle rising tone (satisfying "whoosh" feeling)
-  const toneGain = ac.createGain();
-  toneGain.gain.setValueAtTime(volume * 0.06, now + 0.02);
-  toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
-  toneGain.connect(ac.destination);
-
-  const osc = ac.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(400, now + 0.02);
-  osc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
-  osc.connect(toneGain);
-  osc.start(now + 0.02);
-  osc.stop(now + 0.15);
-}
-
 function uiClick() {
   const ac = getCtx();
   const now = ac.currentTime;
@@ -197,7 +175,17 @@ function uiClick() {
 
 // ─── Public API ───
 
-const SOUNDS = { cardPickup, cardPlace, cardFlip, cardDraw, cardShuffle, diceRoll, uiClick };
+const SOUNDS = {
+  cardPickup,
+  cardFlip,
+  diceRoll,
+  uiClick,
+  // Recorded samples — see playSampleRandom() above
+  cardPlace: cardPlaceSample,
+  cardDraw: cardDrawSample,
+  cardShuffleSpellbook,
+  cardShuffleAtlas,
+};
 
 export function playSound(name) {
   if (muted) return;
@@ -218,5 +206,15 @@ export function isMuted() {
 }
 
 export function preloadSounds() {
-  // AudioContext is created lazily on first playSound — nothing to preload
+  // AudioContext is created lazily on first procedural playSound. The
+  // recorded samples DO benefit from preloading so the first shuffle /
+  // draw / place doesn't have a network/decode hitch.
+  for (const f of [
+    ...SHUFFLE_LIGHT_FILES,
+    ...SHUFFLE_FILES,
+    ...DEAL_FILES,
+    ...DEAL_SMALL_FILES,
+  ]) {
+    preloadSample(f);
+  }
 }

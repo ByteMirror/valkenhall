@@ -4,6 +4,8 @@ import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSetting
 import { updateMusicVolume } from '../utils/arena/musicManager';
 import { UI } from '../utils/arena/uiSounds';
 import { getLocalApiOrigin } from '../utils/localApi';
+import { getGraphicsSettings, saveGraphicsSettings, RESOLUTION_PRESETS } from '../utils/game/graphicsSettings';
+import { areTutorialsEnabled, setTutorialsEnabled, resetTutorial, resetAllTutorials } from '../utils/arena/tutorialState';
 import {
   GOLD, GOLD_TEXT, BG_ATMOSPHERE, VIGNETTE,
   TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, PARCHMENT, PANEL_BG,
@@ -31,12 +33,62 @@ export default class SettingsScreen extends Component {
     this.state = {
       activeSection: 'display',
       soundSettings: getSoundSettings(),
+      graphicsSettings: getGraphicsSettings(),
       displayMode: 'fullscreen',
       checking: false,
       retrying: false,
       viewScale: getViewportScale(),
+      tutorialsEnabled: areTutorialsEnabled(),
+      tutorialReplayNote: null,
     };
   }
+
+  toggleTutorials = () => {
+    const next = !this.state.tutorialsEnabled;
+    setTutorialsEnabled(next);
+    this.setState({ tutorialsEnabled: next });
+  };
+
+  replayHubTutorial = () => {
+    const profile = this.props.profile;
+    if (!profile?.id) return;
+    // Clear the seen flag AND ensure the global enable is on, so
+    // the overlay actually auto-plays next time the hub mounts.
+    resetTutorial(profile.id, 'hub-main-menu');
+    setTutorialsEnabled(true);
+    this.setState({
+      tutorialsEnabled: true,
+      tutorialReplayNote: 'The tutorial will play next time you return to the main menu.',
+    });
+    // Also forward a replay request to the parent so it can re-mount
+    // the hub or force the overlay in place immediately — cheap
+    // callback, hub can ignore it if it wants lazy replay.
+    this.props.onReplayHubTutorial?.();
+  };
+
+  resetAllTutorialsForAccount = () => {
+    const profile = this.props.profile;
+    if (!profile?.id) return;
+    // Wipe every seen flag for this account and force the global
+    // enable back on so the next auto-play checks all succeed. Used
+    // primarily for QA testing — the in-game onboarding itself
+    // relies on the individual flags, not this button.
+    const cleared = resetAllTutorials(profile.id);
+    setTutorialsEnabled(true);
+    const countLabel = cleared === 1 ? '1 tutorial' : `${cleared} tutorials`;
+    this.setState({
+      tutorialsEnabled: true,
+      tutorialReplayNote: cleared > 0
+        ? `Reset ${countLabel}. They'll play again the next time you open each screen.`
+        : 'No tutorials were marked as seen yet — everything is already fresh.',
+    });
+  };
+
+  setResolution = (resolution) => {
+    if (!RESOLUTION_PRESETS[resolution]) return;
+    saveGraphicsSettings({ resolution });
+    this.setState({ graphicsSettings: getGraphicsSettings() });
+  };
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
@@ -122,13 +174,14 @@ export default class SettingsScreen extends Component {
   }
 
   renderDisplaySection() {
-    const { displayMode } = this.state;
+    const { displayMode, graphicsSettings } = this.state;
+    const currentResolution = graphicsSettings.resolution;
 
     return (
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_LABEL}>Display</div>
         <div className="flex flex-col overflow-hidden" style={PANEL}>
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
             <div>
               <span className="text-sm" style={{ color: TEXT_PRIMARY }}>Window Mode</span>
               <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>How the game window is displayed</div>
@@ -154,6 +207,26 @@ export default class SettingsScreen extends Component {
               </button>
             </div>
           </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <span className="text-sm" style={{ color: TEXT_PRIMARY }}>Resolution</span>
+              <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>Render scale for the 3D table — lower for better FPS</div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {Object.entries(RESOLUTION_PRESETS).map(([key, preset]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="rounded-md px-2.5 py-1 text-[10px] font-medium cursor-pointer transition-colors"
+                  style={currentResolution === key ? TOGGLE_ON : TOGGLE_OFF}
+                  data-sound={UI.CLICK}
+                  onClick={() => this.setResolution(key)}
+                >
+                  {preset.label.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -162,6 +235,7 @@ export default class SettingsScreen extends Component {
   renderProfileSection() {
     const { profile, onChangeAvatar } = this.props;
     if (!profile) return null;
+    const { tutorialsEnabled, tutorialReplayNote } = this.state;
 
     return (
       <div>
@@ -175,7 +249,7 @@ export default class SettingsScreen extends Component {
             <span className="text-[10px]" style={{ color: `${GOLD} 0.25)` }}>Set at registration</span>
           </div>
           {onChangeAvatar ? (
-            <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
               <div>
                 <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Avatar</div>
                 <div className="text-xs" style={{ color: TEXT_MUTED }}>Change your profile picture</div>
@@ -190,6 +264,64 @@ export default class SettingsScreen extends Component {
               </button>
             </div>
           ) : null}
+
+          {/* Tutorials — global enable + replay controls. The toggle
+              controls whether NEW tutorials auto-play; Replay clears
+              the hub tutorial's seen flag so the next hub mount
+              plays it again. */}
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
+            <div>
+              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Show tutorials</div>
+              <div className="text-xs" style={{ color: TEXT_MUTED }}>
+                Play onboarding overlays the first time you see each screen
+              </div>
+            </div>
+            <button
+              type="button"
+              className="px-3 py-1 text-xs font-semibold uppercase tracking-wider cursor-pointer transition-all"
+              style={{
+                ...(tutorialsEnabled ? TOGGLE_ON : TOGGLE_OFF),
+                borderRadius: '6px',
+              }}
+              onClick={this.toggleTutorials}
+            >
+              {tutorialsEnabled ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
+            <div>
+              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Replay main menu tutorial</div>
+              <div className="text-xs" style={{ color: TEXT_MUTED }}>
+                Walk through the main menu buttons again
+              </div>
+            </div>
+            <button
+              type="button"
+              className="px-3 py-1 text-xs font-medium cursor-pointer transition-all"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)`, borderRadius: '6px' }}
+              onClick={this.replayHubTutorial}
+            >
+              Replay
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Reset all tutorials</div>
+              <div className="text-xs" style={{ color: TEXT_MUTED }}>
+                {tutorialReplayNote || 'Clear every tutorial\'s seen flag so each one plays again'}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="px-3 py-1 text-xs font-medium cursor-pointer transition-all"
+              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)`, borderRadius: '6px' }}
+              onClick={this.resetAllTutorialsForAccount}
+            >
+              Reset
+            </button>
+          </div>
         </div>
       </div>
     );

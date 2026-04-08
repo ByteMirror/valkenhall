@@ -1,7 +1,7 @@
 import { Component, createRef } from 'preact';
 import { toast } from 'sonner';
 import { createTableScene } from '../utils/game/tableScene';
-import { createCardMesh, createPileMesh, updatePileMesh, setCardBackUrls, disposeTextureCache, CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, createTokenMesh, TOKEN_REST_Y, TOKEN_DRAG_Y, createLifeHUD, updateLifeHUD } from '../utils/game/cardMesh';
+import { createCardMesh, createPileMesh, updatePileMesh, setCardBackUrls, disposeTextureCache, CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, createTokenMesh, createTokenButtonMesh, TOKEN_REST_Y, TOKEN_DRAG_Y, createLifeHUD, updateLifeHUD } from '../utils/game/cardMesh';
 import { createGameState, createTrackerState, spawnDeck, drawFromPile, shufflePile, createTokenInstance, createDiceInstance } from '../utils/game/gameState';
 import { createDiceMesh, animateDiceRoll, setDieFaceUp, DICE_REST_Y, DICE_DRAG_Y, DICE_CONFIGS } from '../utils/game/diceMesh';
 import { loadSpawnConfig, getSpawnPoint, SPAWN_LABELS, SPAWN_COLORS, getTrackerPositions, setTrackerPosition, isTrackerConfigured, getTrackerTokenPosition } from '../utils/game/spawnConfig';
@@ -11,10 +11,28 @@ import { addTween, animateCardFlip, animateCardTap, animateShufflePile, animateC
 import { saveGameSession, loadGameSession, listGameSessions } from '../utils/game/sessionStorage';
 import { createRoom, createRoomWithCode, joinRoom, disconnectSocket, onPlayerJoined, onPlayerLeft, onStateSyncRequest, sendStateSync, requestStateSync, onStateSync } from '../utils/game/socketClient';
 import { GameSyncBridge } from '../utils/game/syncBridge';
+import {
+  createPhysicsWorld,
+  stepPhysics,
+  addCardBody,
+  removeCardBody,
+  syncMeshFromBody,
+  setBodyKinematic,
+  setBodyDynamic,
+  moveKinematicBody,
+  setBodyRemoteControlled,
+  applyRemotePoseAndRest,
+  addLockConstraint,
+  removeConstraint,
+} from '../utils/game/physicsWorld';
+import { CardOwnership, REMOTE_RENDER_DELAY_MS } from '../utils/game/cardOwnership';
+import { perf } from '../utils/perfMonitor';
+import * as CANNON from 'cannon-es';
 import { getLocalApiOrigin, resolveLocalImageUrl } from '../utils/localApi';
 import { playSound, preloadSounds } from '../utils/game/sounds';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
+import { AMBIENCE_TRACKS, playAmbience, pauseAmbience, stopAmbience, setAmbienceTrack, setAmbienceVolume, getAmbienceState, subscribeAmbience } from '../utils/arena/ambienceManager';
 import { cn } from '../lib/utils';
 import RuneSpinner from './RuneSpinner';
 import { playUI, UI } from '../utils/arena/uiSounds';
@@ -22,13 +40,83 @@ import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE, DIALOG_STYLE,
   POPOVER_STYLE, SECTION_HEADER_STYLE, FourCorners, COIN_COLOR,
+  getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 import * as THREE from 'three';
 import ArenaMatchResult from './ArenaMatchResult';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 import PileSearchDialog from './gameBoard/PileSearchDialog';
 import GameContextMenu from './gameBoard/GameContextMenu';
+import TutorialOverlay from './TutorialOverlay';
+import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
 
+const BOARD_TUTORIAL_KEY = 'game-board';
+
+// Ordered onboarding for the game board. Steps that point at DOM
+// overlays use a selector; in-canvas explanatory steps centre their
+// modal instead of trying to lock onto a 3D element.
+const BOARD_TUTORIAL_STEPS = [
+  {
+    key: 'welcome',
+    title: 'Welcome to the Table',
+    body: 'Valkenhall is a sandbox virtual tabletop — you move the cards, tokens, and dice yourself. Take a moment to get comfortable; a friendly tour of the board is just ahead.',
+  },
+  {
+    key: 'hand',
+    title: 'Your Hand',
+    body: 'Your hand sits along the bottom of the screen. Hover it to fan out the cards, then click + drag a card onto the table to play it. Right-click a card in hand to send it to a pile.',
+    selector: '[data-tutorial="board-hand"]',
+  },
+  {
+    key: 'piles',
+    title: 'Spellbook, Atlas, Cemetery',
+    body: 'Your decks live on the sides of the table as physical piles. Double-click a pile to draw from it, or right-click for draw / shuffle / search options. Cards you send to the cemetery stack there automatically.',
+  },
+  {
+    key: 'trackers',
+    title: 'Life, Mana & Elemental Trackers',
+    body: 'Life, mana, and the four elemental thresholds (air, earth, fire, water) are tracked on the table next to your avatar. Click the + / − buttons beside each tracker to adjust the count yourself — the board never does the math for you.',
+    selector: '[data-tutorial="board-life-hud"]',
+  },
+  {
+    key: 'manipulating',
+    title: 'Moving Cards Around',
+    body: 'Left-click and drag any card to move it. Drag across empty table space to draw a marquee selection box, then drag any selected card to move the whole group together. Right-click a card for a context menu with Tap, Flip, Delete, and pile options.',
+  },
+  {
+    key: 'shortcuts',
+    title: 'Keyboard Shortcuts',
+    body: 'Keep these in your back pocket — they all work on the currently-hovered card OR the whole marquee selection:\n\n• F — flip card(s) face-down / face-up\n• T — tap / untap card(s)\n• G — group / ungroup the current selection (grouped cards move as one rigid unit)\n• Space — inspect a card in full size\n• Double-click — tap / untap quickly\n• Tab — pass the turn cosmetically',
+  },
+  {
+    key: 'menu',
+    title: 'Session Menu',
+    body: 'The burger menu in the top-left opens your session controls — go online to invite a friend, save the current table state, or exit back to the main menu.',
+    selector: '[data-tutorial="board-menu"]',
+  },
+  {
+    key: 'fair-play',
+    title: 'You Decide Who Won',
+    body: 'Valkenhall intentionally has no automated rules engine — no HP tracking, no mana enforcement, no win detection. At the end of a game, you and your opponent decide together who won. Be a good sport, play fair, and have fun. The goal here is the joy of sharing a match, not the scoreboard.',
+  },
+];
+
+// Texture URLs for the tracker tokens printed on the board. The SVGs are
+// served by the Bun runtime out of dist/gameboard-tokens. `wind` maps to
+// the `air-token.svg` asset — the two are interchangeable terms here.
+const TOKEN_ASSET_BASE = '/game-assets/gameboard-tokens';
+const TRACKER_TOKEN_TEXTURES = {
+  life: `${TOKEN_ASSET_BASE}/generic-token.svg`,
+  mana: `${TOKEN_ASSET_BASE}/generic-token.svg`,
+  earth: `${TOKEN_ASSET_BASE}/earth-token.svg`,
+  water: `${TOKEN_ASSET_BASE}/water-token.svg`,
+  fire: `${TOKEN_ASSET_BASE}/fire-token.svg`,
+  wind: `${TOKEN_ASSET_BASE}/air-token.svg`,
+};
+const TRACKER_BUTTON_TEXTURES = {
+  plus: `${TOKEN_ASSET_BASE}/plus-token.svg`,
+  minus: `${TOKEN_ASSET_BASE}/minus-token.svg`,
+};
 
 export default class GameBoard extends Component {
   constructor(props) {
@@ -36,12 +124,49 @@ export default class GameBoard extends Component {
 
     this.canvasRef = createRef();
     this.scene = null;
+    this.physicsWorld = createPhysicsWorld();
+    this.unsubFrame = null;
+    // Tracks per-card ownership (local/remote/free), broadcast throttling,
+    // and the remote-side snapshot interpolation buffer.
+    this.ownership = new CardOwnership();
     this.meshes = new Map();
     this.pileMeshes = new Map();
     this.dragging = null;
     this.hoveredMesh = null;
     this.lastMouseEvent = null;
     this.sync = new GameSyncBridge();
+    // Table-card multi-selection + grouping.
+    // selectedCardIds  — cards currently highlighted via marquee drag,
+    //                    cleared on click-empty or Escape.
+    // groups           — groupId → Set<cardId>; persistent groups that
+    //                    drag together even without pre-selection.
+    //                    Each member card also carries its groupId on
+    //                    cardInstance.groupId so the group survives
+    //                    serialization round trips.
+    // marquee          — transient rectangle state while the user is
+    //                    dragging a selection box on the empty board.
+    this.selectedCardIds = new Set();
+    this.groups = new Map();
+    // Physics constraints that keep a group's cards rigidly locked
+    // together. One entry per groupId → array of CANNON.LockConstraint
+    // instances. Rebuilt whenever assignGroup / dissolveGroup changes
+    // membership so the constraint topology always matches the groups
+    // Map.
+    this.groupConstraints = new Map();
+    this.marquee = null;
+    this.marqueeOverlayRef = createRef();
+    // The "hug rect" is the persistent rounded outline that wraps
+    // around every currently-selected card, follows them as they move,
+    // and serves as a hit-zone so the user can click anywhere inside
+    // the outline (not just on a card) to drag the whole selection.
+    // Stored in screen coordinates because the click hit-test is done
+    // against event.clientX/clientY.
+    this.hugRectRef = createRef();
+    this.hugRectScreen = null; // { minX, minY, maxX, maxY } | null
+    // Reusable THREE scratch instances so the per-frame hug-rect
+    // recompute allocates nothing.
+    this._hugBox = new THREE.Box3();
+    this._hugVec = new THREE.Vector3();
     this.spawnMarkers = new Map();
     this.tokenMeshes = new Map();
     this.lifeHUDs = new Map(); // cardId -> { sprite, plusMesh, minusMesh }
@@ -91,13 +216,30 @@ export default class GameBoard extends Component {
       matchStartTime: null,
       showSoundSettings: false,
       soundSettings: getSoundSettings(),
+      showAmbienceMenu: false,
+      ambienceState: getAmbienceState(),
+      viewScale: getViewportScale(),
+      showBoardTutorial: false,
     };
   }
+
+  handleBoardTutorialDismiss = () => {
+    const profileId = this.props.profile?.id;
+    if (profileId) markTutorialSeen(profileId, BOARD_TUTORIAL_KEY);
+    this.setState({ showBoardTutorial: false });
+  };
 
   componentDidMount() {
     const canvas = this.canvasRef.current;
     if (!canvas) return;
     preloadSounds();
+
+    this.unsubAmbience = subscribeAmbience(() => {
+      this.setState({ ambienceState: getAmbienceState() });
+    });
+    this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+    // Auto-start ambience when entering the game board.
+    playAmbience();
 
     const apiOrigin = getLocalApiOrigin();
     setCardBackUrls(
@@ -112,8 +254,39 @@ export default class GameBoard extends Component {
     canvas.addEventListener('dblclick', this.handleDoubleClick);
     canvas.addEventListener('contextmenu', this.handleContextMenu);
 
+    // Listen for a mouseup ANYWHERE on the window so a marquee drag
+    // that leaves the canvas edge still closes cleanly. Same for
+    // Escape — it cancels an active marquee or clears selection.
+    window.addEventListener('mouseup', this.handleWindowMouseUp);
+    window.addEventListener('keydown', this.handleWindowKeyDown);
+
     window.addEventListener('resize', this.handleResize);
     this.handleResize();
+
+    // Per-frame loop. Three responsibilities:
+    //   1. Step the local physics world
+    //   2. For each card mesh, drive the body either from local physics
+    //      (local-owned or free) or from the remote interpolation buffer
+    //      (remote-owned), then sync the result onto the mesh
+    //   3. Stream pose updates for locally-owned cards, auto-claim free
+    //      cards whose body just woke (cascade detection), and release
+    //      ownership when bodies sleep
+    perf.start();
+    this.unsubFrame = this.scene.onFrame((dt) => {
+      const frameMark = perf.beginMark('frame.tick');
+      const physicsMark = perf.beginMark('frame.physics');
+      stepPhysics(this.physicsWorld, dt);
+      perf.endMark(physicsMark);
+      const syncMark = perf.beginMark('frame.sync');
+      this.tickPhysicsSync();
+      perf.endMark(syncMark);
+      // Hug rect follows the selected cards every frame so it tracks
+      // drags, settle animations, and camera pans. Early-outs inside
+      // updateHugRect() make the no-selection case a single Set size
+      // check per frame.
+      this.updateHugRect();
+      perf.endMark(frameMark);
+    });
 
     loadSpawnConfig().then((config) => {
       this.setState({ spawnConfig: config }, () => {
@@ -121,6 +294,22 @@ export default class GameBoard extends Component {
         this.createTrackerButtons();
       });
     });
+
+    // First-run onboarding. Deferred a beat so the hand / HUD have
+    // laid out before the overlay measures its targets, and so the
+    // user sees the table before the tutorial modal appears. Awaits
+    // tutorialState hydration so the seen flag from disk is read
+    // before we decide whether to show the overlay.
+    const profileId = this.props.profile?.id;
+    if (profileId) {
+      hydrateTutorialState().then(() => {
+        if (this._unmounted) return;
+        if (!shouldAutoPlay(profileId, BOARD_TUTORIAL_KEY)) return;
+        setTimeout(() => {
+          if (!this._unmounted) this.setState({ showBoardTutorial: true });
+        }, 900);
+      });
+    }
 
     this.initSession().then(async () => {
       // Ranked matchmaking: the server provides BOTH decks on room:joined,
@@ -165,6 +354,7 @@ export default class GameBoard extends Component {
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
     const canvas = this.canvasRef.current;
     if (canvas) {
       canvas.removeEventListener('mousedown', this.handleMouseDown);
@@ -174,11 +364,18 @@ export default class GameBoard extends Component {
       canvas.removeEventListener('contextmenu', this.handleContextMenu);
     }
     window.removeEventListener('resize', this.handleResize);
+    window.removeEventListener('mouseup', this.handleWindowMouseUp);
+    window.removeEventListener('keydown', this.handleWindowKeyDown);
     clearTimeout(this.handRetractTimer);
     clearInterval(this.autoSaveTimer);
     this.autoSave();
+    if (this.unsubAmbience) this.unsubAmbience();
+    if (this.unsubScale) this.unsubScale();
+    stopAmbience({ silent: true });
     // Unsubscribe every game action handler before tearing down the socket.
     this.sync.destroy();
+    perf.stop();
+    if (this.unsubFrame) this.unsubFrame();
     disconnectSocket();
     this.meshes.clear();
     this.pileMeshes.clear();
@@ -187,12 +384,14 @@ export default class GameBoard extends Component {
     this.diceMeshes.clear();
     for (const [, mesh] of this.trackerTokenMeshes) {
       mesh.geometry?.dispose();
-      mesh.material?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => m?.dispose());
     }
     this.trackerTokenMeshes.clear();
     for (const [, mesh] of this.trackerButtonMeshes) {
       mesh.geometry?.dispose();
-      mesh.material?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => m?.dispose());
     }
     this.trackerButtonMeshes.clear();
     this.trackerPreviewMarkers = [];
@@ -203,6 +402,136 @@ export default class GameBoard extends Component {
 
   handleResize = () => {
     this.scene?.resize();
+  };
+
+  // Returns the world-Y of the highest card top whose footprint
+  // contains the given (x, z) point, or the table baseline if no
+  // card overlaps. excludeId lets the caller skip a specific card
+  // (e.g., the one being picked up — its own y shouldn't influence
+  // how high it gets lifted).
+  //
+  // Used by hand-placement and drag handling to guarantee that the
+  // most recently touched card always ends up on TOP of any stack.
+  // `exclude` can be a single cardId string, a Set<cardId>, or null.
+  // Passing a Set lets a multi-card drag skip every member that's
+  // currently moving together, which prevents a ratchet loop where
+  // card A lifts to clear card B while B simultaneously lifts to
+  // clear the newly-raised A, forever. The set-path is a single
+  // hash lookup per iteration — same cost as the string-equality
+  // path so there's no measurable overhead.
+  findStackHeightAt = (x, z, exclude = null) => {
+    const baseTop = 0.05 + CARD_THICKNESS / 2;
+    // Use the larger half-extent so a tap-rotated card still counts
+    // as covering the point (its footprint flips when tapped 90°).
+    const halfFootprint = CARD_HEIGHT / 2;
+    const isExcluded = typeof exclude === 'string'
+      ? (id) => id === exclude
+      : (exclude && typeof exclude.has === 'function')
+        ? (id) => exclude.has(id)
+        : () => false;
+    let highestTop = baseTop;
+    for (const [cardId, mesh] of this.meshes) {
+      if (isExcluded(cardId)) continue;
+      const dx = Math.abs(mesh.position.x - x);
+      const dz = Math.abs(mesh.position.z - z);
+      if (dx < halfFootprint && dz < halfFootprint) {
+        const top = mesh.position.y + CARD_THICKNESS / 2;
+        if (top > highestTop) highestTop = top;
+      }
+    }
+    return highestTop;
+  };
+
+  // Per-frame physics + multiplayer sync. Runs after stepPhysics inside
+  // the scene's render loop. For each card mesh:
+  //   - remote-owned: read an interpolated snapshot from the buffer at
+  //     (now - render delay) and apply it to the body
+  //   - free or local-owned: let local physics drive the body
+  //   - free + just woke: a local action's collision must have woken
+  //     it (remote bodies are non-colliding), so claim ownership and
+  //     broadcast a card:claim
+  //   - local-owned: throttled-broadcast the body's pose at ~30 Hz, and
+  //     release ownership when the body finally sleeps
+  tickPhysicsSync = () => {
+    const now = performance.now();
+    const renderTime = now - REMOTE_RENDER_DELAY_MS;
+    let awakeCount = 0;
+    let localCount = 0;
+    let remoteCount = 0;
+
+    for (const [cardId, mesh] of this.meshes) {
+      const body = mesh.userData?.body;
+      if (!body) continue;
+      if (body.sleepState !== CANNON.Body.SLEEPING) awakeCount++;
+
+      const owner = this.ownership.get(cardId);
+
+      if (owner === 'remote') {
+        remoteCount++;
+        const sample = this.ownership.sampleAt(cardId, renderTime);
+        if (sample) {
+          body.position.set(sample.pos[0], sample.pos[1], sample.pos[2]);
+          body.quaternion.set(sample.quat[0], sample.quat[1], sample.quat[2], sample.quat[3]);
+        }
+        syncMeshFromBody(mesh);
+        continue;
+      }
+
+      // Local or free — let local physics own the body
+      syncMeshFromBody(mesh);
+
+      // Auto-claim cascade: a free body can only have woken from a
+      // local action because remote-controlled bodies don't collide.
+      // Skipped during withSuppressed (initial deck spawn / state sync)
+      // so both sides simulate independently without exchanging claims —
+      // the first real interaction after setup is what triggers the
+      // ownership exchange.
+      if (
+        owner === 'free'
+        && body.sleepState === CANNON.Body.AWAKE
+        && !this.sync.isSuppressed
+      ) {
+        this.ownership.setLocal(cardId);
+        this.sync.claimCard(cardId);
+        perf.count('sync.claim.send');
+      }
+
+      if (this.ownership.is(cardId, 'local')) {
+        localCount++;
+        const pos = [body.position.x, body.position.y, body.position.z];
+        const quat = [body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w];
+
+        if (this.ownership.shouldBroadcast(cardId, pos, quat, now)) {
+          this.sync.streamCardPose(cardId, pos, quat);
+          this.ownership.recordBroadcast(cardId, pos, quat, now);
+          perf.count('sync.pose.send');
+        }
+
+        // Release once settled, but never while the user is dragging.
+        // This must check EVERY member of an active multi-card drag,
+        // not just the primary: group members are kinematic + at rest
+        // relative to the camera, so the physics engine happily puts
+        // them to sleep the instant the user holds still. Using only
+        // cardInstance?.id would release every non-primary member
+        // mid-drag, which would flag them free, let the auto-claim
+        // cascade re-grab them next frame, and result in the "cards
+        // change relative order / jitter" bug the user sees.
+        const isDraggingThis = this.dragging
+          && (this.dragging.draggingIds
+            ? this.dragging.draggingIds.has(cardId)
+            : this.dragging.cardInstance?.id === cardId);
+        if (!isDraggingThis && body.sleepState === CANNON.Body.SLEEPING) {
+          this.sync.releaseCard(cardId, pos, quat);
+          this.ownership.setFree(cardId);
+          perf.count('sync.release.send');
+        }
+      }
+    }
+
+    perf.gauge('mesh.count', this.meshes.size);
+    perf.gauge('body.awake', awakeCount);
+    perf.gauge('owner.local', localCount);
+    perf.gauge('owner.remote', remoteCount);
   };
 
   broadcastHandInfo = (handCards) => {
@@ -235,6 +564,11 @@ export default class GameBoard extends Component {
   };
 
   handleGameHotkey = (event) => {
+    // Don't fire hotkeys while the user is typing in a text field
+    // (e.g. the pile search dialog's search input).
+    const tag = event.target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return;
+
     if (event.key === 'Tab') {
       event.preventDefault();
       this.passTurn();
@@ -274,24 +608,72 @@ export default class GameBoard extends Component {
     if (this.state.inspectedCard) return;
     if (this.state.showExitConfirm || this.state.showDeckPicker) return;
 
-    if ((event.key === 'f' || event.key === 'F') && this.hoveredMesh?.userData?.type === 'card') {
-      const card = this.hoveredMesh.userData.cardInstance;
-      if (!this.isOwnedCard(card)) return;
-      card.faceDown = !card.faceDown;
-      animateCardFlip(this.hoveredMesh, card);
-      playSound('cardFlip');
-      this.sync.flipCard(card.id, card.faceDown);
+    if (event.key === 'f' || event.key === 'F') {
+      // Prefer the marquee selection if one exists: flipping works
+      // on every selected card as a unit. All cards flip to the
+      // SAME target face — if any are currently face-up, they all
+      // flip face-down; otherwise they all flip face-up. This
+      // matches the user's mental model of "flip the selection"
+      // better than independent per-card toggles.
+      if (this.selectedCardIds.size > 0) {
+        const meshes = [];
+        for (const id of this.selectedCardIds) {
+          const mesh = this.meshes.get(id);
+          if (mesh?.userData?.type === 'card') meshes.push(mesh);
+        }
+        if (meshes.length === 0) return;
+        const targetFaceDown = !meshes.some((m) => m.userData.cardInstance.faceDown);
+        for (const mesh of meshes) {
+          const card = mesh.userData.cardInstance;
+          if (card.faceDown === targetFaceDown) continue;
+          card.faceDown = targetFaceDown;
+          animateCardFlip(mesh, card);
+          this.sync.flipCard(card.id, card.faceDown);
+        }
+        playSound('cardFlip');
+        return;
+      }
+      if (this.hoveredMesh?.userData?.type === 'card') {
+        const card = this.hoveredMesh.userData.cardInstance;
+        card.faceDown = !card.faceDown;
+        animateCardFlip(this.hoveredMesh, card);
+        playSound('cardFlip');
+        this.sync.flipCard(card.id, card.faceDown);
+      }
       return;
     }
 
-    if ((event.key === 't' || event.key === 'T') && this.hoveredMesh?.userData?.type === 'card') {
-      const card = this.hoveredMesh.userData.cardInstance;
-      if (!this.isOwnedCard(card)) return;
-      if (card.isSite) return;
-      card.tapped = !card.tapped;
-      animateCardTap(this.hoveredMesh, card);
-      playSound('cardPlace');
-      this.sync.tapCard(card.id, card.tapped);
+    if (event.key === 't' || event.key === 'T') {
+      // Tap works the same way: selection first, unified target
+      // state. Sites can't be tapped so they're filtered out.
+      if (this.selectedCardIds.size > 0) {
+        const meshes = [];
+        for (const id of this.selectedCardIds) {
+          const mesh = this.meshes.get(id);
+          if (mesh?.userData?.type === 'card' && !mesh.userData.cardInstance.isSite) {
+            meshes.push(mesh);
+          }
+        }
+        if (meshes.length === 0) return;
+        const targetTapped = !meshes.every((m) => m.userData.cardInstance.tapped);
+        for (const mesh of meshes) {
+          const card = mesh.userData.cardInstance;
+          if (card.tapped === targetTapped) continue;
+          card.tapped = targetTapped;
+          animateCardTap(mesh, card);
+          this.sync.tapCard(card.id, card.tapped);
+        }
+        playSound('cardPlace');
+        return;
+      }
+      if (this.hoveredMesh?.userData?.type === 'card') {
+        const card = this.hoveredMesh.userData.cardInstance;
+        if (card.isSite) return;
+        card.tapped = !card.tapped;
+        animateCardTap(this.hoveredMesh, card);
+        playSound('cardPlace');
+        this.sync.tapCard(card.id, card.tapped);
+      }
       return;
     }
 
@@ -315,7 +697,7 @@ export default class GameBoard extends Component {
       if (!this.isOwnedPile(this.hoveredMesh.userData.pile)) return;
       const pile = this.hoveredMesh.userData.pile;
       animateShufflePile(this.hoveredMesh, pile, this.scene.scene);
-      playSound('cardShuffle');
+      playSound(pile.name === 'Atlas' ? 'cardShuffleAtlas' : 'cardShuffleSpellbook');
       shufflePile(this.state.gameState, pile.id);
       return;
     }
@@ -325,21 +707,89 @@ export default class GameBoard extends Component {
       return;
     }
 
+    // Tracker hotkeys — adjust the local player's life and mana totals.
+    // Up/Down = life, Right/Left = mana. Always targets the local player
+    // because each client only manages their own trackers.
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown'
+        || event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      const localPlayer = this.state.isHost ? 'p1' : 'p2';
+      const trackerKey = (event.key === 'ArrowUp' || event.key === 'ArrowDown') ? 'life' : 'mana';
+      const direction = (event.key === 'ArrowUp' || event.key === 'ArrowRight') ? 'up' : 'down';
+      if (direction === 'up') {
+        this.incrementTracker(localPlayer, trackerKey);
+      } else {
+        this.decrementTracker(localPlayer, trackerKey);
+      }
+      event.preventDefault();
+      return;
+    }
+
+    // Pile search hotkeys — open the local player's pile in the search dialog.
+    // C = Cemetery, Z = Atlas, X = Spellbook, V = Collection. Pressing the
+    // same key again while the dialog is open closes it (toggle behavior).
+    if (event.key === 'c' || event.key === 'C'
+        || event.key === 'z' || event.key === 'Z'
+        || event.key === 'x' || event.key === 'X'
+        || event.key === 'v' || event.key === 'V') {
+      const key = event.key.toLowerCase();
+      let pile = null;
+      let pileLabel = '';
+      if (key === 'c') {
+        pile = this.findOrCreateCemetery(!this.state.isHost);
+        pileLabel = 'Cemetery';
+      } else if (key === 'z') {
+        pile = this.findLocalPileByName('Atlas');
+        pileLabel = 'Atlas';
+      } else if (key === 'x') {
+        pile = this.findLocalPileByName('Spellbook');
+        pileLabel = 'Spellbook';
+      } else if (key === 'v') {
+        pile = this.findLocalPileByName('Collection');
+        pileLabel = 'Collection';
+      }
+      if (pile) {
+        // Toggle: if the dialog is already showing this pile, close it.
+        if (this.state.searchPile && this.state.searchPile.id === pile.id) {
+          this.handlePileSearchClose();
+        } else {
+          this.openPileSearch(pile);
+        }
+      } else {
+        toast(`No ${pileLabel} pile yet`);
+      }
+      event.preventDefault();
+      return;
+    }
+
     // WASD panning — handled via held keys in render loop
     if ('wasdWASD'.includes(event.key)) {
       this.scene?.setKeyHeld(event.key, true);
       return;
     }
 
-    // Number keys: draw N cards from hovered pile
+    // Number keys: draw N cards from hovered pile, staggered so each
+    // card has its own draw animation + sound (~140ms apart) instead
+    // of all firing on the same frame.
     const drawCount = parseInt(event.key, 10);
     if (drawCount >= 1 && drawCount <= 9 && this.hoveredMesh?.userData?.type === 'pile') {
       if (!this.isOwnedPile(this.hoveredMesh.userData.pile)) return;
       const pileId = this.hoveredMesh.userData.pile.id;
-      for (let i = 0; i < drawCount; i++) {
-        this.drawCard(pileId);
-      }
+      this.drawCardsStaggered(pileId, drawCount);
       return;
+    }
+  };
+
+  // Draws `count` cards from a pile one-by-one with a small delay so
+  // the per-card sound and fly-to-hand animation feel fanned out
+  // instead of stacking on top of each other.
+  drawCardsStaggered = (pileId, count) => {
+    const STAGGER_MS = 140;
+    for (let i = 0; i < count; i++) {
+      if (i === 0) {
+        this.drawCard(pileId);
+      } else {
+        setTimeout(() => this.drawCard(pileId), i * STAGGER_MS);
+      }
     }
   };
 
@@ -475,14 +925,69 @@ export default class GameBoard extends Component {
       'card:place': (data) => {
         const instance = data.cardInstance;
         this.addCardToTable(instance, false);
+        // Immediately mark the new card as remote-owned. The opponent
+        // who placed it will own and stream its drop animation. Without
+        // this, our per-frame auto-claim could fire on the spawned-awake
+        // body before the opponent's card:claim message arrives, ending
+        // up with both clients thinking they own the card.
+        const mesh = this.meshes.get(instance.id);
+        if (mesh?.userData?.body) {
+          this.ownership.setRemote(instance.id);
+          setBodyRemoteControlled(mesh.userData.body);
+        }
       },
-      'card:move': (data) => {
+      // The opponent is taking ownership of a card. Switch our copy to
+      // remote-controlled mode (kinematic, non-colliding) so local physics
+      // doesn't fight the incoming pose stream. If we currently believe
+      // we own the card, yield — last claim wins. The rare double-grab
+      // race resolves itself within one round trip.
+      'card:claim': (data) => {
+        perf.count('sync.claim.recv');
         const mesh = this.meshes.get(data.cardId);
         if (!mesh) return;
-        // Free placement — smooth tween from current to target position.
-        addTween({ target: mesh.position, property: 'x', from: mesh.position.x, to: data.x, duration: 200 });
-        if (data.y !== undefined) addTween({ target: mesh.position, property: 'y', from: mesh.position.y, to: data.y, duration: 200 });
-        addTween({ target: mesh.position, property: 'z', from: mesh.position.z, to: data.z, duration: 200 });
+        const body = mesh.userData?.body;
+        if (!body) return;
+        // If ANY card in our active drag (single or multi) was just
+        // claimed by the opponent, abort the whole drag — last claim
+        // wins. Checking draggingIds handles the multi-card case so
+        // a late claim on a group member still yields cleanly.
+        if (this.dragging
+          && (this.dragging.draggingIds
+            ? this.dragging.draggingIds.has(data.cardId)
+            : this.dragging.cardInstance?.id === data.cardId)) {
+          this.dragging = null;
+        }
+        this.ownership.setRemote(data.cardId);
+        setBodyRemoteControlled(body);
+      },
+      // Pose snapshot for a remote-owned card. Buffered for interpolation;
+      // the per-frame loop reads samples at (now - render delay) so motion
+      // appears smooth even when packets arrive jittered.
+      'card:pose': (data) => {
+        if (!Array.isArray(data?.pos) || !Array.isArray(data?.quat)) return;
+        perf.count('sync.pose.recv');
+        // Only buffer if we currently believe the card is remote-owned;
+        // a stray pose for a free/local card would corrupt our state.
+        if (!this.ownership.is(data.cardId, 'remote')) return;
+        this.ownership.pushSnapshot(data.cardId, data.pos, data.quat, performance.now());
+      },
+      // Opponent's card has settled. Apply the authoritative final pose,
+      // return the body to dynamic + colliding, sleep it, and mark the
+      // card free so either side can wake it again on next interaction.
+      // Plays the place sound timed with the visual settle, so cascading
+      // releases naturally produce a mini-avalanche of place sounds.
+      'card:release': (data) => {
+        perf.count('sync.release.recv');
+        const mesh = this.meshes.get(data.cardId);
+        if (!mesh) return;
+        const body = mesh.userData?.body;
+        if (!body) return;
+        if (Array.isArray(data?.pos) && Array.isArray(data?.quat)) {
+          applyRemotePoseAndRest(body, data.pos, data.quat);
+        }
+        this.ownership.setFree(data.cardId);
+        syncMeshFromBody(mesh);
+        playSound('cardPlace');
       },
       'card:tap': (data) => {
         const mesh = this.meshes.get(data.cardId);
@@ -490,6 +995,7 @@ export default class GameBoard extends Component {
           const card = mesh.userData.cardInstance;
           card.tapped = data.tapped;
           animateCardTap(mesh, card);
+          playSound('cardPlace');
         }
       },
       'card:flip': (data) => {
@@ -498,11 +1004,17 @@ export default class GameBoard extends Component {
           const card = mesh.userData.cardInstance;
           card.faceDown = data.faceDown;
           animateCardFlip(mesh, card);
+          playSound('cardFlip');
         }
       },
       'card:remove': (data) => {
         const mesh = this.meshes.get(data.cardId);
         if (mesh) {
+          // Strip the card out of any lock-constraint chain before
+          // disposing the body so we never leave a constraint
+          // pointing at a destroyed body.
+          this.evictCardFromGroup(data.cardId);
+          removeCardBody(this.physicsWorld, mesh);
           this.scene.scene.remove(mesh);
           mesh.geometry?.dispose();
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -510,17 +1022,34 @@ export default class GameBoard extends Component {
           this.meshes.delete(data.cardId);
         }
         this.lifeHUDs.delete(data.cardId);
+        this.selectedCardIds.delete(data.cardId);
       },
       // Full-pile sync: authoritative update for a single pile.
       // Sent by the acting player whenever a pile's card list changes
       // (draw, discard, shuffle, cemetery creation). Carries the entire
       // pile object so the receiver's state always matches the sender's.
+      //
+      // The receiver compares the incoming pile against its existing copy
+      // to figure out which sound to play:
+      //   - length decreased → opponent drew → cardDraw
+      //   - length unchanged → opponent shuffled → atlas/spellbook variant
+      //   - length increased → opponent sent a card to the pile → cardPlace
       'pile:sync': (data) => {
         if (!data?.pile?.id) return;
         const incoming = data.pile;
         const { gameState } = this.state;
         const existing = gameState.piles.find((p) => p.id === incoming.id);
+        let pileSound = null;
         if (existing) {
+          const prevLen = existing.cards.length;
+          const nextLen = incoming.cards.length;
+          if (nextLen < prevLen) {
+            pileSound = 'cardDraw';
+          } else if (nextLen === prevLen) {
+            pileSound = incoming.name === 'Atlas' ? 'cardShuffleAtlas' : 'cardShuffleSpellbook';
+          } else {
+            pileSound = 'cardPlace';
+          }
           // Mutate in place so existing mesh.userData.pile references stay
           // valid — otherwise the pile search dialog and context menu read
           // stale card lists after a sync and the player can't search.
@@ -530,6 +1059,8 @@ export default class GameBoard extends Component {
           existing.z = incoming.z;
           existing.rotated = incoming.rotated;
         } else {
+          // New pile (opponent just created a cemetery, etc).
+          pileSound = 'cardPlace';
           gameState.piles.push(incoming);
           // Create a mesh for the new pile (e.g., a cemetery the opponent
           // just created with a freshly dead card).
@@ -543,6 +1074,7 @@ export default class GameBoard extends Component {
         }
         this.updatePileMeshes();
         this.forceUpdate();
+        if (pileSound) playSound(pileSound);
       },
       // Remove a pile entirely (e.g., empty cemetery cleanup).
       'pile:remove': (data) => {
@@ -563,6 +1095,22 @@ export default class GameBoard extends Component {
       // New code should emit pile:sync with the updated pile instead.
       'pile:update': () => {
         this.updatePileMeshes();
+      },
+      // Remote player created or updated a group. Apply the same
+      // assignment locally so the cards drag together on both boards.
+      // Suppress the outbound broadcast that assignGroup would otherwise
+      // trigger — we're applying a remote event, not originating one.
+      'group:set': (data) => {
+        if (!data?.groupId || !Array.isArray(data.cardIds)) return;
+        this.sync.withSuppressed(() => {
+          this.assignGroup(data.groupId, data.cardIds);
+        });
+      },
+      'group:clear': (data) => {
+        if (!data?.groupId) return;
+        this.sync.withSuppressed(() => {
+          this.dissolveGroup(data.groupId);
+        });
       },
       // Minion ATK/HP sync: carries the new absolute value so clicks
       // can't desync even under rapid input.
@@ -661,7 +1209,11 @@ export default class GameBoard extends Component {
       'match:confirmed': (data) => {
         if (this.matchResultRef) {
           const iWon = data.winner === 'opponent';
-          this.matchResultRef.applyRewards(iWon);
+          // silent: true means we will NOT re-broadcast match:confirmed
+          // when our local applyRewards finishes — otherwise both clients
+          // would echo each other in a tight loop, retrying claims and
+          // hitting 409 conflicts repeatedly.
+          this.matchResultRef.applyRewards(iWon, { silent: true });
         }
       },
     };
@@ -852,11 +1404,6 @@ export default class GameBoard extends Component {
     return true;
   }
 
-  isOwnedCard(cardInstance) {
-    if (this.state.connectionStatus === 'offline') return true;
-    return !!cardInstance?.rotated === !this.state.isHost;
-  }
-
   isOwnedPile(pile) {
     if (this.state.connectionStatus === 'offline') return true;
     return !!pile?.rotated === !this.state.isHost;
@@ -870,6 +1417,325 @@ export default class GameBoard extends Component {
       meshes.push(hud.plusMesh, hud.minusMesh, hud.hpPlusMesh, hud.hpMinusMesh);
     }
     return meshes;
+  }
+
+  // --- Multi-selection & grouping ---
+
+  /**
+   * Compose the set of cards that should visually register as "selected"
+   * right now: the marquee selection union'd with every group that has at
+   * least one selected member. This is the single source of truth the
+   * highlight pass and the multi-drag pickup both read from.
+   */
+  collectHighlightedCardIds() {
+    const ids = new Set(this.selectedCardIds);
+    // If any selected card belongs to a group, pull every other member
+    // in — selecting one member implies selecting the whole group.
+    for (const cardId of this.selectedCardIds) {
+      const mesh = this.meshes.get(cardId);
+      const gid = mesh?.userData?.cardInstance?.groupId;
+      if (gid && this.groups.has(gid)) {
+        for (const memberId of this.groups.get(gid)) ids.add(memberId);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Collect the cards that should drag together when `primaryCardId` is
+   * picked up: the primary card itself, every other card currently in the
+   * same marquee selection, and every card that shares a group with any
+   * of those. Returns an ordered Set with the primary card first so
+   * callers can compute the drag offset from it.
+   */
+  collectDragGroupForCard(primaryCardId) {
+    const result = new Set([primaryCardId]);
+
+    // If the primary is in the marquee selection, pull every selection
+    // member along. If the primary is NOT selected, we still pick up its
+    // group so right-clicking (which doesn't select) still works for
+    // grouped cards.
+    const primaryIsSelected = this.selectedCardIds.has(primaryCardId);
+    if (primaryIsSelected) {
+      for (const id of this.selectedCardIds) result.add(id);
+    }
+
+    // Expand via groups: for every card already in `result`, follow its
+    // groupId and add every member.
+    const seeds = [...result];
+    for (const id of seeds) {
+      const mesh = this.meshes.get(id);
+      const gid = mesh?.userData?.cardInstance?.groupId;
+      if (gid && this.groups.has(gid)) {
+        for (const memberId of this.groups.get(gid)) result.add(memberId);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Repaint emissive tints across every card mesh so the selected/grouped
+   * cards read clearly. Selected (marquee) cards get a bright gold glow,
+   * grouped cards get a softer gold tint, and everything else is cleared.
+   * Safe to call frequently — it's a cheap loop over meshes with no
+   * allocations beyond a Set.
+   */
+  updateSelectionHighlights() {
+    const highlighted = this.collectHighlightedCardIds();
+    // Only cards that are in the active marquee selection get an
+    // emissive tint. Grouped (but unselected) cards look identical to
+    // ungrouped ones — the hug outline wraps them together when
+    // selected, and multi-drag is what surfaces the group at drag
+    // time. This keeps the board visually quiet during normal play.
+    for (const [cardId, mesh] of this.meshes) {
+      if (!mesh?.material) continue;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const emissive = highlighted.has(cardId) ? 0x5a3f0a : 0x000000;
+      for (const m of mats) {
+        if (m.emissive) m.emissive.setHex(emissive);
+      }
+    }
+    // The hug rect depends on the same highlighted set, so refresh it
+    // in lockstep. This gives instant feedback when the marquee adds
+    // or removes a card — the hug outline snaps to match.
+    this.updateHugRect();
+  }
+
+  /**
+   * Project a card mesh's world position to canvas-local screen pixels.
+   * Used by the marquee hit test and any future UI that needs to sit on
+   * top of a 3D card.
+   */
+  worldPositionToScreen(worldPos) {
+    if (!this.scene?.camera || !this.canvasRef.current) return null;
+    const v = this._hugVec.copy(worldPos).project(this.scene.camera);
+    const rect = this.canvasRef.current.getBoundingClientRect();
+    return {
+      x: ((v.x + 1) / 2) * rect.width + rect.left,
+      y: ((-v.y + 1) / 2) * rect.height + rect.top,
+    };
+  }
+
+  /**
+   * Recompute the persistent "hug" rectangle that wraps every selected
+   * card, writing both the screen-space bounds (for hit testing) and
+   * the DOM overlay style (for rendering). Called every frame by the
+   * scene tick so the rect follows cards as they move, as well as from
+   * updateSelectionHighlights() the moment the selection changes so
+   * the user gets instant feedback.
+   *
+   * The bounds are computed by projecting each selected card's world-
+   * space AABB corners through the camera and taking min/max of the
+   * resulting screen coordinates. That handles tapped / rotated cards
+   * correctly — we always hug the oriented shape, not an ideal
+   * rectangle.
+   *
+   * A generous padding is applied so the outline doesn't touch card
+   * edges; that makes the rounded-corner styling read as a halo rather
+   * than a tight frame.
+   */
+  updateHugRect() {
+    const el = this.hugRectRef.current;
+    if (!el) return;
+
+    const highlighted = this.collectHighlightedCardIds();
+    if (highlighted.size === 0 || !this.scene?.camera || !this.canvasRef.current) {
+      el.style.display = 'none';
+      this.hugRectScreen = null;
+      return;
+    }
+
+    const camera = this.scene.camera;
+    const rect = this.canvasRef.current.getBoundingClientRect();
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let any = false;
+
+    const box = this._hugBox;
+    const v = this._hugVec;
+
+    for (const cardId of highlighted) {
+      const mesh = this.meshes.get(cardId);
+      if (!mesh) continue;
+      box.setFromObject(mesh);
+      if (!isFinite(box.min.x) || box.isEmpty()) continue;
+
+      // Project all 8 corners of the world-space AABB.
+      const mn = box.min, mx = box.max;
+      const corners = [
+        [mn.x, mn.y, mn.z], [mx.x, mn.y, mn.z],
+        [mn.x, mx.y, mn.z], [mx.x, mx.y, mn.z],
+        [mn.x, mn.y, mx.z], [mx.x, mn.y, mx.z],
+        [mn.x, mx.y, mx.z], [mx.x, mx.y, mx.z],
+      ];
+      for (const [x, y, z] of corners) {
+        v.set(x, y, z).project(camera);
+        const sx = ((v.x + 1) / 2) * rect.width + rect.left;
+        const sy = ((-v.y + 1) / 2) * rect.height + rect.top;
+        if (sx < minX) minX = sx;
+        if (sy < minY) minY = sy;
+        if (sx > maxX) maxX = sx;
+        if (sy > maxY) maxY = sy;
+        any = true;
+      }
+    }
+
+    if (!any) {
+      el.style.display = 'none';
+      this.hugRectScreen = null;
+      return;
+    }
+
+    // Pad the outline so it reads as a halo around the cards rather
+    // than a tight frame pressed into them. The padding is the SAME
+    // value we test against in hit detection, so clicks that land just
+    // outside the visual edge still register as "inside the hug zone".
+    const padding = 10;
+    minX -= padding;
+    minY -= padding;
+    maxX += padding;
+    maxY += padding;
+
+    this.hugRectScreen = { minX, minY, maxX, maxY };
+    el.style.display = 'block';
+    el.style.left = `${minX}px`;
+    el.style.top = `${minY}px`;
+    el.style.width = `${maxX - minX}px`;
+    el.style.height = `${maxY - minY}px`;
+  }
+
+  /** True if the given client-space point is inside the current hug rect. */
+  isPointInsideHugRect(clientX, clientY) {
+    const r = this.hugRectScreen;
+    if (!r) return false;
+    return clientX >= r.minX && clientX <= r.maxX && clientY >= r.minY && clientY <= r.maxY;
+  }
+
+  /**
+   * Chain N-1 LockConstraints between consecutive group members. The
+   * chain is enough to make every pair rigidly connected (transitive
+   * via the intermediate bodies), and it's cheaper than the full
+   * N*(N-1)/2 pairwise version without changing the user-visible
+   * behaviour: the solver propagates corrections through the chain
+   * every step.
+   *
+   * The constraints are created at the members' CURRENT relative pose,
+   * so whatever layout the user grouped them in — stacked, side by
+   * side, fanned out — becomes the rigid shape for the rest of the
+   * group's life.
+   */
+  createGroupConstraints(groupId, cardIds) {
+    if (!this.physicsWorld) return;
+    const ids = [...cardIds];
+    if (ids.length < 2) return;
+    const constraints = [];
+    for (let i = 0; i < ids.length - 1; i++) {
+      const bodyA = this.meshes.get(ids[i])?.userData?.body;
+      const bodyB = this.meshes.get(ids[i + 1])?.userData?.body;
+      if (!bodyA || !bodyB) continue;
+      const c = addLockConstraint(this.physicsWorld, bodyA, bodyB);
+      if (c) constraints.push(c);
+    }
+    if (constraints.length > 0) this.groupConstraints.set(groupId, constraints);
+  }
+
+  /** Tear down every constraint previously created for the given group. */
+  removeGroupConstraints(groupId) {
+    const constraints = this.groupConstraints.get(groupId);
+    if (!constraints) return;
+    for (const c of constraints) removeConstraint(this.physicsWorld, c);
+    this.groupConstraints.delete(groupId);
+  }
+
+  /**
+   * Assign a groupId to a list of card ids, update the groups cache, and
+   * rebuild the physics constraints that lock the group rigidly. If any
+   * members already had a different group, strip them from the old group
+   * first so a card only belongs to one group at a time — the old group's
+   * constraints are also rebuilt since its chain topology just changed.
+   */
+  assignGroup(groupId, cardIds) {
+    const members = new Set();
+    const affectedOldGroups = new Set();
+    for (const cardId of cardIds) {
+      const mesh = this.meshes.get(cardId);
+      if (!mesh) continue;
+      const instance = mesh.userData.cardInstance;
+      if (instance.groupId && instance.groupId !== groupId) {
+        const old = this.groups.get(instance.groupId);
+        if (old) {
+          old.delete(cardId);
+          affectedOldGroups.add(instance.groupId);
+          if (old.size === 0) this.groups.delete(instance.groupId);
+        }
+      }
+      instance.groupId = groupId;
+      members.add(cardId);
+    }
+    if (members.size === 0) return;
+    this.groups.set(groupId, members);
+
+    // Rebuild the new group's constraint chain from scratch so the
+    // topology exactly matches the members Set.
+    this.removeGroupConstraints(groupId);
+    this.createGroupConstraints(groupId, members);
+
+    // Any old groups that lost members need their chains rebuilt too.
+    // Groups that dropped below 2 members were already deleted above,
+    // so we only rebuild those that still exist.
+    for (const oldGroupId of affectedOldGroups) {
+      this.removeGroupConstraints(oldGroupId);
+      const remaining = this.groups.get(oldGroupId);
+      if (remaining && remaining.size >= 2) {
+        this.createGroupConstraints(oldGroupId, remaining);
+      }
+    }
+
+    this.updateSelectionHighlights();
+  }
+
+  /** Dissolve a group. Clears groupId from every member and the cache. */
+  dissolveGroup(groupId) {
+    this.removeGroupConstraints(groupId);
+    const members = this.groups.get(groupId);
+    if (!members) return;
+    for (const cardId of members) {
+      const mesh = this.meshes.get(cardId);
+      if (mesh?.userData?.cardInstance) {
+        delete mesh.userData.cardInstance.groupId;
+      }
+    }
+    this.groups.delete(groupId);
+    this.updateSelectionHighlights();
+  }
+
+  /**
+   * Remove a card from whatever group it belongs to, cleaning up the
+   * group's constraint chain and dissolving the group entirely if it
+   * drops below 2 members. Called from every card-removal path so we
+   * never leak a LockConstraint referencing a destroyed body.
+   */
+  evictCardFromGroup(cardId) {
+    const mesh = this.meshes.get(cardId);
+    const gid = mesh?.userData?.cardInstance?.groupId;
+    if (!gid) return;
+    const members = this.groups.get(gid);
+    if (!members) return;
+    members.delete(cardId);
+    delete mesh.userData.cardInstance.groupId;
+    this.removeGroupConstraints(gid);
+    if (members.size >= 2) {
+      this.createGroupConstraints(gid, members);
+    } else {
+      // Singleton "group" is meaningless — clear the last member's
+      // groupId and drop the cache entry.
+      for (const remainingId of members) {
+        const m = this.meshes.get(remainingId);
+        if (m?.userData?.cardInstance) delete m.userData.cardInstance.groupId;
+      }
+      this.groups.delete(gid);
+    }
   }
 
   findHitObject(hitObject) {
@@ -945,7 +1811,42 @@ export default class GameBoard extends Component {
     }
 
     const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
-    if (hits.length === 0) return;
+    if (hits.length === 0) {
+      // Empty board click. Before starting a fresh marquee, check
+      // whether the click landed INSIDE the persistent hug outline of
+      // the current selection — if it did, the user is picking up
+      // the whole selection from a gap between cards, not starting a
+      // new selection.
+      if (this.isPointInsideHugRect(event.clientX, event.clientY) && this.selectedCardIds.size > 0) {
+        const point = this.scene.raycastTablePoint(event);
+        if (point) {
+          this.startCardDrag({
+            primaryMesh: null,
+            dragIds: new Set(this.collectHighlightedCardIds()),
+            anchorX: point.x,
+            anchorZ: point.z,
+          });
+          event.preventDefault();
+          return;
+        }
+      }
+
+      // Not inside the hug zone — fresh marquee drag-select. Clear
+      // any existing selection first. Marquee state lives on `this`
+      // (not in React state) so mouse-move can render at 60fps
+      // without triggering re-renders.
+      this.selectedCardIds.clear();
+      this.updateSelectionHighlights();
+      this.marquee = {
+        originX: event.clientX,
+        originY: event.clientY,
+        currentX: event.clientX,
+        currentY: event.clientY,
+      };
+      this.renderMarqueeOverlay();
+      event.preventDefault();
+      return;
+    }
 
     const hit = this.findHitObject(hits[0].object);
 
@@ -993,29 +1894,210 @@ export default class GameBoard extends Component {
     }
 
     if (hit?.userData.type === 'card') {
-      if (!this.isOwnedCard(hit.userData.cardInstance)) return;
-      // Free drag — pure sandbox, no grid logic.
-      this.dragging = {
-        mesh: hit,
-        cardInstance: hit.userData.cardInstance,
-        offsetX: 0,
-        offsetZ: 0,
-      };
-      hit.position.y = this.scene.CARD_DRAG_Y;
-      playSound('cardPickup');
+      const primaryId = hit.userData.cardInstance.id;
+      const dragIds = this.collectDragGroupForCard(primaryId);
+      this.startCardDrag({
+        primaryMesh: hit,
+        dragIds,
+        anchorX: hit.position.x,
+        anchorZ: hit.position.z,
+      });
       event.preventDefault();
+      return;
     }
   };
+
+  /**
+   * Pick up a single card OR a whole selection/group starting from the
+   * given hit mesh. Builds this.dragging.members with one entry per card
+   * to drag; the single-card case falls out naturally as a members array
+   * of length 1.
+   */
+  /**
+   * Pick up a single card, a selection, or a group.
+   *
+   * `primaryMesh` is the card the user clicked (or null when dragging
+   * from an empty spot inside the hug rect). `dragIds` is the set of
+   * cards that should travel together. `anchorX`/`anchorZ` is the
+   * world-space point each member's offset is computed against — for
+   * card-clicks, this is the primary's own position; for hug-drags,
+   * it's the raycast table point under the cursor. Both cases converge
+   * in handleMouseMove, which just adds (point + offset) per member.
+   */
+  startCardDrag({ primaryMesh, dragIds, anchorX, anchorZ }) {
+    // If the click is on an unrelated card (not in selection, not in a
+    // group), clicking it clears any leftover marquee selection.
+    if (primaryMesh) {
+      const primaryId = primaryMesh.userData.cardInstance.id;
+      if (!this.selectedCardIds.has(primaryId) && !primaryMesh.userData.cardInstance.groupId) {
+        if (this.selectedCardIds.size > 0) {
+          this.selectedCardIds.clear();
+          this.updateSelectionHighlights();
+        }
+      }
+    }
+
+    const baseDragY = this.scene.CARD_DRAG_Y;
+    const dragIdSet = dragIds instanceof Set ? dragIds : new Set(dragIds);
+
+    // Collect every member with its ORIGINAL world pose at pickup
+    // time. Offsets and initialY are stored per-member and never
+    // recomputed mid-drag, so two grouped + stacked cards keep their
+    // original vertical separation for the entire drag. The group
+    // travels as one rigid card while every body stays a normal
+    // collider that scatters non-group stacks just like a single
+    // dragged card would.
+    const members = [];
+    let lowestMember = null;
+    for (const cardId of dragIdSet) {
+      const mesh = this.meshes.get(cardId);
+      if (!mesh) continue;
+      const m = {
+        mesh,
+        cardInstance: mesh.userData.cardInstance,
+        offsetX: mesh.position.x - anchorX,
+        offsetZ: mesh.position.z - anchorZ,
+        initialY: mesh.position.y,
+      };
+      members.push(m);
+      if (!lowestMember || m.initialY < lowestMember.initialY) lowestMember = m;
+    }
+
+    // Compute the initial lift delta that puts the lowest member
+    // above the stack it sits on (minus its own group-mates, which
+    // dragIdSet excludes). Every member is shifted by the SAME delta
+    // so relative stacking is preserved.
+    let liftDelta = 0;
+    if (lowestMember) {
+      const stackTop = this.findStackHeightAt(
+        lowestMember.mesh.position.x,
+        lowestMember.mesh.position.z,
+        dragIdSet
+      );
+      const lowestTargetY = Math.max(baseDragY, stackTop + CARD_THICKNESS + 1);
+      liftDelta = Math.max(0, lowestTargetY - lowestMember.initialY);
+    }
+
+    // Claim ownership, flip each body kinematic (still colliding, so
+    // the group can scatter non-group stacks it crosses the same way
+    // a single card can), and write the lifted world pose. Intra-
+    // group jitter is prevented by passing the full dragIdSet to
+    // findStackHeightAt — members never lift to clear each other.
+    for (const m of members) {
+      const cardId = m.cardInstance.id;
+      if (!this.ownership.is(cardId, 'local')) {
+        this.ownership.setLocal(cardId);
+        this.sync.claimCard(cardId);
+      }
+      setBodyKinematic(m.mesh.userData.body);
+      const y = m.initialY + liftDelta;
+      m.mesh.position.y = y;
+      moveKinematicBody(m.mesh.userData.body, m.mesh.position.x, y, m.mesh.position.z);
+    }
+
+    this.dragging = {
+      mesh: primaryMesh, // may be null for hug-drag
+      cardInstance: primaryMesh?.userData?.cardInstance || null,
+      offsetX: 0,
+      offsetZ: 0,
+      // Legacy field kept so unrelated consumers still see a number.
+      dragY: (lowestMember ? lowestMember.initialY + liftDelta : baseDragY),
+      members,
+      // Cache the set of dragging ids once — handleMouseMove reuses
+      // it so findStackHeightAt skips every member in O(1) per hit.
+      draggingIds: dragIdSet,
+      // Monotonic shared lift applied to every member's initialY.
+      // Only grows during the drag (never drops) so the group
+      // doesn't yo-yo as the cursor crosses uneven terrain.
+      liftDelta,
+    };
+    playSound('cardPickup');
+  }
 
   handleMouseMove = (event) => {
     if (this.props.isSpectating) return;
     this.lastMouseEvent = event;
 
+    // Marquee drag: update the overlay rect and recompute the selection
+    // from every card whose screen-projected position sits inside it.
+    if (this.marquee) {
+      this.marquee.currentX = event.clientX;
+      this.marquee.currentY = event.clientY;
+      this.renderMarqueeOverlay();
+
+      const minX = Math.min(this.marquee.originX, this.marquee.currentX);
+      const maxX = Math.max(this.marquee.originX, this.marquee.currentX);
+      const minY = Math.min(this.marquee.originY, this.marquee.currentY);
+      const maxY = Math.max(this.marquee.originY, this.marquee.currentY);
+
+      const nextSelection = new Set();
+      for (const [cardId, mesh] of this.meshes) {
+        const screen = this.worldPositionToScreen(mesh.position);
+        if (!screen) continue;
+        if (screen.x >= minX && screen.x <= maxX && screen.y >= minY && screen.y <= maxY) {
+          nextSelection.add(cardId);
+        }
+      }
+      if (nextSelection.size !== this.selectedCardIds.size ||
+          [...nextSelection].some((id) => !this.selectedCardIds.has(id))) {
+        this.selectedCardIds = nextSelection;
+        this.updateSelectionHighlights();
+      }
+      return;
+    }
+
     if (this.dragging) {
       const point = this.scene.raycastTablePoint(event);
       if (!point) return;
-      this.dragging.mesh.position.x = point.x;
-      this.dragging.mesh.position.z = point.z;
+      // Every member travels as part of a single rigid group. Single-
+      // card drags are synthesised as a 1-member array so the loop
+      // below handles both paths.
+      const members = this.dragging.members;
+      if (!members || members.length === 0) return;
+
+      const draggingIds = this.dragging.draggingIds;
+
+      // Find the member with the lowest initialY — that's the one
+      // whose target position drives the group-wide stack-clear
+      // math. Cached on the dragging record so we only walk the
+      // member list once per drag, not per move event.
+      let lowestMember = this.dragging._lowestMember;
+      if (!lowestMember) {
+        for (const m of members) {
+          if (!lowestMember || m.initialY < lowestMember.initialY) lowestMember = m;
+        }
+        this.dragging._lowestMember = lowestMember;
+      }
+
+      // Compute where the lowest member WOULD land, then derive the
+      // required shared lift to clear the stack at that point. The
+      // result is a SINGLE group-wide liftDelta, so every member
+      // keeps its original relative vertical offset and the group
+      // moves as one frozen rigid object.
+      const lowestTargetX = point.x + lowestMember.offsetX;
+      const lowestTargetZ = point.z + lowestMember.offsetZ;
+      const stackTop = this.findStackHeightAt(lowestTargetX, lowestTargetZ, draggingIds);
+      const neededLowestY = Math.max(this.scene.CARD_DRAG_Y, stackTop + CARD_THICKNESS + 1);
+      const neededLift = Math.max(0, neededLowestY - lowestMember.initialY);
+      // Monotonic — never drops during a drag.
+      if (neededLift > this.dragging.liftDelta) this.dragging.liftDelta = neededLift;
+      const liftDelta = this.dragging.liftDelta;
+
+      // Apply the shared (dx, dy, dz) delta to every member. Each
+      // member's Y is initialY + liftDelta, so two stacked cards
+      // stay stacked at the same vertical separation they had when
+      // the drag started.
+      for (const m of members) {
+        const targetX = point.x + m.offsetX;
+        const targetZ = point.z + m.offsetZ;
+        const targetY = m.initialY + liftDelta;
+        m.mesh.position.x = targetX;
+        m.mesh.position.y = targetY;
+        m.mesh.position.z = targetZ;
+        moveKinematicBody(m.mesh.userData.body, targetX, targetY, targetZ);
+      }
+      // Legacy field kept in sync for any consumer still reading it.
+      this.dragging.dragY = lowestMember.initialY + liftDelta;
       return;
     }
 
@@ -1066,6 +2148,16 @@ export default class GameBoard extends Component {
 
   handleMouseUp = (event) => {
     if (this.props.isSpectating) return;
+
+    // Finish a marquee selection: clear the transient rect and the
+    // overlay DOM, leaving this.selectedCardIds populated for the
+    // subsequent drag/right-click.
+    if (this.marquee) {
+      this.marquee = null;
+      this.renderMarqueeOverlay();
+      return;
+    }
+
     if (!this.dragging) return;
 
     const droppedMesh = this.dragging.mesh;
@@ -1092,33 +2184,135 @@ export default class GameBoard extends Component {
       return;
     }
 
-    // Card drop — pure free placement (sandbox mode, no grid).
-    const card = this.dragging.cardInstance;
-    card.x = droppedMesh.position.x;
-    card.z = droppedMesh.position.z;
-
-    // Stack on top of any cards directly underneath the drop point.
-    let highestY = this.scene.CARD_REST_Y;
-    for (const [, mesh] of this.meshes) {
-      if (mesh === droppedMesh) continue;
-      const dx = Math.abs(mesh.position.x - droppedMesh.position.x);
-      const dz = Math.abs(mesh.position.z - droppedMesh.position.z);
-      if (dx < CARD_WIDTH * 0.6 && dz < CARD_HEIGHT * 0.6) {
-        const topOfCard = mesh.position.y + CARD_THICKNESS;
-        if (topOfCard > highestY) highestY = topOfCard;
-      }
+    // Card drop — hand every dragged body back to physics. Gravity
+    // and contact solving resolve the final pose naturally; the per-
+    // frame tickPhysicsSync emits card:release when each body
+    // settles asleep. For multi-card group drags, the members fall
+    // together with their preserved relative Y offsets (kinematic
+    // →dynamic transition zeros velocity) so stacking is maintained.
+    const members = this.dragging.members || [{ mesh: droppedMesh }];
+    for (const m of members) {
+      if (m.mesh?.userData?.body) setBodyDynamic(m.mesh.userData.body);
     }
-    droppedMesh.position.y = highestY;
-
     playSound('cardPlace');
-    this.sync.moveCard({
-      cardId: card.id,
-      x: card.x,
-      y: droppedMesh.position.y,
-      z: card.z,
-    });
     this.dragging = null;
   };
+
+  /**
+   * Write the current this.marquee state into the DOM overlay div
+   * directly, bypassing React state — this runs on every mouse-move
+   * while the marquee is active and state churn would be wasteful.
+   * Called with null (or an absent marquee) to hide the overlay.
+   */
+  renderMarqueeOverlay() {
+    const el = this.marqueeOverlayRef.current;
+    if (!el) return;
+    if (!this.marquee) {
+      el.style.display = 'none';
+      return;
+    }
+    const minX = Math.min(this.marquee.originX, this.marquee.currentX);
+    const maxX = Math.max(this.marquee.originX, this.marquee.currentX);
+    const minY = Math.min(this.marquee.originY, this.marquee.currentY);
+    const maxY = Math.max(this.marquee.originY, this.marquee.currentY);
+    el.style.display = 'block';
+    el.style.left = `${minX}px`;
+    el.style.top = `${minY}px`;
+    el.style.width = `${maxX - minX}px`;
+    el.style.height = `${maxY - minY}px`;
+  }
+
+  /**
+   * Window-level mouseup: clean up marquee state that may have been left
+   * behind when the drag left the canvas bounds. The canvas-level
+   * handleMouseUp covers the common case; this is the backstop.
+   */
+  handleWindowMouseUp = (event) => {
+    if (this.marquee) {
+      this.marquee = null;
+      this.renderMarqueeOverlay();
+    }
+  };
+
+  /**
+   * Window-level Escape: abort an active marquee, and (on a second
+   * press, or if there's no marquee) clear the current selection.
+   * Input elements keep their own keydown handling — we bail if the
+   * event originated from one.
+   */
+  handleWindowKeyDown = (event) => {
+    const target = event.target;
+    const tag = target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+
+    if (event.key === 'Escape') {
+      if (this.marquee) {
+        this.marquee = null;
+        this.renderMarqueeOverlay();
+        return;
+      }
+      if (this.selectedCardIds.size > 0) {
+        this.selectedCardIds.clear();
+        this.updateSelectionHighlights();
+      }
+      return;
+    }
+
+    if (event.key === 'g' || event.key === 'G') {
+      // Ignore while modifier keys are held so it doesn't fight
+      // browser / OS shortcuts (⌘G, Ctrl+G find, etc.).
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      this.toggleGroupForSelection();
+      event.preventDefault();
+    }
+  };
+
+  /**
+   * `G` hotkey handler. Toggles grouping for the current marquee
+   * selection:
+   *   - if every selected card is already in the same single group,
+   *     dissolve that group
+   *   - otherwise, if 2+ cards are selected, group them all into a
+   *     fresh group (the assignGroup eviction logic absorbs any
+   *     members that were in a different group)
+   *   - selections of 0 or 1 cards do nothing
+   *
+   * Broadcasts the change via the existing group:set / group:clear
+   * sync bridge methods so the opponent's client stays in lockstep.
+   */
+  toggleGroupForSelection() {
+    const ids = [...this.selectedCardIds];
+    if (ids.length === 0) return;
+
+    // Detect the "already a single cohesive group" case. When true,
+    // hitting G should ungroup — anything else (mixed groups, no
+    // groups at all) should group into one.
+    let sharedGid = null;
+    let cohesive = false;
+    if (ids.length >= 2) {
+      const first = this.meshes.get(ids[0]);
+      const gid = first?.userData?.cardInstance?.groupId || null;
+      if (gid) {
+        cohesive = ids.every((id) => {
+          const mesh = this.meshes.get(id);
+          return mesh?.userData?.cardInstance?.groupId === gid;
+        });
+        if (cohesive) sharedGid = gid;
+      }
+    }
+
+    if (cohesive && sharedGid) {
+      this.dissolveGroup(sharedGid);
+      this.sync.clearGroup(sharedGid);
+      return;
+    }
+
+    if (ids.length >= 2) {
+      const groupId = `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      this.assignGroup(groupId, ids);
+      this.sync.setGroup(groupId, ids);
+    }
+  }
 
   handleDoubleClick = (event) => {
     const hits = this.scene.raycastObjects(event, this.getInteractableMeshes());
@@ -1134,7 +2328,6 @@ export default class GameBoard extends Component {
     }
 
     if (hit.userData.type === 'card') {
-      if (!this.isOwnedCard(hit.userData.cardInstance)) return;
       const card = hit.userData.cardInstance;
       if (card.isSite) return;
       card.tapped = !card.tapped;
@@ -1162,14 +2355,37 @@ export default class GameBoard extends Component {
     }
 
     if (hit.userData.type === 'card') {
-      if (!this.isOwnedCard(hit.userData.cardInstance)) return;
+      // Include enough info for the menu to decide whether to show
+      // Group selected / Ungroup. selectionSize is the count of cards
+      // the user has marquee-selected, groupId is this card's current
+      // group (if any), and selectionAlreadyGrouped is true when every
+      // card in the selection shares exactly one non-empty groupId —
+      // that case should hide "Group selected" because there's nothing
+      // left to group.
+      const cardInstance = hit.userData.cardInstance;
+      const selectedIds = [...this.selectedCardIds];
+      let selectionAlreadyGrouped = false;
+      if (selectedIds.length >= 2) {
+        const firstMesh = this.meshes.get(selectedIds[0]);
+        const sharedGid = firstMesh?.userData?.cardInstance?.groupId || null;
+        if (sharedGid) {
+          selectionAlreadyGrouped = selectedIds.every((id) => {
+            const m = this.meshes.get(id);
+            return m?.userData?.cardInstance?.groupId === sharedGid;
+          });
+        }
+      }
       this.setState({
         contextMenu: {
           x: event.clientX,
           y: event.clientY,
           type: 'card',
-          cardInstance: hit.userData.cardInstance,
+          cardInstance,
           mesh: hit,
+          selectionSize: this.selectedCardIds.size,
+          groupId: cardInstance.groupId || null,
+          selectedIds,
+          selectionAlreadyGrouped,
         },
       });
     } else if (hit.userData.type === 'pile') {
@@ -1245,7 +2461,8 @@ export default class GameBoard extends Component {
     for (const [, mesh] of this.trackerTokenMeshes) {
       this.scene.scene.remove(mesh);
       mesh.geometry.dispose();
-      mesh.material.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => m?.dispose());
     }
     this.trackerTokenMeshes.clear();
 
@@ -1257,13 +2474,21 @@ export default class GameBoard extends Component {
 
         const value = gameState.trackers[player][trackerKey];
         const positions = valueToPositions(trackerKey, value);
+        const topTexture = TRACKER_TOKEN_TEXTURES[trackerKey];
 
         for (const { row, posIndex } of positions) {
           const pos = getTrackerTokenPosition(spawnConfig, player, trackerKey, row, posIndex);
           if (!pos) continue;
 
           const meshKey = this.trackerMeshKey(player, trackerKey, row);
-          const tokenInstance = { id: `tracker-${player}-${trackerKey}-${row || 'single'}`, x: pos.x, z: pos.z, color: 'red' };
+          const tokenInstance = {
+            id: `tracker-${player}-${trackerKey}-${row || 'single'}`,
+            x: pos.x,
+            z: pos.z,
+            color: 'red',
+            topTexture,
+            flip: player === 'p2',
+          };
           const mesh = createTokenMesh(tokenInstance);
           this.scene.scene.add(mesh);
           this.trackerTokenMeshes.set(meshKey, mesh);
@@ -1300,13 +2525,15 @@ export default class GameBoard extends Component {
     for (const [, mesh] of this.trackerButtonMeshes) {
       this.scene.scene.remove(mesh);
       mesh.geometry.dispose();
-      mesh.material.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => m?.dispose());
     }
     this.trackerButtonMeshes.clear();
 
     const { spawnConfig } = this.state;
     const btnRadius = 1.2;
     const btnHeight = 0.2;
+    const btnRestY = btnHeight / 2 + 0.1;
 
     for (const player of PLAYERS) {
       for (const [trackerKey, def] of Object.entries(TRACKER_DEFS)) {
@@ -1328,14 +2555,14 @@ export default class GameBoard extends Component {
             roughness: 0.5,
           });
           const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set(btnPos.x, btnHeight / 2 + 0.1, btnPos.z);
+          mesh.position.set(btnPos.x, btnRestY, btnPos.z);
           mesh.userData = { type: 'trackerButton', action: 'integrated', player, trackerKey };
           this.scene.scene.add(mesh);
           this.trackerButtonMeshes.set(`${player}_${trackerKey}_integrated`, mesh);
           continue;
         }
 
-        // Life/Mana: separate red (-) and green (+) buttons at computed offsets
+        // Life/Mana: textured minus (-) and plus (+) buttons at computed offsets
         let firstPos, lastPos;
         if (def.rows) {
           firstPos = data.ones?.[0];
@@ -1356,22 +2583,26 @@ export default class GameBoard extends Component {
         const minusPos = { x: firstPos.x - nx * offset, z: firstPos.z - nz * offset };
         const plusPos = { x: lastPos.x + nx * offset, z: lastPos.z + nz * offset };
 
-        // Minus button
-        const minusGeo = new THREE.CylinderGeometry(btnRadius, btnRadius, btnHeight, 32);
-        const minusMat = new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.5, metalness: 0.1 });
-        const minusMesh = new THREE.Mesh(minusGeo, minusMat);
-        minusMesh.position.set(minusPos.x, btnHeight / 2 + 0.1, minusPos.z);
-        minusMesh.receiveShadow = true;
+        const flip = player === 'p2';
+
+        const minusMesh = createTokenButtonMesh({
+          radius: btnRadius,
+          height: btnHeight,
+          topTextureUrl: TRACKER_BUTTON_TEXTURES.minus,
+          flip,
+        });
+        minusMesh.position.set(minusPos.x, btnRestY, minusPos.z);
         minusMesh.userData = { type: 'trackerButton', action: 'decrement', player, trackerKey };
         this.scene.scene.add(minusMesh);
         this.trackerButtonMeshes.set(`${player}_${trackerKey}_minus`, minusMesh);
 
-        // Plus button
-        const plusGeo = new THREE.CylinderGeometry(btnRadius, btnRadius, btnHeight, 32);
-        const plusMat = new THREE.MeshStandardMaterial({ color: 0x22aa44, roughness: 0.5, metalness: 0.1 });
-        const plusMesh = new THREE.Mesh(plusGeo, plusMat);
-        plusMesh.position.set(plusPos.x, btnHeight / 2 + 0.1, plusPos.z);
-        plusMesh.receiveShadow = true;
+        const plusMesh = createTokenButtonMesh({
+          radius: btnRadius,
+          height: btnHeight,
+          topTextureUrl: TRACKER_BUTTON_TEXTURES.plus,
+          flip,
+        });
+        plusMesh.position.set(plusPos.x, btnRestY, plusPos.z);
         plusMesh.userData = { type: 'trackerButton', action: 'increment', player, trackerKey };
         this.scene.scene.add(plusMesh);
         this.trackerButtonMeshes.set(`${player}_${trackerKey}_plus`, plusMesh);
@@ -1534,8 +2765,8 @@ export default class GameBoard extends Component {
     cardInstance.z = point.z;
 
     this.removeFromHand(cardInstance);
-
     this.addCardToTable(cardInstance);
+    playSound('cardPlace');
   };
 
   addCardToTable = (cardInstance, broadcast = true) => {
@@ -1567,12 +2798,22 @@ export default class GameBoard extends Component {
       mesh.position.y = cardInstance.y;
     }
 
-    // Drop-in animation (skip during session restore / initial spawn)
+    // Spawn ABOVE any existing stack at the target position so the
+    // newly placed card always lands on top — never inside or below
+    // an existing stack. The drop is what gives the "tossed onto the
+    // table" feel; the dynamic height ensures it works for empty
+    // patches and tall stacks alike.
     if (!this.sync.isSuppressed) {
-      const targetY = mesh.position.y;
-      mesh.position.y = targetY + 15;
-      addTween({ target: mesh.position, property: 'y', from: mesh.position.y, to: targetY, duration: 300 });
+      const stackTop = this.findStackHeightAt(mesh.position.x, mesh.position.z, cardInstance.id);
+      mesh.position.y = stackTop + CARD_THICKNESS + 5;
     }
+
+    // Create a matching dynamic body so cards collide and stack naturally.
+    addCardBody(this.physicsWorld, mesh, {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      thickness: CARD_THICKNESS,
+    });
 
     if (broadcast) this.sync.placeCard(cardInstance);
   };
@@ -1580,6 +2821,11 @@ export default class GameBoard extends Component {
   removeCardFromTable = (cardInstance, broadcast = true) => {
     const mesh = this.meshes.get(cardInstance.id);
     if (mesh) {
+      // Strip from any lock-constraint chain before the body is
+      // destroyed so the chain is rebuilt around the survivors.
+      this.evictCardFromGroup(cardInstance.id);
+      // Tear down physics body before disposing the mesh.
+      removeCardBody(this.physicsWorld, mesh);
       this.scene.scene.remove(mesh);
       mesh.geometry.dispose();
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -1587,6 +2833,8 @@ export default class GameBoard extends Component {
       this.meshes.delete(cardInstance.id);
     }
     this.lifeHUDs.delete(cardInstance.id);
+    this.selectedCardIds.delete(cardInstance.id);
+    this.ownership.forget(cardInstance.id);
     if (broadcast) this.sync.removeCard(cardInstance.id);
   };
 
@@ -1655,6 +2903,22 @@ export default class GameBoard extends Component {
       }
     }
 
+    // Auto-untap every card belonging to the player whose turn is starting.
+    // Card ownership is encoded via `card.rotated` (false = p1, true = p2),
+    // matching the pattern used elsewhere (canInteract, spawnSelectedDeck).
+    // Sites are skipped because their own rotation doubles as orientation
+    // and the manual tap handlers never tap them in the first place.
+    const nextPlayerRotated = nextTurn === 'p2';
+    for (const [, mesh] of this.meshes) {
+      const card = mesh.userData.cardInstance;
+      if (!card || card.isSite) continue;
+      if (card.rotated !== nextPlayerRotated) continue;
+      if (!card.tapped) continue;
+      card.tapped = false;
+      animateCardTap(mesh, card);
+      this.sync.tapCard(card.id, false);
+    }
+
     this.setState({ currentTurn: nextTurn, turnNumber: nextNumber });
     this.sync.passTurn(nextTurn, nextNumber);
   };
@@ -1714,6 +2978,15 @@ export default class GameBoard extends Component {
 
   findPileByName = (name) => {
     return this.state.gameState.piles.find((p) => p.name === name);
+  };
+
+  // Find a pile by name owned by the LOCAL player. Used by the C/Z/X
+  // hotkeys so the host's Spellbook isn't returned for the guest.
+  findLocalPileByName = (name) => {
+    const localRotated = !this.state.isHost;
+    return this.state.gameState.piles.find(
+      (p) => p.name === name && !!p.rotated === localRotated,
+    );
   };
 
   // Resolve the destination pile for a given card + name.
@@ -1787,6 +3060,7 @@ export default class GameBoard extends Component {
     if (mesh) {
       animateShufflePile(mesh, pile, this.scene.scene);
     }
+    playSound(pile.name === 'Atlas' ? 'cardShuffleAtlas' : 'cardShuffleSpellbook');
     shufflePile(this.state.gameState, pile.id);
     this.setState({ contextMenu: null });
     this.sync.syncPile(pile);
@@ -1888,11 +3162,12 @@ export default class GameBoard extends Component {
     event.preventDefault();
     playUI('snd-card-hand-click.wav', { volume: 0.6 });
 
-    // Remove from hand immediately
+    // Remove from hand immediately.
     this.removeFromHand(cardInstance);
     this.setState({ hoveredHandIndex: -1 });
 
-    // Create 3D mesh at cursor position
+    // Spawn the mesh at the cursor's table-plane point so the card
+    // lands under the cursor instead of at a default origin.
     const point = this.scene.raycastTablePoint(event);
     if (point) {
       cardInstance.x = point.x;
@@ -1900,16 +3175,19 @@ export default class GameBoard extends Component {
     }
     this.addCardToTable(cardInstance);
 
-    // Start dragging the new mesh
+    // Hand off to the shared pickup routine so the dragging record
+    // gets the same `members` / `draggingIds` / `liftDelta` shape as
+    // a regular table drag. Without this, handleMouseMove bails out
+    // on `!members` and the card appears to drop the instant it
+    // leaves the hand.
     const mesh = this.meshes.get(cardInstance.id);
     if (mesh) {
-      this.dragging = {
-        mesh,
-        cardInstance,
-        offsetX: 0,
-        offsetZ: 0,
-      };
-      mesh.position.y = this.scene.CARD_DRAG_Y;
+      this.startCardDrag({
+        primaryMesh: mesh,
+        dragIds: new Set([cardInstance.id]),
+        anchorX: mesh.position.x,
+        anchorZ: mesh.position.z,
+      });
     }
   };
 
@@ -1933,7 +3211,39 @@ export default class GameBoard extends Component {
     rollDice: this.handleRollDiceAndClose,
     setDiceValue: this.setDiceValue,
     deleteDice: this.deleteDice,
+    groupSelected: this.handleGroupSelected,
+    ungroup: this.handleUngroup,
   });
+
+  /**
+   * Bundle every currently-selected card into a new group. The right-
+   * clicked card is implicitly part of the group if it wasn't already
+   * in the selection (so right-clicking a single card + "Group" still
+   * does something sensible — it just groups that card with the rest
+   * of the selection). Broadcasts via setGroup so the opponent's
+   * client mirrors the grouping.
+   */
+  handleGroupSelected = (clickedCardInstance) => {
+    const ids = new Set(this.selectedCardIds);
+    if (clickedCardInstance?.id) ids.add(clickedCardInstance.id);
+    if (ids.size < 2) { this.closeContextMenu(); return; }
+    const groupId = `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.assignGroup(groupId, [...ids]);
+    this.sync.setGroup(groupId, [...ids]);
+    this.closeContextMenu();
+  };
+
+  /**
+   * Dissolve the group the clicked card belongs to. No-op if the card
+   * isn't currently grouped.
+   */
+  handleUngroup = (clickedCardInstance) => {
+    const gid = clickedCardInstance?.groupId;
+    if (!gid) { this.closeContextMenu(); return; }
+    this.dissolveGroup(gid);
+    this.sync.clearGroup(gid);
+    this.closeContextMenu();
+  };
 
   takeCardFromPile = (pile, cardInstance) => {
     const idx = pile.cards.indexOf(cardInstance);
@@ -2023,7 +3333,7 @@ export default class GameBoard extends Component {
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }} onClick={() => this.setState({ showDeckPicker: false })}>
-        <div className="relative w-[520px] max-h-[70vh] flex flex-col" style={DIALOG_STYLE} onClick={(e) => e.stopPropagation()}>
+        <div className="relative w-[520px] max-h-[70vh] flex flex-col" style={{ ...DIALOG_STYLE, zoom: this.state.viewScale }} onClick={(e) => e.stopPropagation()}>
           <FourCorners radius={12} />
           <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Spawn Deck</h2>
           <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
@@ -2120,6 +3430,18 @@ export default class GameBoard extends Component {
   };
 
   render() {
+    // Wraps the actual render body so we can measure how often Preact
+    // re-runs this component (often due to setState in mousemove
+    // handlers) and how long each render takes. Total render time per
+    // window = avg * count, and that's what shows up as missed frames.
+    perf.count('gameboard.render');
+    const mark = perf.beginMark('gameboard.render');
+    const out = this._renderBody();
+    perf.endMark(mark);
+    return out;
+  }
+
+  _renderBody() {
     const { onExit } = this.props;
     const { handCards, contextMenu } = this.state;
 
@@ -2128,7 +3450,7 @@ export default class GameBoard extends Component {
         {/* Loading overlay */}
         {this.state.isLoading ? (
           <div className="fixed inset-0 z-[2000] bg-black flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-center gap-4" style={{ zoom: this.state.viewScale }}>
               <RuneSpinner size={64} />
               <p className="text-sm" style={{ color: TEXT_BODY }}>{this.state.loadingMessage}</p>
             </div>
@@ -2136,16 +3458,84 @@ export default class GameBoard extends Component {
         ) : null}
 
         {/* Floating sidebar buttons — top left */}
-        <div className="fixed top-3 left-3 z-[1001] flex flex-col gap-2">
+        <div data-tutorial="board-menu" className="fixed top-3 left-3 z-[1001] flex flex-col gap-2" style={{ zoom: this.state.viewScale }}>
           {/* Burger menu */}
-          <button
-            type="button"
-            className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
-            onClick={() => { playSound('uiClick'); this.setState((s) => ({ showGameMenu: !s.showGameMenu })); }}
-            title="Menu"
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
+              onClick={() => { playSound('uiClick'); this.setState((s) => ({ showGameMenu: !s.showGameMenu })); }}
+              title="Menu"
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </button>
+            {this.state.showGameMenu ? (
+              <div className="absolute left-12 top-0 w-56 p-2.5" style={POPOVER_STYLE}>
+                <FourCorners radius={8} />
+                <div className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Session</div>
+                <div className="mx-1 mb-2.5 h-px" style={{ background: `${GOLD} 0.12)` }} />
+                {this.state.connectionStatus === 'offline' ? (
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: '#6ab04c' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.startMultiplayer(); this.setState({ showGameMenu: false }); }}>
+                    <div className="size-2 rounded-full bg-green-400" /> Go Online
+                  </button>
+                ) : (
+                  <>
+                    {this.state.roomCode ? (
+                      <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-white/80 hover:bg-white/10 font-mono" onClick={() => { navigator.clipboard?.writeText(this.state.roomCode); toast('Code copied to clipboard'); }} title="Click to copy">
+                        Code: {this.state.roomCode}
+                      </button>
+                    ) : null}
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: '#c45050' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.stopMultiplayer(); this.setState({ showGameMenu: false }); }}>
+                      Stop Online
+                    </button>
+                  </>
+                )}
+
+                <div className="mx-1 my-2.5 h-px" style={{ background: `${GOLD} 0.08)` }} />
+
+                {/* Save */}
+                {!this.props.isRankedMatch && this.state.isHost ? (
+                  <>
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.quickSave(); this.setState({ showGameMenu: false }); }}>
+                      Quick Save{this.state.currentSessionName ? ` (${this.state.currentSessionName})` : ''}
+                    </button>
+                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.openSaveDialog(); this.setState({ showGameMenu: false }); }}>
+                      Save As...
+                    </button>
+                  </>
+                ) : null}
+
+                {/* Spawn config — dev only */}
+                {this.props.devMode ? (
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.toggleSpawnEditor(); this.setState({ showGameMenu: false }); }}>
+                    {this.state.isPlacingSpawns ? 'Done Placing' : 'Set Spawn Points'}
+                  </button>
+                ) : null}
+
+                {this.props.isRankedMatch && this.state.connectionStatus === 'connected' ? (
+                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: ACCENT_GOLD }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => this.setState({ showMatchResult: true, showGameMenu: false })}>
+                    End Match
+                  </button>
+                ) : null}
+                {this.props.isRankedMatch && this.state.connectionStatus !== 'connected' ? (
+                  <div className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-not-allowed" style={{ color: TEXT_MUTED }}>
+                    End Match (waiting for opponent)
+                  </div>
+                ) : null}
+
+                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.setState({ showGameMenu: false }); if (this.props.onOpenSettings) this.props.onOpenSettings(); }}>
+                  Settings
+                </button>
+
+                <div className="mx-1 my-2.5 h-px" style={{ background: `${GOLD} 0.08)` }} />
+
+                {/* Exit */}
+                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: '#c45050' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.requestExit(); this.setState({ showGameMenu: false }); }}>
+                  Exit Game
+                </button>
+              </div>
+            ) : null}
+          </div>
 
           {/* Spawn Deck — hidden in ranked matches (deck is pre-selected) */}
           {!this.props.arenaSelectedDeckId ? (
@@ -2190,6 +3580,135 @@ export default class GameBoard extends Component {
             ) : null}
           </div>
 
+          {/* Ambient sound mixer */}
+          <div className="relative">
+            <button
+              type="button"
+              className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all"
+              style={{
+                background: PANEL_BG,
+                border: `1px solid ${GOLD} ${this.state.ambienceState.isPlaying ? '0.45)' : '0.2)'}`,
+                color: this.state.ambienceState.isPlaying ? ACCENT_GOLD : TEXT_BODY,
+              }}
+              onClick={() => { playSound('uiClick'); this.setState((s) => ({ showAmbienceMenu: !s.showAmbienceMenu })); }}
+              title="Ambient Sound"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+              </svg>
+            </button>
+            {this.state.showAmbienceMenu ? (() => {
+              const amb = this.state.ambienceState;
+              const ss = this.state.soundSettings;
+              const currentIdx = AMBIENCE_TRACKS.findIndex((t) => t.id === amb.trackId);
+              const safeIdx = currentIdx >= 0 ? currentIdx : 0;
+              const currentTrack = AMBIENCE_TRACKS[safeIdx];
+              const cycleTrack = (delta) => {
+                const next = AMBIENCE_TRACKS[(safeIdx + delta + AMBIENCE_TRACKS.length) % AMBIENCE_TRACKS.length];
+                setAmbienceTrack(next.id);
+              };
+              const updateMusic = (value) => {
+                const next = { ...ss, musicVolume: value };
+                saveSoundSettings(next);
+                this.setState({ soundSettings: next });
+                updateMusicVolume();
+              };
+              return (
+                <div className="absolute left-12 top-0 w-56 p-2.5" style={POPOVER_STYLE}>
+                  <FourCorners radius={8} />
+                  <div className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Atmosphere</div>
+                  <div className="mx-1 mb-2.5 h-px" style={{ background: `${GOLD} 0.12)` }} />
+
+                  {/* Play/pause + track switcher */}
+                  <div className="flex items-center gap-2 px-1">
+                    <button
+                      type="button"
+                      className="size-9 shrink-0 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                      style={{
+                        background: amb.isPlaying ? `${GOLD} 0.18)` : `${GOLD} 0.06)`,
+                        border: `1px solid ${GOLD} ${amb.isPlaying ? '0.45)' : '0.2)'}`,
+                        color: amb.isPlaying ? ACCENT_GOLD : TEXT_BODY,
+                      }}
+                      onClick={() => {
+                        playSound('uiClick');
+                        if (amb.isPlaying) pauseAmbience();
+                        else playAmbience();
+                      }}
+                      title={amb.isPlaying ? 'Pause' : 'Play'}
+                    >
+                      {amb.isPlaying ? (
+                        <svg width="11" height="11" viewBox="0 0 10 10" fill="currentColor"><rect x="1.5" y="1.5" width="2.5" height="7" rx="0.5" /><rect x="6" y="1.5" width="2.5" height="7" rx="0.5" /></svg>
+                      ) : (
+                        <svg width="11" height="11" viewBox="0 0 10 10" fill="currentColor"><path d="M2.5 1.5 L8.5 5 L2.5 8.5 Z" /></svg>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="size-6 shrink-0 rounded-md flex items-center justify-center cursor-pointer transition-colors"
+                      style={{ color: TEXT_BODY }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT_GOLD; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_BODY; }}
+                      onClick={() => { playSound('uiClick'); cycleTrack(-1); }}
+                      title="Previous track"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 1.5 L2.5 5 L6.5 8.5" /></svg>
+                    </button>
+                    <span className="flex-1 text-center text-xs font-medium truncate" style={{ color: amb.isPlaying ? TEXT_PRIMARY : TEXT_BODY }}>
+                      {currentTrack.label}
+                    </span>
+                    <button
+                      type="button"
+                      className="size-6 shrink-0 rounded-md flex items-center justify-center cursor-pointer transition-colors"
+                      style={{ color: TEXT_BODY }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT_GOLD; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_BODY; }}
+                      onClick={() => { playSound('uiClick'); cycleTrack(1); }}
+                      title="Next track"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 1.5 L7.5 5 L3.5 8.5" /></svg>
+                    </button>
+                  </div>
+
+                  <div className="mx-1 my-2.5 h-px" style={{ background: `${GOLD} 0.08)` }} />
+
+                  {/* Ambient volume */}
+                  <div className="px-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Ambience</span>
+                      <span className="text-[10px] tabular-nums" style={{ color: TEXT_MUTED }}>{Math.round(amb.volume * 100)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(amb.volume * 100)}
+                      className="w-full h-1 accent-amber-500 cursor-pointer"
+                      onInput={(e) => setAmbienceVolume(parseInt(e.currentTarget.value, 10) / 100)}
+                    />
+                  </div>
+
+                  {/* Music volume */}
+                  <div className="px-1 mt-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Music</span>
+                      <span className="text-[10px] tabular-nums" style={{ color: TEXT_MUTED }}>{Math.round(ss.musicVolume * 100)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(ss.musicVolume * 100)}
+                      className="w-full h-1 accent-amber-500 cursor-pointer"
+                      disabled={!ss.musicEnabled}
+                      onInput={(e) => updateMusic(parseInt(e.currentTarget.value, 10) / 100)}
+                    />
+                  </div>
+                </div>
+              );
+            })() : null}
+          </div>
+
           {/* Connection status indicator */}
           {this.state.connectionStatus !== 'offline' ? (
             <div className="size-10 rounded-xl flex items-center justify-center" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.15)` }} title={this.state.connectionStatus}>
@@ -2197,72 +3716,6 @@ export default class GameBoard extends Component {
             </div>
           ) : null}
 
-          {/* Burger menu dropdown */}
-          {this.state.showGameMenu ? (
-            <div className="w-52 p-1.5" style={POPOVER_STYLE}>
-              {/* Multiplayer section */}
-              <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Session</div>
-              {this.state.connectionStatus === 'offline' ? (
-                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: '#6ab04c' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.startMultiplayer(); this.setState({ showGameMenu: false }); }}>
-                  <div className="size-2 rounded-full bg-green-400" /> Go Online
-                </button>
-              ) : (
-                <>
-                  {this.state.roomCode ? (
-                    <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/80 hover:bg-white/10 font-mono" onClick={() => { navigator.clipboard?.writeText(this.state.roomCode); toast('Code copied to clipboard'); }} title="Click to copy">
-                      Code: {this.state.roomCode}
-                    </button>
-                  ) : null}
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: '#c45050' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.stopMultiplayer(); this.setState({ showGameMenu: false }); }}>
-                    Stop Online
-                  </button>
-                </>
-              )}
-
-              <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />
-
-              {/* Save */}
-              {!this.props.isRankedMatch && this.state.isHost ? (
-                <>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.quickSave(); this.setState({ showGameMenu: false }); }}>
-                    Quick Save{this.state.currentSessionName ? ` (${this.state.currentSessionName})` : ''}
-                  </button>
-                  <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.openSaveDialog(); this.setState({ showGameMenu: false }); }}>
-                    Save As...
-                  </button>
-                </>
-              ) : null}
-
-              {/* Spawn config — dev only */}
-              {this.props.devMode ? (
-                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.toggleSpawnEditor(); this.setState({ showGameMenu: false }); }}>
-                  {this.state.isPlacingSpawns ? 'Done Placing' : 'Set Spawn Points'}
-                </button>
-              ) : null}
-
-              {this.props.isRankedMatch && this.state.connectionStatus === 'connected' ? (
-                <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: ACCENT_GOLD }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => this.setState({ showMatchResult: true, showGameMenu: false })}>
-                  End Match
-                </button>
-              ) : null}
-              {this.props.isRankedMatch && this.state.connectionStatus !== 'connected' ? (
-                <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-not-allowed" style={{ color: TEXT_MUTED }}>
-                  End Match (waiting for opponent)
-                </div>
-              ) : null}
-
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: TEXT_BODY }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.setState({ showGameMenu: false }); if (this.props.onOpenSettings) this.props.onOpenSettings(); }}>
-                Settings
-              </button>
-
-              <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />
-
-              {/* Exit */}
-              <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors" style={{ color: '#c45050' }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => { this.requestExit(); this.setState({ showGameMenu: false }); }}>
-                Exit Game
-              </button>
-            </div>
-          ) : null}
         </div>
 
         {/* Opponent hand — fanned arc at top, face down */}
@@ -2324,10 +3777,62 @@ export default class GameBoard extends Component {
             className="block w-full h-full"
           />
 
+          {/* Marquee drag-select overlay. Position-fixed with raw
+              clientX/clientY; renderMarqueeOverlay mutates the style
+              directly during the drag. Rounded corners + soft gold
+              glow so it reads as a modern selection box rather than
+              a bare rectangle. */}
+          <div
+            ref={this.marqueeOverlayRef}
+            aria-hidden="true"
+            style={{
+              position: 'fixed',
+              display: 'none',
+              pointerEvents: 'none',
+              border: '1.5px solid rgba(212, 168, 67, 0.9)',
+              background: 'rgba(212, 168, 67, 0.1)',
+              boxShadow: '0 0 16px rgba(212, 168, 67, 0.35), inset 0 0 12px rgba(212, 168, 67, 0.08)',
+              borderRadius: '8px',
+              zIndex: 50,
+            }}
+          />
+
+          {/* Persistent "hug" outline around the current selection.
+              Rendered in screen space by updateHugRect() on every
+              frame so it tracks cards as they move. Purely
+              decorative (pointer-events: none) — the click hit-test
+              for "click inside the hug zone to drag the selection"
+              lives in handleMouseDown and reads this.hugRectScreen
+              directly. */}
+          <div
+            ref={this.hugRectRef}
+            aria-hidden="true"
+            style={{
+              position: 'fixed',
+              display: 'none',
+              pointerEvents: 'none',
+              border: '1.5px solid rgba(212, 168, 67, 0.85)',
+              background: 'rgba(212, 168, 67, 0.05)',
+              boxShadow: '0 0 22px rgba(212, 168, 67, 0.28), inset 0 0 14px rgba(212, 168, 67, 0.08)',
+              borderRadius: '14px',
+              zIndex: 48,
+              transition: 'border-color 120ms ease',
+            }}
+          />
+
           <GameContextMenu
             contextMenu={this.state.contextMenu}
             actions={this.buildContextMenuActions()}
+            viewScale={this.state.viewScale}
           />
+
+          {/* First-run onboarding walkthrough. */}
+          {this.state.showBoardTutorial && (
+            <TutorialOverlay
+              steps={BOARD_TUTORIAL_STEPS}
+              onDismiss={this.handleBoardTutorialDismiss}
+            />
+          )}
 
           {/* Life & Mana HUD */}
           {(() => {
@@ -2338,7 +3843,7 @@ export default class GameBoard extends Component {
             // both clients, regardless of whether they host or joined.
             const orderedPlayers = [localPlayer, opponentPlayer];
             return (
-              <div className="absolute top-3 right-3 z-10 px-5 py-4" style={{ ...POPOVER_STYLE, borderRadius: '12px', boxShadow: '0 18px 48px rgba(0,0,0,0.4), 0 0 20px rgba(180,140,60,0.04)' }}>
+              <div data-tutorial="board-life-hud" className="absolute top-3 right-3 z-10 px-5 py-4" style={{ ...POPOVER_STYLE, borderRadius: '12px', boxShadow: '0 18px 48px rgba(0,0,0,0.4), 0 0 20px rgba(180,140,60,0.04)', zoom: this.state.viewScale }}>
                 <FourCorners radius={12} />
                 <div className="flex items-center justify-between gap-4 mb-3 pb-2" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
                   <div className="flex items-center gap-2">
@@ -2394,7 +3899,7 @@ export default class GameBoard extends Component {
 
           {/* Floating avatar portraits on table edges */}
           {this.props.arenaPlayerInfo?.avatarUrl ? (
-            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[4] pointer-events-none">
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[4] pointer-events-none" style={{ zoom: this.state.viewScale }}>
               <div className="flex flex-col items-center gap-1">
                 <img
                   src={this.props.arenaPlayerInfo.avatarUrl}
@@ -2407,7 +3912,7 @@ export default class GameBoard extends Component {
             </div>
           ) : null}
           {this.props.arenaOpponentInfo?.avatarUrl ? (
-            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[4] pointer-events-none">
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[4] pointer-events-none" style={{ zoom: this.state.viewScale }}>
               <div className="flex flex-col items-center gap-1">
                 <img
                   src={this.props.arenaOpponentInfo.avatarUrl}
@@ -2421,7 +3926,7 @@ export default class GameBoard extends Component {
           ) : null}
 
           {this.state.isPlacingSpawns ? (
-            <div className="absolute top-2 left-2 z-10 w-56 max-h-[80vh] overflow-y-auto p-2" style={POPOVER_STYLE}>
+            <div className="absolute top-2 left-2 z-10 w-56 max-h-[80vh] overflow-y-auto p-2" style={{ ...POPOVER_STYLE, zoom: this.state.viewScale }}>
               <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Pile Spawn Points</div>
               {Object.entries(SPAWN_LABELS).map(([key, label]) => {
                 const isActive = this.state.activeSpawnKey === key;
@@ -2497,7 +4002,7 @@ export default class GameBoard extends Component {
           <PileSearchDialog
             pile={this.state.searchPile}
             query={this.state.searchQuery}
-            resolveImageUrl={resolveLocalImageUrl}
+            sorceryCards={this.props.sorceryCards}
             onQueryChange={this.handlePileSearchQueryChange}
             onClose={this.handlePileSearchClose}
             onTakeToHand={(card) => this.takeCardFromPile(this.state.searchPile, card)}
@@ -2508,6 +4013,7 @@ export default class GameBoard extends Component {
             <ArenaMatchResult
               ref={(ref) => { this.matchResultRef = ref; }}
               matchDurationMinutes={this.state.matchStartTime ? Math.round((Date.now() - this.state.matchStartTime) / 60000) : 0}
+              roundsPlayed={this.state.turnNumber}
               onProposeWinner={(winner) => this.sync.proposeMatch(winner)}
               onRejectProposal={() => this.sync.rejectMatch()}
               onListenForProposal={(handler) => {
@@ -2534,7 +4040,7 @@ export default class GameBoard extends Component {
           ) : null}
           {this.state.showExitConfirm ? (
             <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-              <div className="relative w-80 p-5" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }}>
+              <div className="relative w-80 p-5" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)', zoom: this.state.viewScale, isolation: 'isolate' }}>
                 <FourCorners radius={12} />
                 <h2 className="mb-2 text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>Leave game?</h2>
                 <p className="mb-4 text-sm" style={{ color: TEXT_MUTED }}>Your game will be auto-saved. Are you sure you want to exit?</p>
@@ -2561,7 +4067,7 @@ export default class GameBoard extends Component {
           ) : null}
           {this.state.showSpawnConfirm ? (
             <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-              <div className="w-80 rounded-2xl border border-border/70 bg-card p-5 shadow-2xl">
+              <div className="w-80 rounded-2xl border border-border/70 bg-card p-5 shadow-2xl" style={{ zoom: this.state.viewScale }}>
                 <h2 className="mb-2 text-lg font-semibold">Replace current game?</h2>
                 <p className="mb-4 text-sm text-muted-foreground">This will clear all cards, piles, and your hand from the table and spawn a new deck.</p>
                 <div className="flex justify-end gap-2">
@@ -2577,7 +4083,7 @@ export default class GameBoard extends Component {
           ) : null}
           {this.state.showSaveDialog ? (
             <div className="fixed inset-0 z-[1100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={() => this.setState({ showSaveDialog: false })}>
-              <div className="relative w-[420px] max-h-[70vh] flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+              <div className="relative w-[420px] max-h-[70vh] flex flex-col" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)', zoom: this.state.viewScale, isolation: 'isolate' }} onClick={(e) => e.stopPropagation()}>
                 <FourCorners radius={12} />
                 <div className="p-5" style={{ borderBottom: `1px solid ${GOLD} 0.12)` }}>
                   <h2 className="text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>Save Session</h2>
@@ -2805,6 +4311,7 @@ export default class GameBoard extends Component {
 
     return (
       <div
+        data-tutorial={isLeft ? 'board-atlas-hand' : 'board-hand'}
         className="fixed z-[1000]"
         style={isLeft ? {
           left: retracted ? '-120px' : '0px', bottom: '60px', width: '200px', height: 'auto',
@@ -2820,6 +4327,7 @@ export default class GameBoard extends Component {
           this.setState({ [retractKey]: false });
         }}
         onMouseMove={(e) => {
+          perf.count('hand.mousemove');
           clearTimeout(isLeft ? this.atlasRetractTimer : this.handRetractTimer);
 
           if (isLeft) {

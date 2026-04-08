@@ -166,7 +166,60 @@ function IconCheck(props) {
   );
 }
 
+// Currency glyphs — match the style established in the app header so the
+// same visual shows up wherever coins or arcana shards are displayed.
+// Both icons use low-opacity fill + solid stroke + drop-shadow glow.
+export const COIN_ICON_COLOR = '#f0d060';
+export const SHARD_ICON_COLOR = '#7dd3fc';
+
+function CoinIcon({ size = 14, glow = true, ...rest }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 14 14"
+      fill="none"
+      style={glow ? { filter: 'drop-shadow(0 0 6px rgba(240,208,96,0.4))' } : undefined}
+      aria-hidden="true"
+      {...rest}
+    >
+      <circle cx="7" cy="7" r="6" fill={COIN_ICON_COLOR} fillOpacity="0.25" stroke={COIN_ICON_COLOR} strokeWidth="1" />
+      <circle cx="7" cy="7" r="3.8" stroke={COIN_ICON_COLOR} strokeOpacity="0.55" strokeWidth="0.6" fill="none" />
+      <path d="M7 1.2 L7 12.8 M1.2 7 L12.8 7" stroke={COIN_ICON_COLOR} strokeOpacity="0.5" strokeWidth="0.6" />
+    </svg>
+  );
+}
+
+function ShardIcon({ size = 13, glow = true, ...rest }) {
+  // Preserve the 13:15 aspect ratio of the header shard so the glyph never
+  // squashes when it scales.
+  const height = Math.round((size * 15) / 13);
+  return (
+    <svg
+      width={size}
+      height={height}
+      viewBox="0 0 13 15"
+      fill="none"
+      style={glow ? { filter: 'drop-shadow(0 0 6px rgba(125,211,252,0.4))' } : undefined}
+      aria-hidden="true"
+      {...rest}
+    >
+      <path
+        d="M6.5 0.5 L12 5 L10 14 L3 14 L1 5 Z"
+        fill={SHARD_ICON_COLOR}
+        fillOpacity="0.25"
+        stroke={SHARD_ICON_COLOR}
+        strokeWidth="1"
+        strokeLinejoin="round"
+      />
+      <path d="M6.5 0.5 L6.5 14 M1 5 L12 5" stroke={SHARD_ICON_COLOR} strokeOpacity="0.5" strokeWidth="0.6" />
+    </svg>
+  );
+}
+
 export {
+  CoinIcon,
+  ShardIcon,
   IconCheck,
   IconChevronDown,
   IconChartBar,

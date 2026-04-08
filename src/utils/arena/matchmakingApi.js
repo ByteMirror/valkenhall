@@ -35,9 +35,10 @@ export async function pollQueueStatus(_token) {
   return { status: 'waiting' };
 }
 
-// Record a match in the server-side history.
-// Rank changes are now computed client-side (see processMatchResult / applyLpChange)
-// and sent via PUT /profile/me. This endpoint just appends to match_history.
+// Legacy match-history endpoint — the match claim flow in
+// /profile/me/match/claim now writes match_history as part of its
+// atomic transaction, so this function is effectively obsolete. Kept
+// as a thin wrapper in case any non-ranked code path still calls it.
 export async function reportMatchResult(_token, _matchId, winner, extras = {}) {
   try {
     return await api.post('/profile/me/match', {
@@ -50,6 +51,23 @@ export async function reportMatchResult(_token, _matchId, winner, extras = {}) {
     console.error('[matchmakingApi] reportMatchResult failed:', err);
     return { recorded: false };
   }
+}
+
+// Claim a time-gated match reward. The client only declares whether it
+// won; the server computes the amount from the authoritative room
+// duration. Returns { coinsEarned, xpEarned, seasonXpEarned,
+// arcanaShardsEarned, durationMinutes, won, newTotals } on success, or
+// throws on failure.
+export async function claimMatchReward(won) {
+  return api.post('/profile/me/match/claim', { won: !!won });
+}
+
+// Purchase a single copy of a card with Arcana Shards. The client only
+// declares which card; the server looks up the rarity, charges the
+// correct price, and atomically deducts shards + adds to the collection.
+// Returns { cardId, rarity, shardsSpent, newTotals } on success.
+export async function purchaseCardWithShards({ cardId }) {
+  return api.post('/profile/me/cards/purchase', { cardId });
 }
 
 export async function getLeaderboard() {

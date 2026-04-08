@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { CARD_THICKNESS, updateFoilSheens } from './cardMesh';
+import { CARD_THICKNESS, updateFoilSheens, setTextureRenderer } from './cardMesh';
 import { addTween, updateTweens } from './animations';
+import { perf } from '../perfMonitor';
+import { getEffectivePixelRatio, onGraphicsChange } from './graphicsSettings';
 
 const TABLE_WIDTH = 200;
 const TABLE_HEIGHT = Math.round(200 / (10300 / 7200));
@@ -33,11 +35,17 @@ function createRoundedBoxGeometry(width, height, depth, radius) {
 
 export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  // Cap at 1.5x pixel ratio (~1440p effective on 4K screens)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  // Pixel ratio comes from the user's graphics settings (Settings → Display).
+  // Defaults to `high` which matches the legacy `min(devicePixelRatio, 1.5)` cap.
+  renderer.setPixelRatio(getEffectivePixelRatio());
   renderer.setClearColor(0x0e0b08);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+
+  // Hand the renderer to cardMesh so card image textures get uploaded
+  // to the GPU as soon as they finish loading, instead of paying the
+  // upload cost mid-render the first time the card appears.
+  setTextureRenderer(renderer);
 
   const scene = new THREE.Scene();
 
@@ -284,10 +292,14 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
     });
     const sprite = new THREE.Sprite(mat);
     sprite.scale.set(1.2, 1.2, 1);
-    const light = new THREE.PointLight(0xffee88, 0, 35, 1.5);
     fireflyGroup.add(sprite);
-    fireflyGroup.add(light);
-    return { sprite, light, material: mat };
+    // No PointLight here. Each firefly used to carry its own light, but
+    // 20 fireflies × MeshStandardMaterial fragment shaders meant every
+    // PBR pixel looped over 22 lights every frame (the lamps + 20
+    // fireflies). The visible glow comes from the additive sprite, not
+    // the light contribution, so dropping the lights is invisible to
+    // the eye but ~10× cheaper per fragment.
+    return { sprite, light: null, material: mat };
   }
 
   // Candle fireflies — hover near each candle, with spawn/despawn lifecycle
@@ -561,12 +573,38 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
 
   resize();
 
+  // Live-apply graphics setting changes from the Settings screen so users
+  // can preview render-quality tradeoffs without leaving the game.
+  const unsubscribeGraphics = onGraphicsChange(() => {
+    renderer.setPixelRatio(getEffectivePixelRatio());
+    resize();
+  });
+
   let animationId = null;
   const heldKeys = new Set();
   const PAN_SPEED = 1.3;
 
+  // External per-frame callbacks (e.g. physics step). Run once per
+  // requestAnimationFrame, after pan input but before lighting/cloud
+  // updates so positional changes are visible the same frame.
+  const frameCallbacks = new Set();
+  function onFrame(cb) {
+    frameCallbacks.add(cb);
+    return () => frameCallbacks.delete(cb);
+  }
+
+  let lastFrameTime = performance.now();
   function animate() {
     animationId = requestAnimationFrame(animate);
+    const animateMark = perf.beginMark('frame.animate');
+    const nowMs = performance.now();
+    const dt = Math.min(0.1, (nowMs - lastFrameTime) / 1000);
+    lastFrameTime = nowMs;
+    const callbacksMark = perf.beginMark('frame.callbacks');
+    for (const cb of frameCallbacks) {
+      try { cb(dt); } catch (err) { console.error('frame cb error:', err); }
+    }
+    perf.endMark(callbacksMark);
 
     if (heldKeys.size > 0) {
       let dx = 0;
@@ -621,6 +659,7 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
     const now = performance.now() * 0.001;
     const night = isNightTime();
 
+    const lampsMark = perf.beginMark('frame.lamps');
     // Animate candle flame and glow with day/night
     for (let li = 0; li < lamps.length; li++) {
       const lamp = lamps[li];
@@ -639,6 +678,11 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
       lamp.glowSpriteMaterial.opacity += (targetGlowOp - lamp.glowSpriteMaterial.opacity) * 0.02;
     }
 
+    perf.endMark(lampsMark);
+    perf.gauge('scene.lamps', lamps.length);
+    perf.gauge('scene.fireflies', fireflies.length);
+
+    const firefliesMark = perf.beginMark('frame.fireflies');
     const SCARE_RADIUS = 25;
     const FLEE_SPEED = 0.15;
 
@@ -647,7 +691,6 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
       if (!ff.spawned) {
         if (now < ff.spawnAt) {
           ff.material.opacity = 0;
-          ff.light.intensity = 0;
           continue;
         }
         ff.spawned = true;
@@ -737,15 +780,23 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
       // Pulsing glow
       const pulse = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * ff.pulseSpeed + ff.pulsePhase));
       ff.sprite.scale.setScalar(1.2 * pulse);
-
-      // Sync point light position and intensity to sprite
-      ff.light.position.copy(ff.sprite.position);
-      ff.light.intensity = ff.material.opacity * pulse * 30;
     }
 
+    perf.endMark(firefliesMark);
+
+    const tweensMark = perf.beginMark('frame.tweens');
     updateTweens();
+    perf.endMark(tweensMark);
+
+    const foilMark = perf.beginMark('frame.foilSheen');
     updateFoilSheens(1 / 60);
+    perf.endMark(foilMark);
+
+    const renderMark = perf.beginMark('frame.render');
     renderer.render(scene, camera);
+    perf.endMark(renderMark);
+
+    perf.endMark(animateMark);
   }
 
   animate();
@@ -845,6 +896,7 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
 
   function dispose() {
     disposed = true;
+    unsubscribeGraphics();
     if (animationId) cancelAnimationFrame(animationId);
     animationId = null;
     if (pollId) cancelAnimationFrame(pollId);
@@ -950,7 +1002,8 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
     zoomToOverview,
     zoomToCard,
     flipPerspective,
-    CARD_REST_Y: 0.1 + CARD_THICKNESS / 2,
-    CARD_DRAG_Y: 0.1 + CARD_THICKNESS / 2 + 2,
+    onFrame,
+    CARD_REST_Y: 0.05 + CARD_THICKNESS / 2,
+    CARD_DRAG_Y: 0.05 + CARD_THICKNESS / 2 + 2,
   };
 }

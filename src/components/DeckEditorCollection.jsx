@@ -1,10 +1,13 @@
-import { Component } from 'preact';
+import { Component, createRef } from 'preact';
 import { motion, AnimatePresence } from 'framer-motion';
 import DeckCardTile from './DeckCardTile';
 import CardInspector from './CardInspector';
 import { isFoilFinish, FOIL_LABEL } from '../utils/sorcery/foil';
-import { getMaxCopies } from '../utils/sorcery/deckRules';
+import { getMaxCopies, getRemainingCopies } from '../utils/sorcery/deckRules';
+import { buildFoilingOwnedMap, getOwnedQty } from '../utils/arena/collectionUtils';
 import { playUI, UI } from '../utils/arena/uiSounds';
+import { extractKeywordAbilities } from '../utils/game/sorceryKeywords';
+import { MultiSelect } from './ui/multi-select';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, INPUT_STYLE, ACCENT_GOLD,
   TAB_ACTIVE, TAB_INACTIVE,
@@ -63,12 +66,22 @@ export default class DeckEditorCollection extends Component {
       typeFilters: new Set(),
       setFilters: new Set(),
       rarityFilters: new Set(),
+      keywordFilters: new Set(),
       cardScope: (props.chosenCards?.length || 0) > 0 ? 'deck' : 'owned',
       hoveredCard: null,
       inspectedEntry: null,
       visibleCount: 40,
       flashCardKey: null,
     };
+    this.scrollRef = createRef();
+    this.observer = null;
+    // Lazily-built caches keyed by the current sorceryCards reference.
+    // `_keywordIndex` maps unique_id -> Set<keyword name>; rebuilt whenever
+    // the card catalog is swapped. `_keywordOptions` is the sorted option
+    // list the MultiSelect renders.
+    this._keywordCacheKey = null;
+    this._keywordIndex = new Map();
+    this._keywordOptions = [];
   }
 
   componentDidMount() {
@@ -77,6 +90,10 @@ export default class DeckEditorCollection extends Component {
 
   componentWillUnmount() {
     window.removeEventListener('keydown', this.handleKeyDown);
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
   }
 
   toggleFilter = (key, value) => {
@@ -91,15 +108,31 @@ export default class DeckEditorCollection extends Component {
     this.setState({ [key]: new Set(), visibleCount: 40 });
   };
 
-  handleScroll = (e) => {
-    const el = e.target;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) {
-      this.setState((s) => ({ visibleCount: s.visibleCount + 40 }));
+  // Callback ref for the "load more" sentinel. IntersectionObserver
+  // replaces the previous scroll-event handler because it only fires
+  // when the sentinel actually enters the preload zone, rather than on
+  // every scroll frame.
+  attachSentinel = (el) => {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
     }
+    if (!el) return;
+    const root = this.scrollRef.current || null;
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          this.setState((s) => ({ visibleCount: s.visibleCount + 40 }));
+        }
+      },
+      { root, rootMargin: '600px' }
+    );
+    this.observer.observe(el);
   };
 
   resetVisibleCount = () => {
     this.setState({ visibleCount: 40 });
+    if (this.scrollRef.current) this.scrollRef.current.scrollTop = 0;
   };
 
   isEditableTarget = (el) => {
@@ -124,20 +157,54 @@ export default class DeckEditorCollection extends Component {
     }
   };
 
-  // Build a map of printingId -> owned quantity from the collection
-  _buildPrintingOwnedMap() {
+  // Server stores collection as (cardId, foiling, quantity). Look up
+  // ownership by foiling, not by printingId — multiple printings of the
+  // same (card, foiling) collapse to one row on the server.
+  _getFoilingOwnedMap() {
     const { collection } = this.props;
-    const map = new Map();
-    if (!collection) return map;
-    for (const entry of collection) {
-      map.set(entry.printingId, (map.get(entry.printingId) || 0) + entry.quantity);
+    if (this._cachedCollectionRef === collection && this._cachedFoilingMap) {
+      return this._cachedFoilingMap;
     }
-    return map;
+    this._cachedCollectionRef = collection;
+    this._cachedFoilingMap = buildFoilingOwnedMap(collection || []);
+    return this._cachedFoilingMap;
+  }
+
+  // Walk the catalog once per change of `sorceryCards` and collect every
+  // keyword ability that actually appears on at least one card. Cached on
+  // the instance because getFilteredCards runs on every render — parsing
+  // rules text for every card on every keystroke would be wasteful.
+  _getKeywordIndex() {
+    const cards = this.props.sorceryCards || [];
+    if (this._keywordCacheKey === cards) {
+      return { index: this._keywordIndex, options: this._keywordOptions };
+    }
+    const index = new Map();
+    const allKeywords = new Set();
+    for (const card of cards) {
+      const text = card.functional_text || card.functional_text_plain || '';
+      const found = extractKeywordAbilities(text);
+      if (found.length === 0) continue;
+      const names = new Set();
+      for (const { keyword } of found) {
+        names.add(keyword);
+        allKeywords.add(keyword);
+      }
+      index.set(card.unique_id, names);
+    }
+    const options = Array.from(allKeywords)
+      .map((keyword) => ({ value: keyword, label: keyword }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    this._keywordCacheKey = cards;
+    this._keywordIndex = index;
+    this._keywordOptions = options;
+    return { index, options };
   }
 
   getFilteredCards() {
     const { sorceryCards, ownedMap, chosenCards, collection } = this.props;
-    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, cardScope } = this.state;
+    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, cardScope } = this.state;
 
     let cards = sorceryCards || [];
 
@@ -178,61 +245,74 @@ export default class DeckEditorCollection extends Component {
       );
     }
 
+    if (keywordFilters.size > 0) {
+      const { index } = this._getKeywordIndex();
+      cards = cards.filter((c) => {
+        const cardKeywords = index.get(c.unique_id);
+        if (!cardKeywords) return false;
+        for (const kw of keywordFilters) {
+          if (cardKeywords.has(kw)) return true;
+        }
+        return false;
+      });
+    }
+
     cards.sort((a, b) => {
       const costDiff = (a.cost ?? 0) - (b.cost ?? 0);
       if (costDiff !== 0) return costDiff;
       return a.name.localeCompare(b.name);
     });
 
-    // Expand cards into per-printing entries (standard vs foil vs rainbow)
-    // so each foiling variant is shown as a separate tile
-    if (!collection || collection.length === 0) return cards;
-
-    const printingOwned = this._buildPrintingOwnedMap();
+    // Expand cards into per-foiling entries (standard vs foil vs rainbow)
+    // so each owned variant is shown as its own tile.
+    const foilingOwned = this._getFoilingOwnedMap();
     const entries = [];
-    for (const card of cards) {
-      const printings = card.printings || [];
-      // Group printings by foiling type
-      const foilGroups = new Map(); // foiling -> { printing, ownedQty }
-      for (const p of printings) {
-        const foiling = p.foiling || 'S';
-        const qty = printingOwned.get(p.unique_id) || 0;
-        if (!foilGroups.has(foiling)) {
-          foilGroups.set(foiling, { printing: p, ownedQty: qty });
-        } else {
-          const existing = foilGroups.get(foiling);
-          existing.ownedQty += qty;
-          // Prefer the printing that is owned
-          if (qty > 0 && printingOwned.get(existing.printing.unique_id) === 0) {
-            existing.printing = p;
-          }
-        }
-      }
 
-      // When filtering to "deck" scope, check which foiling variants are actually in the deck
+    // Pick the printing to use as the visual for a given (card, foiling).
+    // Prefer one whose foiling matches; fall back to the first printing.
+    const pickPrinting = (card, foiling) => {
+      const printings = card.printings || [];
+      return printings.find((p) => (p.foiling || 'S') === foiling) || printings[0];
+    };
+
+    for (const card of cards) {
+      const ownedByFoiling = foilingOwned.get(card.unique_id) || new Map();
+
+      // For 'deck' scope, build the set of foilings actually present in
+      // the active deck for this card. This is the source of truth for
+      // what 'In Deck' should display — owning a foil version of a card
+      // whose standard version is in your deck must NOT cause the foil
+      // to appear under 'In Deck'.
       const deckFoilings = cardScope === 'deck'
         ? new Set((chosenCards || []).filter((e) => e.card.unique_id === card.unique_id).map((e) => e.printing?.foiling || 'S'))
         : null;
 
-      // Always show the standard version first
-      const standardGroup = foilGroups.get('S');
-      if (standardGroup) {
-        const inDeckWithFoiling = deckFoilings ? deckFoilings.has('S') : false;
-        if (inDeckWithFoiling || standardGroup.ownedQty > 0 || cardScope === 'all') {
-          entries.push({ card, printing: standardGroup.printing, foiling: 'S', ownedQty: standardGroup.ownedQty });
-        }
-      } else if (printings.length > 0 && cardScope !== 'deck') {
-        // No standard printing exists — show the first available (but not in deck-only mode)
-        const first = printings[0];
-        entries.push({ card, printing: first, foiling: first.foiling || 'S', ownedQty: 0 });
+      // Decide which foilings get a tile based on the active scope.
+      // 'all'   → every printing the card has
+      // 'deck'  → only foilings present in the deck for this card
+      // 'owned' → only foilings the player actually owns
+      let scopedFoilings;
+      if (cardScope === 'all') {
+        scopedFoilings = new Set((card.printings || []).map((p) => p.foiling || 'S'));
+      } else if (cardScope === 'deck') {
+        scopedFoilings = new Set(deckFoilings);
+      } else {
+        scopedFoilings = new Set(ownedByFoiling.keys());
       }
 
-      // Then show foil/rainbow variants if owned or in deck
-      for (const [foiling, group] of foilGroups) {
+      // Standard tile is always rendered first when applicable.
+      if (scopedFoilings.has('S')) {
+        const printing = pickPrinting(card, 'S');
+        if (printing) {
+          entries.push({ card, printing, foiling: 'S', ownedQty: ownedByFoiling.get('S') || 0 });
+        }
+      }
+
+      for (const foiling of scopedFoilings) {
         if (foiling === 'S') continue;
-        const inDeckWithFoiling = deckFoilings ? deckFoilings.has(foiling) : false;
-        if (inDeckWithFoiling || group.ownedQty > 0 || cardScope === 'all') {
-          entries.push({ card, printing: group.printing, foiling, ownedQty: group.ownedQty });
+        const printing = pickPrinting(card, foiling);
+        if (printing) {
+          entries.push({ card, printing, foiling, ownedQty: ownedByFoiling.get(foiling) || 0 });
         }
       }
     }
@@ -241,7 +321,8 @@ export default class DeckEditorCollection extends Component {
   }
 
   renderFilterBar() {
-    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters } = this.state;
+    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters } = this.state;
+    const { options: keywordOptions } = this._getKeywordIndex();
 
     return (
       <div className="flex flex-col gap-1.5 mb-3">
@@ -300,6 +381,25 @@ export default class DeckEditorCollection extends Component {
             {['Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (
               <button key={r} type="button" style={toggleStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
             ))}
+          </div>
+
+          <div className="flex items-center gap-1 ml-2">
+            <span className="text-[9px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Keywords</span>
+            <MultiSelect
+              ariaLabel="Keyword filter"
+              className="w-[180px]"
+              options={keywordOptions}
+              value={Array.from(keywordFilters)}
+              onValueChange={(next) =>
+                this.setState({ keywordFilters: new Set(next), visibleCount: 40 })
+              }
+              placeholder="Any keyword"
+              menuSearchPlaceholder="Search keywords…"
+              noOptionsMessage="No keywords"
+              menuPreferredWidth={260}
+              portalMenu
+              triggerHeight={28}
+            />
           </div>
         </div>
       </div>
@@ -432,16 +532,10 @@ export default class DeckEditorCollection extends Component {
           const foiling = isExpanded ? entry.foiling : (printing?.foiling || 'S');
           const isFoilEntry = isFoilFinish(foiling);
 
-          // Per-printing ownership: count how many of THIS specific printing variant are owned & in deck
-          let printingOwnedQty = isExpanded ? entry.ownedQty : (ownedMap?.get(card.unique_id) || 0);
-          // Fallback for standard cards: if per-printing qty is 0 but card is owned, derive from total
-          if (isExpanded && printingOwnedQty === 0 && foiling === 'S') {
-            const totalOwned = ownedMap?.get(card.unique_id) || 0;
-            const foilOwned = allEntries.filter((e2) =>
-              e2.card?.unique_id === card.unique_id && e2.foiling && e2.foiling !== 'S'
-            ).reduce((sum, e2) => sum + (e2.ownedQty || 0), 0);
-            printingOwnedQty = Math.max(0, totalOwned - foilOwned);
-          }
+          // Per-foiling ownership comes from the expanded entry — the
+          // server stores collection by (cardId, foiling), so this value
+          // is authoritative. No fallback math needed.
+          const printingOwnedQty = isExpanded ? entry.ownedQty : (ownedMap?.get(card.unique_id) || 0);
           // Cards of this foiling in the current deck
           const inDeckWithPrinting = (chosenCards || []).filter((e) =>
             e.card.unique_id === card.unique_id && (e.printing?.foiling || 'S') === foiling
@@ -452,9 +546,13 @@ export default class DeckEditorCollection extends Component {
           ).length;
           const totalOwned = ownedMap?.get(card.unique_id) || 0;
           const maxCopies = getMaxCopies(card);
-          const remainingByRarity = maxCopies - totalInCurrentDeck;
+          // For non-singleton cards this is `maxCopies - totalInCurrentDeck`.
+          // For Avatars it's `1 - (any avatar in deck ? 1 : 0)`, so a second
+          // different avatar correctly reports zero remaining slots — the
+          // rule is "one Avatar per deck", not "one of each Avatar".
+          const remainingByLimit = getRemainingCopies(card, chosenCards);
           const remainingByOwnership = totalOwned - totalInCurrentDeck;
-          const available = Math.min(printingOwnedQty - inDeckWithPrinting, remainingByOwnership, remainingByRarity);
+          const available = Math.min(printingOwnedQty - inDeckWithPrinting, remainingByOwnership, remainingByLimit);
           const unowned = printingOwnedQty === 0 && inDeckWithPrinting === 0;
 
           const key = `${card.unique_id}-${foiling}`;
@@ -481,8 +579,10 @@ export default class DeckEditorCollection extends Component {
                   if (unowned) return;
                   if (available <= 0) {
                     let reason;
-                    if (remainingByRarity <= 0) {
-                      reason = `${card.rarity || 'This'} cards are limited to ${maxCopies} ${maxCopies === 1 ? 'copy' : 'copies'} per deck`;
+                    if (remainingByLimit <= 0) {
+                      reason = card.type === 'Avatar'
+                        ? 'Only one Avatar is allowed per deck'
+                        : `${card.rarity || 'This'} cards are limited to ${maxCopies} ${maxCopies === 1 ? 'copy' : 'copies'} per deck`;
                     } else {
                       reason = `All ${printingOwnedQty} owned ${printingOwnedQty === 1 ? 'copy' : 'copies'} of ${card.name}${isFoilEntry ? ` (${FOIL_LABEL[foiling]})` : ''} already in this deck`;
                     }
@@ -515,8 +615,12 @@ export default class DeckEditorCollection extends Component {
           );
         })}
         {allEntries.length > entries.length && (
-          <div className="col-span-full text-center py-3" style={{ color: TEXT_MUTED, fontSize: '11px' }}>
-            Showing {entries.length} of {allEntries.length} · scroll for more
+          <div
+            ref={this.attachSentinel}
+            className="col-span-full text-center py-3"
+            style={{ color: TEXT_MUTED, fontSize: '11px' }}
+          >
+            Loading more cards · {entries.length} / {allEntries.length}
           </div>
         )}
       </div>
@@ -530,7 +634,7 @@ export default class DeckEditorCollection extends Component {
     return (
       <div className="flex flex-col h-full min-h-0">
         {this.renderFilterBar()}
-        <div className="flex-1 overflow-y-auto min-h-0 px-10" onScroll={this.handleScroll}>
+        <div ref={this.scrollRef} className="flex-1 overflow-y-auto min-h-0 px-10">
           {this.renderCardGrid(cards)}
         </div>
         {inspectedEntry ? (

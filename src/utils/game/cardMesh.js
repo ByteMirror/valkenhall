@@ -4,7 +4,9 @@ import { resolveLocalImageUrl } from '../localApi';
 const CARD_SCALE = 1.75;
 const CARD_WIDTH = 6.35 * CARD_SCALE;
 const CARD_HEIGHT = 8.89 * CARD_SCALE;
-const CARD_THICKNESS = 0.05 * CARD_SCALE;
+// Visible thickness — cards behave like real 3D objects so stacks are
+// readable instead of z-fighting paper-thin slabs.
+const CARD_THICKNESS = 0.18 * CARD_SCALE;
 const CARD_EDGE_COLOR = 0x111111;
 
 const textureLoader = new THREE.TextureLoader();
@@ -14,9 +16,26 @@ const textureCache = new Map();
 let spellbookBackTexture = null;
 let atlasBackTexture = null;
 
+// Renderer reference used to eagerly upload textures to the GPU as
+// soon as their image data finishes decoding. Without this, every new
+// card's texture is uploaded lazily on its first appearance in a
+// render call — which causes 10ms+ frame spikes whenever multiple
+// cards land on the table at once. tableScene calls setTextureRenderer
+// on init to wire this up.
+let textureRenderer = null;
+export function setTextureRenderer(renderer) {
+  textureRenderer = renderer;
+}
+
 function loadTexture(url) {
   if (textureCache.has(url)) return textureCache.get(url);
-  const tex = textureLoader.load(url);
+  const tex = textureLoader.load(url, (loadedTex) => {
+    // Image is decoded; upload to GPU now so the next renderer.render()
+    // doesn't pay the upload cost mid-frame.
+    if (textureRenderer) {
+      try { textureRenderer.initTexture(loadedTex); } catch {}
+    }
+  });
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -163,11 +182,20 @@ export function createCardMesh(cardInstance) {
   if (cardInstance.isSite) baseZ -= Math.PI / 2;
   if (cardInstance.rotated) baseZ += Math.PI;
   mesh.rotation.z = baseZ;
-  mesh.position.set(cardInstance.x, 0.1 + CARD_THICKNESS / 2, cardInstance.z);
+  mesh.position.set(cardInstance.x, 0.05 + CARD_THICKNESS / 2, cardInstance.z);
 
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  mesh.userData = { type: 'card', cardInstance };
+  // intentEuler is the "should look like this" orientation (lay-flat plus
+  // any tap/flip state). Animations write to this, and physicsWorld's
+  // syncMeshFromBody composes it with body.quaternion every frame so
+  // physics-driven tilt and animation-driven rotation can coexist without
+  // overwriting each other.
+  mesh.userData = {
+    type: 'card',
+    cardInstance,
+    intentEuler: new THREE.Euler(-Math.PI / 2, 0, baseZ, 'XYZ'),
+  };
 
   // Add holographic sheen overlay for foil cards
   if (isFoil) {
@@ -242,13 +270,57 @@ const TOKEN_HEIGHT = CARD_THICKNESS * 4;
 const TOKEN_REST_Y = TOKEN_HEIGHT / 2 + 0.1;
 const TOKEN_DRAG_Y = TOKEN_REST_Y + 2;
 const TOKEN_COLORS = { red: 0xcc3333 };
+// Matches the dark fill of the provided token SVGs so the cylinder side
+// blends seamlessly into the textured top cap.
+const TOKEN_SIDE_COLOR = 0x393939;
+
+/**
+ * Build materials for a token cylinder. When `topTextureUrl` is provided,
+ * the returned array uses the SVG as the top-cap `map` and keeps the side
+ * and bottom a solid dark color so only the printed face shows through.
+ */
+function createTokenMaterials({ sideColor = TOKEN_SIDE_COLOR, topTextureUrl } = {}) {
+  if (!topTextureUrl) {
+    return new THREE.MeshStandardMaterial({
+      color: sideColor,
+      roughness: 0.4,
+      metalness: 0.1,
+    });
+  }
+  const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.4, metalness: 0.1 });
+  const topMat = new THREE.MeshStandardMaterial({
+    map: loadTexture(topTextureUrl),
+    color: 0xffffff,
+    roughness: 0.4,
+    metalness: 0.1,
+    transparent: true,
+  });
+  const bottomMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.4, metalness: 0.1 });
+  // CylinderGeometry groups: 0 = side, 1 = top cap, 2 = bottom cap.
+  return [sideMat, topMat, bottomMat];
+}
+
+// THREE's CylinderGeometry maps the top-cap UVs so that UV.x is aligned with
+// the world +z axis, not +x. With our top-down camera that makes textures
+// look rotated 90° on screen — rotating the geometry around Y brings +x back
+// into alignment with the texture's right edge so the printed dashes and
+// elemental glyphs sit level with the table. Pass `flip: true` to add a
+// further 180° spin so tokens on the opposite side of the table read
+// right-side up for the player sitting across from p1.
+const TOKEN_TOP_UV_ROTATION = Math.PI / 2;
+
+function getTopCapRotation(hasTexture, flip) {
+  if (!hasTexture) return 0;
+  return TOKEN_TOP_UV_ROTATION + (flip ? Math.PI : 0);
+}
 
 export function createTokenMesh(tokenInstance) {
   const geometry = new THREE.CylinderGeometry(TOKEN_RADIUS, TOKEN_RADIUS, TOKEN_HEIGHT, 32);
-  const material = new THREE.MeshStandardMaterial({
-    color: TOKEN_COLORS[tokenInstance.color] || TOKEN_COLORS.red,
-    roughness: 0.4,
-    metalness: 0.1,
+  const rotation = getTopCapRotation(!!tokenInstance.topTexture, tokenInstance.flip);
+  if (rotation) geometry.rotateY(rotation);
+  const material = createTokenMaterials({
+    sideColor: tokenInstance.topTexture ? TOKEN_SIDE_COLOR : (TOKEN_COLORS[tokenInstance.color] || TOKEN_COLORS.red),
+    topTextureUrl: tokenInstance.topTexture,
   });
   const mesh = new THREE.Mesh(geometry, material);
 
@@ -257,6 +329,21 @@ export function createTokenMesh(tokenInstance) {
   mesh.receiveShadow = true;
   mesh.userData = { type: 'token', tokenInstance };
 
+  return mesh;
+}
+
+/**
+ * Create a flat cylindrical button for the game board (used by the tracker
+ * +/- buttons). Takes a texture URL that is painted onto the top cap.
+ * Pass `flip: true` to rotate the printed face 180° for the opposite seat.
+ */
+export function createTokenButtonMesh({ radius = TOKEN_RADIUS, height = 0.2, topTextureUrl, sideColor = TOKEN_SIDE_COLOR, flip = false } = {}) {
+  const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
+  const rotation = getTopCapRotation(!!topTextureUrl, flip);
+  if (rotation) geometry.rotateY(rotation);
+  const material = createTokenMaterials({ sideColor, topTextureUrl });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
   return mesh;
 }
 

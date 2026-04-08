@@ -3,6 +3,7 @@ import {
   GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   BEVELED_BTN, getViewportScale,
 } from '../lib/medievalTheme';
+import { CoinIcon, ShardIcon } from './ui/icons';
 
 /**
  * Unified header bar used across all screens.
@@ -37,16 +38,32 @@ export default function AppHeader({
       }}
     >
       {/* Left side — screen-specific content, grows to fill available space */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex items-center gap-6 flex-1 min-w-0">
         {children}
       </div>
 
-      {/* Right side — fixed slot, never moves */}
-      <div className="flex items-center gap-4 shrink-0 ml-auto pl-4">
+      {/* Right side — uniform 24 px rhythm to match the header's px-6.
+          `gap-6` between every right-side element (shards → gold →
+          friends → mail) lines up exactly with the 24 px padding on
+          the header edges, so the spacing between currencies matches
+          the spacing between buttons AND the distance from the last
+          button to the right edge. No fixed-width slots either: the
+          currencies flow at their natural size, giving them the same
+          rhythm as the friends/mail buttons next to them. */}
+      <div className="flex items-center gap-6 shrink-0 ml-auto pl-6">
+        {/* Arcana display */}
+        {profile?.arcanaShards != null && (
+          <div className="flex items-center gap-1.5" title="Arcana">
+            <ShardIcon size={13} />
+            <span className="text-lg font-bold tabular-nums" style={{ color: '#7dd3fc', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.arcanaShards}</span>
+            <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(125,211,252,0.4)' }}>arcana</span>
+          </div>
+        )}
+
         {/* Gold display */}
         {profile?.coins != null && (
-          <div className="flex items-center gap-1.5 w-[120px] justify-end">
-            <span style={{ color: '#f0d060', fontSize: '14px', textShadow: '0 0 8px rgba(240,208,96,0.3)' }}>●</span>
+          <div className="flex items-center gap-1.5" title="Gold">
+            <CoinIcon size={14} />
             <span className="text-lg font-bold tabular-nums" style={{ color: '#f0d060', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{profile.coins}</span>
             <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
           </div>
@@ -56,6 +73,7 @@ export default function AppHeader({
         {onToggleFriends && (
           <button
             type="button"
+            data-tutorial="friends"
             className="relative px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
             style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.7)` }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; }}
@@ -76,7 +94,7 @@ export default function AppHeader({
 
         {/* Mailbox button + dropdown */}
         {onToggleMailbox && (
-          <div className="relative">
+          <div className="relative" data-tutorial="mailbox">
             <button
               type="button"
               className="relative px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"

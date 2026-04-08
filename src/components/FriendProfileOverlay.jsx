@@ -6,19 +6,15 @@ import { cn } from '../lib/utils';
 import { getPublicProfile } from '../utils/friendsApi';
 import { xpProgressInLevel, levelFromXp } from '../utils/arena/profileDefaults';
 import { formatRank, TIER_COLORS, TIER_LABELS } from '../utils/arena/rankUtils';
+import { resolveAvatarUrl } from '../utils/arena/avatarUtils';
 import { ACHIEVEMENTS } from '../utils/arena/achievements';
+import { CoinIcon } from './ui/icons';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, VIGNETTE, COIN_COLOR,
   FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
-
-function resolveAvatarUrl(cardId, sorceryCards) {
-  if (!cardId || !sorceryCards) return null;
-  const card = sorceryCards.find((c) => c.unique_id === cardId);
-  return card?.printings?.[0]?.image_url || null;
-}
 
 const ACTIVITY_LABELS = {
   hub: 'In Hub', store: 'In Store', deckbuilder: 'Deck Builder',
@@ -106,7 +102,7 @@ export default class FriendProfileOverlay extends Component {
   renderProfile(profile) {
     const { onClose, onInvite, onSpectate, onTrade, onRemoveFriend, onSendMail, profileId, isFriend, sorceryCards } = this.props;
     const { showUnfriendConfirm } = this.state;
-    const avatarUrl = resolveAvatarUrl(profile.avatar, sorceryCards);
+    const avatarUrl = resolveAvatarUrl(profile, sorceryCards);
 
     const progress = xpProgressInLevel(profile.xp || 0);
     const level = progress.level;
@@ -271,7 +267,12 @@ export default class FriendProfileOverlay extends Component {
                       {m.won ? 'W' : 'L'}
                     </span>
                     <span className="text-xs flex-1 truncate" style={{ color: TEXT_MUTED }}>vs {m.opponentName || 'Opponent'}</span>
-                    {m.coinsEarned ? <span className="text-[10px] tabular-nums" style={{ color: `${GOLD} 0.5)` }}>+{m.coinsEarned}</span> : null}
+                    {m.coinsEarned ? (
+                      <span className="text-[10px] tabular-nums flex items-center gap-1" style={{ color: `${GOLD} 0.5)` }}>
+                        <CoinIcon size={10} />
+                        +{m.coinsEarned}
+                      </span>
+                    ) : null}
                   </div>
                 ))}
               </div>

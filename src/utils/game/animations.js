@@ -72,14 +72,22 @@ function computeTargetZ(card) {
   return z;
 }
 
+// Tap and flip animations target mesh.userData.intentEuler — NOT
+// mesh.rotation directly — because physicsWorld.syncMeshFromBody
+// overwrites mesh.quaternion every frame by composing the body's tilt
+// with intentEuler. Writing to mesh.rotation here would be clobbered
+// next frame. The intentEuler is created in cardMesh.createCardMesh and
+// initialised to the lay-flat + base rotation for the card's state.
+
 export function animateCardFlip(mesh, card) {
-  const fromX = mesh.rotation.x;
+  const intent = mesh.userData?.intentEuler || mesh.rotation;
+  const fromX = intent.x;
   const targetX = card.faceDown ? Math.PI / 2 : -Math.PI / 2;
-  const fromZ = mesh.rotation.z;
+  const fromZ = intent.z;
   const targetZ = computeTargetZ(card);
 
-  addTween({ target: mesh.rotation, property: 'x', from: fromX, to: targetX, duration: 350 });
-  addTween({ target: mesh.rotation, property: 'z', from: fromZ, to: targetZ, duration: 350 });
+  addTween({ target: intent, property: 'x', from: fromX, to: targetX, duration: 350 });
+  addTween({ target: intent, property: 'z', from: fromZ, to: targetZ, duration: 350 });
 
   const baseY = mesh.position.y;
   addTween({ target: mesh.position, property: 'y', from: baseY, to: baseY + 3, duration: 175 });
@@ -89,10 +97,11 @@ export function animateCardFlip(mesh, card) {
 }
 
 export function animateCardTap(mesh, card) {
-  const fromZ = mesh.rotation.z;
+  const intent = mesh.userData?.intentEuler || mesh.rotation;
+  const fromZ = intent.z;
   const targetZ = computeTargetZ(card);
 
-  addTween({ target: mesh.rotation, property: 'z', from: fromZ, to: targetZ, duration: 250 });
+  addTween({ target: intent, property: 'z', from: fromZ, to: targetZ, duration: 250 });
 }
 
 export function animateShufflePile(mesh, pile, scene) {

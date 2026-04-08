@@ -15,13 +15,17 @@ const ELEMENT_COLORS = {
 };
 
 function ElementPip({ element }) {
-  const isUp = element === 'Water' || element === 'Earth';
+  // Sorcery convention: Water/Earth point DOWN, Fire/Air point UP. The
+  // horizontal bar on Earth (downward) and Air (upward) sits in the wide
+  // portion of the triangle — near the top for Earth, near the bottom
+  // for Air — matching the SorceryElementIcon used in DeckEditorCollection.
+  const isUp = element === 'Fire' || element === 'Air';
   const color = ELEMENT_COLORS[element] || '#888';
   const points = isUp ? '5,1 9,9 1,9' : '5,9 1,1 9,1';
   const line = element === 'Earth'
-    ? { x1: 2, y1: 6, x2: 8, y2: 6 }
+    ? { x1: 2, y1: 4, x2: 8, y2: 4 }
     : element === 'Air'
-      ? { x1: 2, y1: 4, x2: 8, y2: 4 }
+      ? { x1: 2, y1: 6, x2: 8, y2: 6 }
       : null;
 
   return (

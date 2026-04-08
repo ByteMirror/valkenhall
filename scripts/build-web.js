@@ -51,4 +51,10 @@ for (const asset of ['battlemap.webp', 'table-background-hd.png', 'table-backgro
   await fs.copyFile(`./public/${asset}`, `./dist/${asset}`).catch(() => {});
 }
 
+// Bundle Viking ornament SVGs (used as embossed backgrounds + side accents)
+await fs.cp('./public/ornaments', './dist/ornaments', { recursive: true }).catch(() => {});
+
+// Bundle game board token SVGs (tracker tokens + -/+ buttons on the table)
+await fs.cp('./public/gameboard-tokens', './dist/gameboard-tokens', { recursive: true }).catch(() => {});
+
 console.log(`Built ${result.outputs.length} output files into dist/`);

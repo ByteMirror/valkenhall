@@ -81,7 +81,7 @@ function renderTextWithTooltips(text, depth = 0) {
   );
 }
 
-const RARITY_COLORS = {
+export const RARITY_COLORS = {
   Ordinary: TEXT_MUTED,
   Exceptional: '#6ea8d4',
   Elite: '#b480d4',

@@ -102,7 +102,12 @@ describe('Select', () => {
 
     expect(stickyHeader).not.toBeNull();
     expect(stickyHeader).toHaveClass('sticky');
-    expect(stickyHeader).toHaveClass('bg-popover');
-    expect(stickyHeader).not.toHaveClass('bg-popover/96');
+    // The sticky search header is fully opaque so the menu's background
+    // ornament/dialog gradient can't bleed through the input row.
+    // The medieval restyle moved opacity from a Tailwind class
+    // (`bg-popover`) to an inline backgroundColor on the dark base
+    // surface — assert the inline style instead.
+    expect(stickyHeader.style.backgroundColor).not.toBe('');
+    expect(stickyHeader.style.backgroundColor).not.toBe('transparent');
   });
 });

@@ -16,6 +16,73 @@ import {
 } from '../lib/medievalTheme';
 import AmbientParticles from './AmbientParticles';
 import AdminPanel from './AdminPanel';
+import VikingOrnament from './VikingOrnament';
+import TutorialOverlay from './TutorialOverlay';
+import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
+import { CoinIcon } from './ui/icons';
+
+const HUB_TUTORIAL_KEY = 'hub-main-menu';
+
+// Ordered list of onboarding steps for the main menu. Each step
+// points at a DOM node via a data-tutorial attribute declared on the
+// target button. Keep the ordering roughly top-to-bottom so the
+// spotlight doesn't jump around the screen.
+const HUB_TUTORIAL_STEPS = [
+  {
+    key: 'find-match',
+    title: 'Find Match',
+    body: 'Queue up for a ranked game against another player. Climb the ladder, earn rank points, and see how far you can push against real opponents.',
+    selector: '[data-tutorial="find-match"]',
+  },
+  {
+    key: 'casual-play',
+    title: 'Casual Play',
+    body: 'Jump into an unranked game. Great for testing brews, playing with friends, or warming up before you dive into ranked matches.',
+    selector: '[data-tutorial="casual-play"]',
+  },
+  {
+    key: 'store',
+    title: 'Store',
+    body: 'Spend gold on booster packs from every available set, or spend Arcana Shards on specific card singles when you need a targeted add.',
+    selector: '[data-tutorial="store"]',
+  },
+  {
+    key: 'deck-builder',
+    title: 'Deck Builder',
+    body: 'Browse your collection, build and save decks, and prepare different strategies. You can own multiple decks and pick one when queueing for a match.',
+    selector: '[data-tutorial="deck-builder"]',
+  },
+  {
+    key: 'auction-house',
+    title: 'Auction House',
+    body: 'Buy and sell cards with other players. List cards you don\'t need for gold, or bid on rare singles from other collectors.',
+    selector: '[data-tutorial="auction-house"]',
+  },
+  {
+    key: 'arcane-trials',
+    title: 'Arcane Trials',
+    body: 'The seasonal pass. Earn Season XP by playing matches and completing quests to unlock tiered rewards — coins, Arcana Shards, and foil cards from the season\'s featured set.',
+    selector: '[data-tutorial="arcane-trials"]',
+  },
+  {
+    key: 'settings',
+    title: 'Settings',
+    body: 'Tweak audio, ambience, profile, and account options. You can also replay this tutorial here if you ever want a refresher.',
+    selector: '[data-tutorial="settings"]',
+  },
+  {
+    key: 'mailbox',
+    title: 'Mailbox',
+    body: 'Receive mail from the auction house, season pass rewards, and friends. Friends can send you cards and coins directly — claim them from the mailbox dropdown.',
+    selector: '[data-tutorial="mailbox"]',
+  },
+  {
+    key: 'friends',
+    title: 'Friends',
+    body: 'See who\'s online, invite them to private matches, send them mail, or accept pending friend requests. A red badge shows how many requests are waiting.',
+    selector: '[data-tutorial="friends"]',
+  },
+];
 
 export default class ArenaHub extends Component {
   constructor(props) {
@@ -28,15 +95,50 @@ export default class ArenaHub extends Component {
       leaderboardFilter: 'all',
       leaderboardSearch: '',
       hubScale: getViewportScale(),
+      showHubTutorial: false,
     };
   }
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ hubScale: scale }));
     this.loadLeaderboard();
+    this.maybeStartHubTutorial();
   }
 
+  componentDidUpdate(prevProps) {
+    // If the parent forces a tutorial replay (from the Settings
+    // screen), surface the overlay again. The parent clears its
+    // request flag right after mount via the onDismiss callback.
+    if (!prevProps.replayHubTutorial && this.props.replayHubTutorial) {
+      this.setState({ showHubTutorial: true });
+    }
+  }
+
+  /**
+   * Decide whether to auto-play the hub tutorial on mount. Awaits
+   * the tutorial state hydration so we don't show the overlay on a
+   * stale miss (the on-disk store might have the seen flag even
+   * when localStorage is empty on a fresh CEF launch).
+   */
+  async maybeStartHubTutorial() {
+    const { profile } = this.props;
+    const id = profile?.id;
+    if (!id) return;
+    await hydrateTutorialState();
+    if (this._unmounted) return;
+    if (!shouldAutoPlay(id, HUB_TUTORIAL_KEY)) return;
+    this.setState({ showHubTutorial: true });
+  }
+
+  handleHubTutorialDismiss = () => {
+    const { profile, onHubTutorialDismissed } = this.props;
+    if (profile?.id) markTutorialSeen(profile.id, HUB_TUTORIAL_KEY);
+    this.setState({ showHubTutorial: false });
+    onHubTutorialDismissed?.();
+  };
+
   componentWillUnmount() {
+    this._unmounted = true;
     this.unsubScale?.();
   }
 
@@ -155,50 +257,216 @@ export default class ArenaHub extends Component {
 
         {/* ─── MAIN CONTENT ────────────────────────────────── */}
         <div className="relative z-10 flex-1 flex flex-col overflow-hidden" style={{ zoom: this.state.hubScale }}>
-          <div className="mx-auto px-8 w-full flex flex-col overflow-hidden flex-1">
+          {/* Outer layout is a ROW so the left menu can span the full
+              content height and stay vertically centred in the window
+              regardless of how tall the hero / leaderboard become. The
+              right-side wrapper below holds everything else (hero +
+              leaderboard + achievements) and owns its own flex-col. */}
+          <div className="mx-auto px-8 w-full flex gap-5 overflow-hidden flex-1">
+
+            {/* ── LEFT COLUMN: VERTICAL MENU (full height) ── */}
+            {/* justify-center anchors the logo + menu stack to the
+                window's vertical midpoint. This column sits as a
+                direct sibling of the right-side wrapper, so its
+                available height is the full main-content area, not
+                just the space below the hero. */}
+            <div className="w-[280px] shrink-0 flex flex-col justify-center overflow-visible py-1 pl-1">
+
+              <img src="/valkenhall-logo.png" alt="Valkenhall" className="w-full mb-3" draggable={false} />
+
+              <MenuButton title="Find Match" onClick={onFindMatch} dataTutorial="find-match" />
+              <MenuButton title="Casual Play" onClick={onPlayMatch} dataTutorial="casual-play" />
+              <MenuButton title="Store" onClick={onOpenStore} dataTutorial="store" />
+              <MenuButton title="Deck Builder" onClick={onOpenDeckBuilder} dataTutorial="deck-builder" />
+              <MenuButton title="Auction House" onClick={onOpenAuctionHouse} dataTutorial="auction-house" />
+              <MenuButton title="Arcane Trials" onClick={onOpenArcaneTrials} dataTutorial="arcane-trials" />
+              <div className="relative" data-tutorial="settings">
+                <MenuButton title="Settings" onClick={onOpenSettings} />
+                {updateStatus && (updateStatus.state === 'READY_TO_INSTALL' || updateStatus.state === 'DOWNLOADING' || updateStatus.state === 'DOWNLOAD_FAILED') ? (
+                  <div
+                    className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full"
+                    style={{
+                      background: updateStatus.state === 'DOWNLOAD_FAILED' ? '#b04040' : ACCENT_GOLD,
+                      boxShadow: `0 0 6px ${updateStatus.state === 'DOWNLOAD_FAILED' ? 'rgba(176,64,64,0.6)' : 'rgba(212,168,67,0.6)'}`,
+                    }}
+                  />
+                ) : null}
+              </div>
+
+            </div>
+
+            {/* ── RIGHT SIDE: 2-column CSS grid ──
+                Left column holds a vertical stack (hero → divider →
+                leaderboard). Right column holds the achievements panel
+                spanning full height. Using grid means leaderboard +
+                achievements share the same parent, while the hero is
+                naturally constrained to the leaderboard column's
+                width — so w-[60%] mx-auto on the hero centers it over
+                the leaderboard, never over the achievements. */}
+            {/* overflow-hidden is intentionally NOT set here — the
+                CornerPlating elements on each inner panel use a -2px
+                offset to overhang the panel edge, and clipping the
+                grid wrapper would amputate those plating corners. The
+                inner leaderboard / achievements panels already handle
+                their own vertical scrolling internally. */}
+            <div className="flex-1 min-w-0 grid gap-5 py-4 min-h-0"
+                 style={{ gridTemplateColumns: '1fr 320px' }}>
+
+            {/* ── LEFT GRID CELL: hero + divider + leaderboard ── */}
+            {/* No overflow-hidden for the same reason as the parent. */}
+            <div className="min-w-0 flex flex-col min-h-0">
 
             {/* ─── HERO: PLAYER IDENTITY ──────────────────── */}
-            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 my-2 w-[60%] mx-auto" style={{ background: `url("/tex-noise-panel.webp"), linear-gradient(rgba(12, 10, 8, 0.6), rgba(12, 10, 8, 0.6))`, backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
+            <div className="relative flex items-center gap-8 py-5 px-6 shrink-0 w-full min-w-0" style={{ background: `url("/tex-noise-panel.webp"), linear-gradient(rgba(12, 10, 8, 0.6), rgba(12, 10, 8, 0.6))`, backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.2)`, borderRadius: '8px' }}>
               <CornerPlating position="top-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="top-right" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-left" color={`${GOLD} 0.45)`} />
               <CornerPlating position="bottom-right" color={`${GOLD} 0.45)`} />
-              {/* Avatar with ornate circular frame */}
+              {/* Avatar — aged-bronze Viking medallion frames a portrait
+                  seated into a recessed well. The medallion reads as
+                  engraved metalwork (dark base + muted gold mask + soft
+                  inner shadow) rather than a bright gold disc, so the
+                  portrait stays the focal point. */}
               <button
                 type="button"
                 className="relative group shrink-0"
-                style={{ width: 72, height: 72 }}
+                style={{ width: 140, height: 140, isolation: 'isolate' }}
                 onClick={() => this.setState({ showAvatarPicker: true })}
                 title="Click to change avatar"
               >
-                {/* Outer glow ring */}
-                <div className="absolute -inset-1.5 rounded-full" style={{ border: `2px solid ${GOLD} 0.3)`, boxShadow: `0 0 16px ${GOLD} 0.1)` }} />
+                {/* Ember halo — sits behind the base plate so it only
+                    reads as warm light leaking out past the medallion
+                    rim. Pulses + scales continuously for an "alive"
+                    feel; see .avatar-medallion-ember in app.css. */}
+                <div className="avatar-medallion-ember" aria-hidden="true" />
 
-                {/* Avatar image */}
+                {/* Base plate — single dark circle with a thin gold rim.
+                    Drop shadow lifts the whole badge off the hero panel;
+                    the inset shadow carves the frame so the medallion
+                    below feels like it sits in a bowl. No outer glow
+                    ring — one border + one subtle halo is enough. */}
+                <div
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    background: 'radial-gradient(circle at center, rgba(14,10,6,0.96) 0%, rgba(6,4,2,0.98) 100%)',
+                    border: `1px solid ${GOLD} 0.42)`,
+                    boxShadow: `
+                      inset 0 3px 10px rgba(0,0,0,0.85),
+                      inset 0 -1px 0 ${GOLD} 0.1),
+                      0 6px 22px rgba(0,0,0,0.65),
+                      0 0 20px rgba(180,140,60,0.08)
+                    `,
+                  }}
+                />
+
+                {/* Viking medallion ornament — same component + variant
+                    + ornament combo the Arcane Trials coin buttons use,
+                    so it gets the project's shared cache-bust treatment
+                    (CEF/Chromium both aggressively cache CSS mask-image
+                    URLs).
+
+                    The SVG's decorative content is inset from its own
+                    viewBox edges (outer ring at ~80% of the viewBox
+                    diameter) so the default mask-size: contain renders
+                    the ornament smaller than the button. Overriding to
+                    ~128% scales the mask up until the content reaches
+                    the container edges. */}
+                <VikingOrnament
+                  ornament="style2d007"
+                  variant="medallion"
+                  color="rgba(204, 162, 74, 1)"
+                  opacity={0.62}
+                  className="avatar-medallion-fire-shimmer"
+                  style={{
+                    maskSize: '128%',
+                    WebkitMaskSize: '128%',
+                    // Layer stone + scratch textures into the medallion
+                    // background so the knotwork reads as weathered cast
+                    // metal rather than a flat tint. The mask restricts
+                    // everything to the ornament's strokes, so the
+                    // textures only appear where the knotwork is. The
+                    // live hue/brightness shimmer applies to this
+                    // composite, so the textured surface glows uniformly
+                    // when the metal heats up. Stack (top → bottom):
+                    //   1. scratches — overlay blend, subtle wear marks
+                    //   2. stone     — soft-light, adds aged depth
+                    //   3. radial    — the original gold fade
+                    backgroundImage: [
+                      "url('/tex-scratches.webp')",
+                      "url('/tex-stone.webp')",
+                      'radial-gradient(circle at center, rgba(204, 162, 74, 1), transparent 100%)',
+                    ].join(', '),
+                    backgroundBlendMode: 'overlay, soft-light, normal',
+                    backgroundSize: '220px, 260px, 100% 100%',
+                    backgroundRepeat: 'repeat, repeat, no-repeat',
+                    backgroundPosition: 'center, center, center',
+                  }}
+                />
+
+                {/* Profile picture — centered, sized so ~12px of the
+                    medallion ring shows around the rim. object-position
+                    at 22% skips the card title bar that most Sorcery
+                    card art includes at the top edge. Border is fully
+                    opaque gold so it reads as a clean metal frame
+                    seating the portrait against the medallion. */}
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover object-top relative z-10" style={{ border: `2px solid ${GOLD} 0.5)`, boxShadow: `0 4px 16px rgba(0,0,0,0.5)` }} />
+                  <img
+                    src={avatarUrl}
+                    alt="Avatar"
+                    className="absolute rounded-full object-cover"
+                    style={{
+                      width: 112, height: 112,
+                      top: 14, left: 14,
+                      objectPosition: 'center 22%',
+                      border: `1.5px solid ${GOLD} 1)`,
+                      boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.5), 0 3px 12px rgba(0,0,0,0.65)`,
+                      zIndex: 2,
+                    }}
+                  />
                 ) : (
-                  <div className="w-full h-full rounded-full flex items-center justify-center text-xl relative z-10" style={{ background: `${GOLD} 0.08)`, border: `2px solid ${GOLD} 0.3)`, color: `${GOLD} 0.4)` }}>?</div>
+                  <div
+                    className="absolute rounded-full flex items-center justify-center text-2xl"
+                    style={{
+                      width: 112, height: 112,
+                      top: 14, left: 14,
+                      background: `${GOLD} 0.08)`,
+                      border: `1.5px solid ${GOLD} 1)`,
+                      color: `${GOLD} 0.5)`,
+                      zIndex: 2,
+                    }}
+                  >?</div>
                 )}
 
-                {/* Level badge */}
+                {/* Level badge — larger, straddling the bottom edge of
+                    the profile picture so half sits on the portrait
+                    and half on the medallion rim. */}
                 <div
-                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center"
+                  className="absolute left-1/2 -translate-x-1/2 z-20 flex items-center justify-center"
                   style={{
-                    minWidth: '22px', height: '18px',
-                    padding: '0 5px',
-                    background: 'linear-gradient(180deg, rgba(50,42,28,0.95) 0%, rgba(30,25,16,0.95) 100%)',
-                    border: `1.5px solid ${GOLD} 0.5)`,
-                    borderRadius: '9px',
-                    boxShadow: `0 2px 6px rgba(0,0,0,0.5)`,
+                    bottom: 2,
+                    minWidth: '38px', height: '28px',
+                    padding: '0 10px',
+                    background: 'linear-gradient(180deg, rgba(60,48,28,0.98) 0%, rgba(28,22,12,0.98) 100%)',
+                    border: `2px solid ${GOLD} 0.85)`,
+                    borderRadius: '14px',
+                    boxShadow: `0 3px 10px rgba(0,0,0,0.75), inset 0 1px 0 ${GOLD} 0.2)`,
                   }}
                 >
-                  <span className="text-[10px] font-bold" style={{ color: ACCENT_GOLD, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{level}</span>
+                  <span className="text-sm font-bold tabular-nums" style={{ color: ACCENT_GOLD, textShadow: '0 1px 2px rgba(0,0,0,0.7)' }}>{level}</span>
                 </div>
 
-                {/* Hover overlay */}
-                <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all z-20">
-                  <span className="text-white/0 group-hover:text-white/80 text-[10px] font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
+                {/* Hover overlay — matches the profile picture bounds
+                    so the "Change" label sits on the avatar itself,
+                    not on the medallion ring. */}
+                <div
+                  className="absolute rounded-full bg-black/0 group-hover:bg-black/55 flex items-center justify-center transition-all"
+                  style={{
+                    width: 112, height: 112,
+                    top: 14, left: 14,
+                    zIndex: 3,
+                  }}
+                >
+                  <span className="text-white/0 group-hover:text-white/90 text-xs font-medium transition-all" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Change</span>
                 </div>
               </button>
 
@@ -278,67 +546,17 @@ export default class ArenaHub extends Component {
               </div>
             </div>
 
-            <OrnamentalDivider className="shrink-0" />
+            {/* my-4 gives equal vertical breathing room above and
+                below the divider so it sits centered between the hero
+                panel and the leaderboard panel. */}
+            <OrnamentalDivider className="shrink-0 my-4" />
 
-            {/* ─── 3-COLUMN LAYOUT ───────────────────────────── */}
-            <div className="flex gap-5 py-4 flex-1 min-h-0">
-
-              {/* ── LEFT COLUMN: VERTICAL MENU ──────────────── */}
-              <div className="w-[280px] shrink-0 flex flex-col overflow-visible py-1 pl-1">
-
-                <img src="/valkenhall-logo.png" alt="Valkenhall" className="w-full mb-3" draggable={false} />
-
-                <MenuButton title="Find Match" onClick={onFindMatch} />
-                <MenuButton title="Casual Play" onClick={onPlayMatch} />
-                <MenuButton title="Store" onClick={onOpenStore} />
-                <MenuButton title="Deck Builder" onClick={onOpenDeckBuilder} />
-                <MenuButton title="Auction House" onClick={onOpenAuctionHouse} />
-                <MenuButton title="Arcane Trials" onClick={onOpenArcaneTrials} />
-                <div className="relative">
-                  <MenuButton title="Settings" onClick={onOpenSettings} />
-                  {updateStatus && (updateStatus.state === 'READY_TO_INSTALL' || updateStatus.state === 'DOWNLOADING' || updateStatus.state === 'DOWNLOAD_FAILED') ? (
-                    <div
-                      className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full"
-                      style={{
-                        background: updateStatus.state === 'DOWNLOAD_FAILED' ? '#b04040' : ACCENT_GOLD,
-                        boxShadow: `0 0 6px ${updateStatus.state === 'DOWNLOAD_FAILED' ? 'rgba(176,64,64,0.6)' : 'rgba(212,168,67,0.6)'}`,
-                      }}
-                    />
-                  ) : null}
-                </div>
-
-                {/* Recent Matches */}
-                {totalMatches > 0 && (
-                  <div className="mt-4 p-3" style={{ background: 'rgba(12, 10, 8, 0.92)', backdropFilter: 'blur(8px)', border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="arena-heading text-[10px] font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.4)` }}>Recent Matches</span>
-                      <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${GOLD} 0.2), transparent)` }} />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {profile.matchHistory.slice(0, 5).map((m, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-3 px-3 py-1.5 text-xs"
-                          style={{
-                            background: `linear-gradient(90deg, ${m.won ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.03)'} 0%, transparent 100%)`,
-                            borderRadius: '6px',
-                            border: `1px solid ${m.won ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)'}`,
-                          }}
-                        >
-                          <span className={cn('font-bold w-4 text-center', m.won ? 'text-green-400' : 'text-red-400')} style={{ textShadow: m.won ? '0 0 8px rgba(34,197,94,0.3)' : '0 0 8px rgba(239,68,68,0.3)' }}>
-                            {m.won ? 'W' : 'L'}
-                          </span>
-                          <span className="flex-1 truncate" style={{ color: `${PARCHMENT} 0.55)` }}>{m.opponentName || 'Opponent'}</span>
-                          <span className="text-[10px] font-medium" style={{ color: 'rgba(240,208,96,0.6)' }}>+{m.coinsEarned}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ── CENTER COLUMN: LEADERBOARD ──────────────── */}
-              <div className="flex-1 min-w-0 flex flex-col">
+              {/* ── LEADERBOARD ── sits directly under the hero inside
+                  the center column wrapper opened above. Achievements
+                  now live as a full-height sibling of this center
+                  column (see the closing tag after the leaderboard),
+                  so the hero is centred only over the leaderboard. */}
+              <div className="flex-1 min-w-0 flex flex-col min-h-0">
                 <div
                   className="relative flex-1 flex flex-col"
                   style={{
@@ -428,8 +646,15 @@ export default class ArenaHub extends Component {
                 </div>
               </div>
 
-              {/* ── RIGHT COLUMN: ACHIEVEMENTS ─────────────── */}
-              <div className="w-[320px] shrink-0 flex flex-col min-h-0">
+            </div>
+            {/* ── end LEFT GRID CELL ── */}
+
+            {/* ── RIGHT GRID CELL: ACHIEVEMENTS (full-height) ──
+                Sibling of the left cell inside the right-side grid,
+                so it shares the same parent as the leaderboard and
+                the two are laid out side-by-side by grid-template
+                -columns. */}
+            <div className="flex flex-col min-h-0">
                 <div
                   className="relative flex-1 flex flex-col min-h-0"
                   style={{
@@ -483,7 +708,12 @@ export default class ArenaHub extends Component {
                                 </div>
                               )}
                             </div>
-                            {unlocked && <span className="text-[9px] shrink-0 font-semibold" style={{ color: '#d4a843' }}>+{a.coins}</span>}
+                            {unlocked && (
+                              <span className="text-[9px] shrink-0 font-semibold flex items-center gap-1" style={{ color: '#d4a843' }}>
+                                <CoinIcon size={9} />
+                                +{a.coins}
+                              </span>
+                            )}
                           </div>
                         );
                       })}
@@ -495,6 +725,14 @@ export default class ArenaHub extends Component {
             </div>
           </div>
         </div>
+
+        {/* ─── ONBOARDING TUTORIAL ──────────────────────────── */}
+        {this.state.showHubTutorial && (
+          <TutorialOverlay
+            steps={HUB_TUTORIAL_STEPS}
+            onDismiss={this.handleHubTutorialDismiss}
+          />
+        )}
 
         {/* ─── ADMIN PANEL ───────────────────────────────────── */}
         {this.state.showAdmin && this.props.isAdmin && (

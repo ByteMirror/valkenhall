@@ -214,7 +214,7 @@ export default class ArenaPackOpening extends Component {
                 {[pack.cards.slice(0, 8), pack.cards.slice(8)].map((row, rowIdx) => {
                   const rowStart = rowIdx === 0 ? 0 : 8;
                   return (
-                    <div key={rowIdx} className="relative flex items-end justify-center gap-2">
+                    <div key={rowIdx} className="relative flex items-end justify-center gap-2" style={{ perspective: '1200px' }}>
                       {row.map((entry, ri) => {
                         const i = rowStart + ri;
                         const rowN = row.length;
@@ -230,6 +230,19 @@ export default class ArenaPackOpening extends Component {
                         const t = rowN === 1 ? 0 : (ri / (rowN - 1)) - 0.5; // -0.5 to 0.5
                         const fanRotate = t * 6; // -3° to 3°
                         const fanY = Math.abs(t) * 12; // edges dip slightly
+
+                        // Foils get a one-time circular pivot once they've
+                        // landed in the fan. The keyframes trace a closed
+                        // orbit around the rest pose, so the card visibly
+                        // tilts through every angle a player would normally
+                        // catch by hand-wiggling — the foil overlay's
+                        // gradients sweep in response to the rotation, so
+                        // the prismatic shine actually animates instead of
+                        // sitting still. Plays for ~1.7s, then settles.
+                        const foilPivotAnimate = entryFoil && isEntryDone ? {
+                          rotateX: [0, -10, -14, -10, 0, 10, 14, 10, 0],
+                          rotateY: [0, 10, 0, -10, -14, -10, 0, 10, 0],
+                        } : { rotateX: 0, rotateY: 0 };
 
                         return (
                           <motion.div
@@ -258,12 +271,25 @@ export default class ArenaPackOpening extends Component {
                               zIndex: { duration: 0 },
                             }}
                           >
+                            <motion.div
+                              style={{ transformStyle: 'preserve-3d' }}
+                              animate={foilPivotAnimate}
+                              transition={entryFoil && isEntryDone ? {
+                                duration: 1.7,
+                                ease: 'easeInOut',
+                                delay: 0.25 + i * 0.04,
+                              } : { duration: 0 }}
+                            >
                             <div
+                              className={entryFoil ? 'foil-card-aura' : undefined}
                               style={{
                                 width: cardWidth,
                                 height: cardHeight,
                                 borderRadius: 14,
-                                boxShadow: RARITY_GLOW[rarity],
+                                // Foils get the animated rainbow aura via
+                                // CSS class above; non-foils keep their
+                                // static rarity glow.
+                                boxShadow: entryFoil ? undefined : RARITY_GLOW[rarity],
                                 filter: isHovered ? `brightness(1.15)` : 'none',
                                 transition: 'filter 0.2s ease',
                               }}
@@ -278,6 +304,7 @@ export default class ArenaPackOpening extends Component {
                                 }}
                               />
                             </div>
+                            </motion.div>
                             <AnimatePresence>
                               {isHovered ? (
                                 <motion.div

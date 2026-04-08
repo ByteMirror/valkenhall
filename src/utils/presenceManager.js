@@ -2,6 +2,11 @@ import { connectWebSocket, disconnectWebSocket, on } from './serverClient';
 import { getFriendList } from './friendsApi';
 import { getUnreadCount } from './arena/mailApi';
 
+// Friend metadata (avatar, name, rank…) is only refreshed by hitting `/friends`.
+// 30s gives sub-minute eventual consistency for things like avatar swaps without
+// being noisy — the focus + sidebar-open triggers handle "right now" cases.
+const FRIEND_REFRESH_INTERVAL_MS = 30_000;
+
 let currentActivity = 'hub';
 let onFriendListUpdate = null;
 let onNewNotifications = null;
@@ -10,19 +15,38 @@ let onMailCountUpdate = null;
 let friendList = { friends: [], pendingRequests: [], pendingCount: 0 };
 let unsubscribers = [];
 let lastMailCount = 0;
+let friendRefreshTimer = null;
+let visibilityHandler = null;
+let focusHandler = null;
 
 function emitFriendList() {
   if (onFriendListUpdate) onFriendListUpdate(friendList);
 }
 
-async function refreshFriendList() {
+async function refreshFriendListInternal() {
   try {
     const data = await getFriendList();
-    friendList = data || { friends: [], pendingRequests: [], pendingCount: 0 };
+    if (!data) return;
+    // Preserve online status from the existing list — the `/friends` REST
+    // endpoint may not include it, and the WebSocket `presence:*` events
+    // are the source of truth for who's online.
+    const onlineMap = new Map((friendList.friends || []).map((f) => [f.id, f.online]));
+    friendList = {
+      ...data,
+      friends: (data.friends || []).map((f) => ({
+        ...f,
+        online: f.online ?? onlineMap.get(f.id) ?? false,
+      })),
+    };
     emitFriendList();
   } catch (err) {
     console.error('[presence] refreshFriendList failed:', err);
   }
+}
+
+/** Public refresh — used by the app when the user opens the friends sidebar. */
+export function refreshFriendList() {
+  return refreshFriendListInternal();
 }
 
 async function refreshMailCount() {
@@ -83,7 +107,7 @@ export async function startPresence(activity, callbacks = {}) {
         senderAvatar: data.senderAvatar,
       }]);
     }
-    refreshFriendList();
+    refreshFriendListInternal();
   }));
 
   unsubscribers.push(on('friend:accepted', (data) => {
@@ -94,11 +118,11 @@ export async function startPresence(activity, callbacks = {}) {
         avatar: data.avatar,
       }]);
     }
-    refreshFriendList();
+    refreshFriendListInternal();
   }));
 
   unsubscribers.push(on('friend:removed', () => {
-    refreshFriendList();
+    refreshFriendListInternal();
   }));
 
   unsubscribers.push(on('mail:received', () => {
@@ -155,8 +179,25 @@ export async function startPresence(activity, callbacks = {}) {
     // Auction proceeds arrive via mail — mail:received will trigger refresh.
   }));
 
-  await refreshFriendList();
+  await refreshFriendListInternal();
   await refreshMailCount();
+
+  // Periodic background refresh — catches avatar / name / rank changes that
+  // friends made on their own clients. The WebSocket presence events only
+  // cover online status, so without this poll, friend metadata would stay
+  // frozen at whatever it was when the user logged in.
+  friendRefreshTimer = setInterval(refreshFriendListInternal, FRIEND_REFRESH_INTERVAL_MS);
+
+  // Snap to fresh data when the user comes back to the window — far more
+  // responsive than waiting up to 30s after they alt-tab back in.
+  visibilityHandler = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      refreshFriendListInternal();
+    }
+  };
+  focusHandler = () => refreshFriendListInternal();
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibilityHandler);
+  if (typeof window !== 'undefined') window.addEventListener('focus', focusHandler);
 }
 
 export function updateActivity(activity) {
@@ -171,6 +212,18 @@ export function stopPresence() {
     try { unsub(); } catch {}
   }
   unsubscribers = [];
+  if (friendRefreshTimer) {
+    clearInterval(friendRefreshTimer);
+    friendRefreshTimer = null;
+  }
+  if (visibilityHandler && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', visibilityHandler);
+    visibilityHandler = null;
+  }
+  if (focusHandler && typeof window !== 'undefined') {
+    window.removeEventListener('focus', focusHandler);
+    focusHandler = null;
+  }
   onFriendListUpdate = null;
   onNewNotifications = null;
   onMailCountUpdate = null;
