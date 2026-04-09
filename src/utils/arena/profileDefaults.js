@@ -31,21 +31,31 @@ export function shardPriceForRarity(rarity) {
   return SHARD_PRICES[rarity] ?? null;
 }
 
-export const XP = {
-  PER_MINUTE: 10,
-};
-
 export const SET_UNLOCK_LEVELS = {
   gothic: 1,
   arthurian: 15,
   beta: 30,
 };
 
+// Player level curve. Designed against the per-match XP rates the server
+// hands out (currently 100 win / 50 loss flat — see
+// valkenhall-server/src/utils/rewards.js). The curve is linear from L1
+// up to L60 and flat after that, mirroring how most TCG arena games pace
+// long-tail account progression:
+//
+//   - L2  ≈ 1 win or 2 losses           (~100 XP)
+//   - L5  ≈ 7-10 matches                 (~550 XP cumulative)
+//   - L10 ≈ 25-30 matches                (~1700 XP cumulative)
+//   - L60 ≈ many hours of dedicated play (~47,000 XP cumulative)
+//   - L100 endgame grind                 (~108,000 XP cumulative)
+//
+// When tuning the per-match XP, keep these matches-per-level numbers in
+// mind so the level-up cadence stays the goal of the curve.
 export const MAX_LEVEL = 100;
 const XP_CAP_LEVEL = 60;
 
-const XP_BASE = 200;
-const XP_CAP = 3500;
+const XP_BASE = 100;
+const XP_CAP = 1500;
 const XP_STEP = (XP_CAP - XP_BASE) / (XP_CAP_LEVEL - 1);
 
 function xpToNextLevel(level) {

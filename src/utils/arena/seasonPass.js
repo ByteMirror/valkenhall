@@ -40,11 +40,11 @@ const QUEST_TEMPLATES = [
   { id: 'sell_auction', name: 'Merchant', description: 'List a card in the Auction House', xpReward: 200, target: 1, type: 'auction_listed' },
 ];
 
-// Legacy constant — rewards are now computed server-side from authoritative
-// match duration (see valkenhall-server/src/utils/rewards.js). Kept only as a
+// Legacy constant — rewards are now computed server-side as flat per-match
+// values (see valkenhall-server/src/utils/rewards.js). Kept only as a
 // fallback reference for any non-ranked code paths that still need a flat
-// per-match number.
-const SEASON_XP = { WIN: 120, LOSS: 80 };
+// per-match number. Mirrors the server's SEASON_XP_WIN / SEASON_XP_LOSS.
+const SEASON_XP = { WIN: 125, LOSS: 75 };
 
 // The server returns the season without a questPool — quest tracking is
 // still client-side because quest progress is driven by local actions
