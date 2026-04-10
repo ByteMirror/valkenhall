@@ -60,6 +60,7 @@ const SNAPSHOT_BUFFER_LIMIT = 20;
 export class CardOwnership {
   constructor() {
     this._state = new Map(); // cardId -> 'local' | 'remote' (free is absent)
+    this._claimTimes = new Map(); // cardId -> performance.now() at claim
     this._lastBroadcast = new Map(); // cardId -> { time, pos[3], quat[4] }
     this._snapshots = new Map(); // cardId -> [{ time, pos[3], quat[4] }, ...]
   }
@@ -77,10 +78,16 @@ export class CardOwnership {
 
   setLocal(cardId) {
     this._state.set(cardId, 'local');
+    this._claimTimes.set(cardId, performance.now());
   }
 
   setRemote(cardId) {
     this._state.set(cardId, 'remote');
+    this._claimTimes.set(cardId, performance.now());
+  }
+
+  claimTime(cardId) {
+    return this._claimTimes.get(cardId) || 0;
   }
 
   /** Hand the card back to the consensus pool. Clears all bookkeeping. */
@@ -88,6 +95,8 @@ export class CardOwnership {
     this._state.delete(cardId);
     this._lastBroadcast.delete(cardId);
     this._snapshots.delete(cardId);
+    // Keep _claimTimes — used by the release sound guard to check how
+    // recently the card was claimed, even after it's freed.
   }
 
   /** Card removed from the table — drop everything we know about it. */

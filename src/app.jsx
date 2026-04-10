@@ -32,6 +32,7 @@ import ArenaUsernamePrompt from './components/ArenaUsernamePrompt';
 import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
 import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus } from './utils/arena/matchmakingApi';
+import { api } from './utils/serverClient';
 import { getStoredToken, validateToken, clearStoredToken } from './utils/authApi';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
@@ -400,6 +401,16 @@ export default class App extends Component {
       onMailCountUpdate: (counts) => this.setState({ mailboxUnreadCount: counts.count }),
     });
     this.checkAssetDownload();
+    this.deliverPatchNews();
+  };
+
+  deliverPatchNews = async () => {
+    try {
+      const status = this.updateManager?.getLastStatus?.();
+      const version = status?.currentVersion;
+      if (!version) return;
+      await api.post('/profile/me/news', { version });
+    } catch {}
   };
 
   checkAssetDownload = async () => {

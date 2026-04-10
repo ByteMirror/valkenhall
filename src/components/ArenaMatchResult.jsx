@@ -568,7 +568,7 @@ export default class ArenaMatchResult extends Component {
               color: TEXT_PRIMARY,
               boxShadow: `0 0 24px ${GOLD} 0.15), inset 0 1px 0 ${GOLD} 0.25)`,
             }}
-            onClick={this.props.onClose}
+            onClick={this.props.onMatchComplete || this.props.onClose}
           >
             Continue
           </button>

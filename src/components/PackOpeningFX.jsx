@@ -152,7 +152,9 @@ function renderLightRays(ctx, w, h, elapsed) {
   const rayLen = Math.max(w, h) * 1.8;
 
   ctx.save();
-  ctx.filter = 'blur(28px)';
+  // Blur is applied via CSS filter on the <canvas> element (GPU-composited)
+  // rather than ctx.filter (CPU gaussian convolution per frame). CSS blur
+  // is free on the GPU compositor; ctx.filter murders perf on Linux/CEF.
   ctx.globalCompositeOperation = 'lighter';
 
   for (const ray of RAYS) {
@@ -184,17 +186,15 @@ function renderLightRays(ctx, w, h, elapsed) {
     ctx.closePath();
     ctx.fill();
 
-    // Smoke/dust motes along the ray — static noise blobs that pulse gently
+    // Smoke/dust motes along the ray
     const midAngle = angle;
     for (let m = 0; m < 5; m++) {
       const seed = ray.phase * 100 + m * 13.7;
-      // Fixed position along ray, seeded deterministically (no random per frame)
       const distFrac = 0.08 + ((seed * 7.31) % 1) * 0.5;
       const dist = rayLen * distFrac;
       const lateralFrac = (((seed * 3.17) % 1) - 0.5) * ray.width * dist * 0.5;
       const mx = cx + Math.sin(midAngle) * dist + Math.cos(midAngle) * lateralFrac;
       const my = cy - Math.cos(midAngle) * dist + Math.sin(midAngle) * lateralFrac;
-      // Very slow, gentle drift
       const driftX = Math.sin(elapsed * 0.15 + seed) * 3;
       const driftY = Math.cos(elapsed * 0.12 + seed * 0.7) * 2;
       const moteAlpha = alpha * (0.2 + 0.15 * Math.sin(elapsed * 0.3 + seed * 0.5));
@@ -209,7 +209,7 @@ function renderLightRays(ctx, w, h, elapsed) {
     ctx.globalAlpha = 1;
   }
 
-  // Warm pool of light at the base — large and bright
+  // Warm pool of light at the base
   const baseGrad = ctx.createRadialGradient(cx, h, 0, cx, h, w * 0.6);
   const baseAlpha = 0.14 + 0.05 * Math.sin(elapsed * 0.5);
   baseGrad.addColorStop(0, `rgba(255, 200, 80, ${baseAlpha})`);
@@ -346,7 +346,7 @@ export default function PackOpeningFX({ active }) {
   return (
     <canvas
       ref={canvasRef}
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1, filter: 'blur(20px)' }}
     />
   );
 }

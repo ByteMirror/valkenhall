@@ -334,15 +334,25 @@ async function handlePreferences(request) {
   async function readAll() {
     try {
       const raw = await readFile(PREFERENCES_PATH, 'utf8');
-      return JSON.parse(raw) || {};
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+      return {};
     } catch (err) {
-      if (err?.code === 'ENOENT') return {};
-      throw err;
+      // Missing file is normal (first launch). Corrupt JSON (e.g. null
+      // bytes from a truncated write) is treated the same — we start
+      // fresh instead of locking every consumer into a permanent 500.
+      return {};
     }
   }
   async function writeAll(data) {
     await mkdir(PERSISTENT_DATA_DIR, { recursive: true });
-    await writeFile(PREFERENCES_PATH, JSON.stringify(data), 'utf8');
+    // Atomic write: write to a temp file first, then rename over the
+    // target. rename() is atomic on POSIX and near-atomic on Windows,
+    // so a crash mid-write can't leave a half-written / null-filled
+    // preferences file (which is exactly what corrupted it before).
+    const tmp = PREFERENCES_PATH + '.tmp';
+    await writeFile(tmp, JSON.stringify(data), 'utf8');
+    await rename(tmp, PREFERENCES_PATH);
   }
 
   if (request.method === 'GET') {

@@ -167,7 +167,8 @@ export function createCardMesh(cardInstance) {
     transparent: true,
   });
 
-  const backTexture = getBackTexture(cardInstance.isSite);
+  // Tokens always use the spellbook back regardless of their type.
+  const backTexture = getBackTexture(cardInstance.isToken ? false : cardInstance.isSite);
   const backMat = backTexture
     ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
     : new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
@@ -183,6 +184,13 @@ export function createCardMesh(cardInstance) {
   if (cardInstance.rotated) baseZ += Math.PI;
   mesh.rotation.z = baseZ;
   mesh.position.set(cardInstance.x, 0.05 + CARD_THICKNESS / 2, cardInstance.z);
+
+  // Token cards render at 50% size so they're visually distinct from
+  // regular cards on the board. The scale is applied to the mesh, not
+  // the geometry, so physics, flip, and tap all still work normally.
+  if (cardInstance.isToken) {
+    mesh.scale.set(0.5, 0.5, 0.5);
+  }
 
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -210,20 +218,35 @@ export function createCardMesh(cardInstance) {
   return mesh;
 }
 
+function pileTopMaterial(pile, isSite, isCemetery) {
+  if (isCemetery) {
+    const topCard = pile.cards[pile.cards.length - 1];
+    const imageUrl = topCard ? resolveLocalImageUrl(topCard.imageUrl) : null;
+    if (imageUrl) {
+      return new THREE.MeshStandardMaterial({ map: loadTexture(imageUrl), transparent: true });
+    }
+  }
+  const backTexture = getBackTexture(isSite);
+  return backTexture
+    ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
+    : new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+}
+
 export function createPileMesh(pile) {
   const count = pile.cards.length;
   if (count === 0) return null;
 
   const isSite = pile.name === 'Atlas';
+  const isCemetery = pile.id?.startsWith('cemetery');
   const thickness = count * CARD_THICKNESS;
   const geometry = new THREE.BoxGeometry(CARD_WIDTH, CARD_HEIGHT, thickness);
   const edgeMat = new THREE.MeshStandardMaterial({ color: CARD_EDGE_COLOR });
-  const backTexture = getBackTexture(isSite);
-  const topMat = backTexture
-    ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
-    : new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
 
-  // +Z = top of pile (card back visible)
+  // Cemetery piles show the top card face-up so both players can see
+  // what's in the graveyard. All other piles show the card back.
+  const topMat = pileTopMaterial(pile, isSite, isCemetery);
+
+  // +Z = top of pile
   const materials = [edgeMat, edgeMat, edgeMat, edgeMat, topMat, edgeMat];
   const mesh = new THREE.Mesh(geometry, materials);
 
@@ -246,16 +269,14 @@ export function updatePileMesh(mesh, pile) {
   if (count === 0) return false;
 
   const isSite = pile.name === 'Atlas';
+  const isCemetery = pile.id?.startsWith('cemetery');
   const thickness = count * CARD_THICKNESS;
 
   mesh.geometry.dispose();
   mesh.geometry = new THREE.BoxGeometry(CARD_WIDTH, CARD_HEIGHT, thickness);
 
   const edgeMat = new THREE.MeshStandardMaterial({ color: CARD_EDGE_COLOR });
-  const backTexture = getBackTexture(isSite);
-  const topMat = backTexture
-    ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
-    : new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+  const topMat = pileTopMaterial(pile, isSite, isCemetery);
   if (Array.isArray(mesh.material)) {
     mesh.material.forEach((m) => m.dispose());
   }
@@ -487,11 +508,219 @@ export function updateLifeHUD(mesh, value, stat = 'hp') {
   mesh.material.needsUpdate = true;
 }
 
+// ── Status effect badges ─────────────────────────────────────────
+//
+// Small circular badges attached to the card mesh in the top-left
+// corner, stacking downward. Each badge shows a short abbreviation
+// for the keyword ability (Stealth → STL, Ward → WRD, etc.) on a
+// tinted background.
+
+export const STATUS_EFFECTS = [
+  { key: 'stealth',     label: 'Stealth',     abbr: 'STL', color: '#6366f1' },
+  { key: 'ward',        label: 'Ward',        abbr: 'WRD', color: '#06b6d4' },
+  { key: 'airborne',    label: 'Airborne',    abbr: 'AIR', color: '#a0badb' },
+  { key: 'charge',      label: 'Charge',      abbr: 'CHG', color: '#f59e0b' },
+  { key: 'lethal',      label: 'Lethal',      abbr: 'LTH', color: '#ef4444' },
+  { key: 'disabled',    label: 'Disabled',    abbr: 'DIS', color: '#525252' },
+  { key: 'immobile',    label: 'Immobile',    abbr: 'IMM', color: '#78716c' },
+  { key: 'burrowing',   label: 'Burrowing',   abbr: 'BUR', color: '#92400e' },
+  { key: 'submerge',    label: 'Submerge',    abbr: 'SUB', color: '#0891b2' },
+  { key: 'voidwalk',    label: 'Voidwalk',    abbr: 'VDW', color: '#7c3aed' },
+  { key: 'spellcaster', label: 'Spellcaster', abbr: 'SPC', color: '#c084fc' },
+  { key: 'deathrite',   label: 'Deathrite',   abbr: 'DTH', color: '#64748b' },
+  { key: 'landbound',   label: 'Landbound',   abbr: 'LND', color: '#a3a3a3' },
+  { key: 'waterbound',  label: 'Waterbound',  abbr: 'WTR', color: '#38bdf8' },
+  { key: 'flooded',     label: 'Flooded',     abbr: 'FLD', color: '#0284c7' },
+  { key: 'ranged',      label: 'Ranged',      abbr: 'RNG', color: '#fb923c' },
+];
+
+const STATUS_BADGE_SIZE = 1.0;     // world-unit diameter
+const STATUS_BADGE_GAP = 0.15;     // gap between stacked badges
+// High-res canvas so the abbreviation text renders crisp even when the
+// camera is close. 256 px for a 1-world-unit plane is ~23 px/unit on a
+// typical game-board zoom — the same density as the stat HUD canvases.
+const STATUS_BADGE_CANVAS = 256;
+
+function createStatusBadgeTexture(abbr, color) {
+  const s = STATUS_BADGE_CANVAS;
+  const canvas = document.createElement('canvas');
+  canvas.width = s;
+  canvas.height = s;
+  const ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, s, s);
+  const r = s / 2 - 6;
+  const cx = s / 2;
+  const cy = s / 2;
+
+  // ── Solid base with radial gradient for a 3D dome look ──
+  const baseGrad = ctx.createRadialGradient(
+    cx - r * 0.25, cy - r * 0.3, r * 0.1,
+    cx, cy, r,
+  );
+  baseGrad.addColorStop(0, '#3a3530');     // highlight center (top-left)
+  baseGrad.addColorStop(0.55, '#201c18');  // mid body
+  baseGrad.addColorStop(1, '#0e0c0a');     // dark rim
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = baseGrad;
+  ctx.fill();
+
+  // ── Color gradient overlay — concentrated at the top for a "lit" feel ──
+  const colorGrad = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+  colorGrad.addColorStop(0, color);
+  colorGrad.addColorStop(0.6, color);
+  colorGrad.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = colorGrad;
+  ctx.globalAlpha = 0.4;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // ── Top-edge specular highlight — "glass dome" sheen ──
+  const sheenGrad = ctx.createLinearGradient(cx, cy - r, cx, cy - r * 0.15);
+  sheenGrad.addColorStop(0, 'rgba(255,255,255,0.35)');
+  sheenGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - r * 0.45, r * 0.7, r * 0.4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = sheenGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Bottom shadow crescent — grounds the badge ──
+  const shadowGrad = ctx.createLinearGradient(cx, cy + r * 0.3, cx, cy + r);
+  shadowGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  shadowGrad.addColorStop(1, 'rgba(0,0,0,0.4)');
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r * 0.5, r * 0.8, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.fillStyle = shadowGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Gold rim with inner + outer ring for depth ──
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(140,110,50,0.9)';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  // Bright inner ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 2.5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(220,180,80,0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ── Abbreviation text ──
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(s * 0.30)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+  ctx.fillText(abbr, cx, cy + 2);
+  ctx.shadowColor = 'transparent';
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+export function createStatusBadgeMesh(statusKey) {
+  const def = STATUS_EFFECTS.find((e) => e.key === statusKey);
+  if (!def) return null;
+  const geo = new THREE.PlaneGeometry(STATUS_BADGE_SIZE, STATUS_BADGE_SIZE);
+  const mat = new THREE.MeshBasicMaterial({
+    map: createStatusBadgeTexture(def.abbr, def.color),
+    transparent: true,
+    alphaTest: 0.01,
+    depthTest: true,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = { type: 'statusBadge', statusKey };
+  return mesh;
+}
+
+// Rebuild all status badge meshes for a card. Returns an array of the
+// new meshes (caller adds them to the card mesh and tracks them).
+// `isSite` flips the layout: site cards are rotated -90° around Z, so
+// badges are positioned at what becomes the visual top-left of the
+// horizontal card after rotation — local bottom-left, stacking in +X
+// (which maps to visual downward after the rotation).
+export function buildStatusBadges(activeStatuses, isSite = false) {
+  const badges = [];
+  const pad = STAT_PAD + 0.1;
+  const step = STATUS_BADGE_SIZE + STATUS_BADGE_GAP;
+
+  let i = 0;
+  for (const key of activeStatuses) {
+    const mesh = createStatusBadgeMesh(key);
+    if (!mesh) continue;
+    if (isSite) {
+      // Bottom-left of portrait card → visual top-left of horizontal site.
+      // Counter-rotate +90° around Z so the badge text reads upright on
+      // the horizontal card (the card itself is rotated -90°).
+      mesh.position.set(
+        -CARD_WIDTH / 2 + STATUS_BADGE_SIZE / 2 + pad + i * step,
+        -CARD_HEIGHT / 2 + STATUS_BADGE_SIZE / 2 + pad,
+        STAT_Z,
+      );
+      mesh.rotation.z = Math.PI / 2;
+    } else {
+      // Top-left of portrait card, stacking downward
+      mesh.position.set(
+        -CARD_WIDTH / 2 + STATUS_BADGE_SIZE / 2 + pad,
+        CARD_HEIGHT / 2 - STATUS_BADGE_SIZE / 2 - pad - i * step,
+        STAT_Z,
+      );
+    }
+    badges.push(mesh);
+    i++;
+  }
+  return badges;
+}
+
 export function disposeTextureCache() {
   for (const tex of textureCache.values()) tex.dispose();
   textureCache.clear();
   spellbookBackTexture = null;
   atlasBackTexture = null;
+}
+
+/**
+ * Create a face-down card mesh for the opponent's visible hand on the
+ * table. Shows only the card back (spellbook or atlas) — the card never
+ * reveals its face, it's purely a "how many cards does the opponent hold"
+ * indicator. Not interactive and has no physics body.
+ */
+export function createHandBackMesh(isSite) {
+  const geometry = createCardBoxGeometry(CARD_WIDTH, CARD_HEIGHT);
+  const edgeMat = new THREE.MeshStandardMaterial({ color: CARD_EDGE_COLOR });
+  const backTexture = getBackTexture(isSite);
+  const faceMat = backTexture
+    ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
+    : new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+
+  // +Z = top face (visible when laid flat). Both top and bottom show the
+  // card back so the mesh reads correctly from any camera angle.
+  const materials = [edgeMat, edgeMat, edgeMat, edgeMat, faceMat, faceMat];
+  const mesh = new THREE.Mesh(geometry, materials);
+
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = { type: 'opponentHand' };
+
+  return mesh;
 }
 
 export { CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, TOKEN_RADIUS, TOKEN_HEIGHT, TOKEN_REST_Y, TOKEN_DRAG_Y };

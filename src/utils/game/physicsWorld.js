@@ -38,6 +38,20 @@ export function createPhysicsWorld() {
   world.defaultContactMaterial.friction = 0.7;
   world.defaultContactMaterial.restitution = 0.02;
 
+  // Card-on-card contact material with extra-high friction and zero
+  // bounce. Prevents stacked cards from micro-sliding on each other
+  // indefinitely — the main cause of the "board full of cards never
+  // stops clicking" problem.
+  const cardMaterial = new CANNON.Material('card');
+  const cardContact = new CANNON.ContactMaterial(cardMaterial, cardMaterial, {
+    friction: 1.0,
+    restitution: 0,
+    contactEquationRelaxation: 3,
+    frictionEquationStiffness: 1e8,
+  });
+  world.addContactMaterial(cardContact);
+  world._cardMaterial = cardMaterial;
+
   // Static ground plane representing the table surface. Oriented so its
   // normal points up (+Y). Cards collide against it instead of phasing
   // through to gravity hell.
@@ -86,13 +100,17 @@ export function addCardBody(world, mesh, { width, height, thickness }) {
   const shape = new CANNON.Box(halfExtents);
   const body = new CANNON.Body({
     mass: 0.1,
+    material: world._cardMaterial,
     allowSleep: true,
-    sleepSpeedLimit: 0.18,
-    sleepTimeLimit: 0.35,
-    linearDamping: 0.5,
-    // Heavy angular damping so cards pivot a small amount on uneven
-    // stacks then settle quickly instead of wobbling.
-    angularDamping: 0.85,
+    // Tight sleep thresholds — cards must settle quickly. The old values
+    // (0.18 / 0.35) let stacked cards micro-oscillate forever because
+    // contact jitter kept them hovering just above the threshold.
+    sleepSpeedLimit: 0.05,
+    sleepTimeLimit: 0.15,
+    // Heavy damping bleeds velocity fast so cards reach sleep threshold
+    // within a fraction of a second instead of drifting endlessly.
+    linearDamping: 0.92,
+    angularDamping: 0.96,
   });
   body.addShape(shape);
   body.position.set(mesh.position.x, mesh.position.y, mesh.position.z);

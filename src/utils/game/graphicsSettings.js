@@ -13,6 +13,7 @@ export const RESOLUTION_PRESETS = {
 
 const defaults = {
   resolution: 'high',
+  brightness: 1.0,
 };
 
 let cached = null;
@@ -52,4 +53,23 @@ export function getEffectivePixelRatio() {
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   const baseline = Math.min(dpr, 1.5);
   return baseline * preset.factor;
+}
+
+// Apply the brightness setting as a CSS filter on <html>. Using the root
+// element means the filter covers BOTH the Three.js canvas AND the 2D
+// Preact UI uniformly. On the root element, CSS spec guarantees that
+// `position: fixed` descendants still reference the viewport (unlike
+// any other element, where `filter` creates a new containing block).
+// This is the standard approach for game brightness sliders in web/CEF
+// environments — the GPU compositor handles it with zero CPU cost.
+export function applyBrightness() {
+  if (typeof document === 'undefined') return;
+  const brightness = getGraphicsSettings().brightness ?? 1.0;
+  // At exactly 1.0, remove the filter entirely so there's no compositor
+  // overhead for the default/unmodified case.
+  if (brightness === 1.0) {
+    document.documentElement.style.filter = '';
+  } else {
+    document.documentElement.style.filter = `brightness(${brightness})`;
+  }
 }

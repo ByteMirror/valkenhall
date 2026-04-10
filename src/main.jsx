@@ -3,8 +3,15 @@ import App from './app.jsx'
 import './index.css'
 import './print.css'
 import { applyThemePreference, getStoredThemePreference } from './utils/themePreference'
+import { applyBrightness, onGraphicsChange } from './utils/game/graphicsSettings'
 
 applyThemePreference(getStoredThemePreference())
+
+// Apply the saved brightness on startup, and re-apply whenever the user
+// adjusts the slider in Settings. The CSS filter on <html> covers the
+// entire viewport — 3D canvas and 2D UI alike.
+applyBrightness();
+onGraphicsChange(() => applyBrightness());
 
 // Overlay scrollbar: show thumb only while scrolling
 ;(() => {

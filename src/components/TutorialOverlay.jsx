@@ -212,8 +212,11 @@ export default class TutorialOverlay extends Component {
 
     // Zoomed visual size of the modal so clamping uses the actual
     // on-screen dimensions, not the pre-zoom ones.
-    const modalWidthUnzoomed = 400;
-    const modalHeightUnzoomed = 240;
+    // Steps can override width/height for content that needs more room
+    // (e.g. the keyboard shortcuts grid). Defaults sized for a short
+    // paragraph + two buttons.
+    const modalWidthUnzoomed = step.width || 400;
+    const modalHeightUnzoomed = step.height || 240;
     const modalWidthScreen = modalWidthUnzoomed * scale;
     const modalHeightScreen = modalHeightUnzoomed * scale;
     // Same for the arrow — it's rendered in a zoomed wrapper so its
@@ -443,9 +446,9 @@ export default class TutorialOverlay extends Component {
           </h2>
 
           {/* Body */}
-          <p className="text-[12.5px] leading-snug mb-4" style={{ color: TEXT_BODY }}>
+          <div className="text-[12.5px] leading-snug mb-4" style={{ color: TEXT_BODY }}>
             {step.body}
-          </p>
+          </div>
 
           {/* Progress dots */}
           <div className="flex items-center gap-1.5 mb-4" aria-hidden="true">

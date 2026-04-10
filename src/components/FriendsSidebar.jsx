@@ -146,6 +146,16 @@ export default class FriendsSidebar extends Component {
     const totalFriends = friends.length;
     const pendingCount = pendingRequests.length;
 
+    // Cross-reference search results with the live friends list so that
+    // a player whose request was just accepted shows "Friends" instead of
+    // the stale "Pending" badge. searchResults is local component state
+    // and doesn't re-fetch when the friend list updates — this render-
+    // time enrichment bridges the gap without a redundant server call.
+    const friendIds = new Set(friends.map((f) => f.id));
+    const enrichedSearchResults = (searchResults || []).map((r) =>
+      friendIds.has(r.id) ? { ...r, isFriend: true } : r,
+    );
+
     return (
       <div className="fixed inset-0 z-[70]" style={{ zoom: this.state.viewScale }} onClick={onClose}>
         <div
@@ -254,19 +264,19 @@ export default class FriendsSidebar extends Component {
                   />
                 </div>
 
-                {searchResults ? (
+                {enrichedSearchResults.length > 0 || searchResults ? (
                   <div className="flex flex-col gap-1.5">
                     {searchLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <RuneSpinner size={40} />
                       </div>
-                    ) : searchResults.length === 0 ? (
+                    ) : enrichedSearchResults.length === 0 ? (
                       <div className="text-center py-8">
                         <div className="text-sm" style={{ color: TEXT_MUTED }}>No players found</div>
                         <div className="text-xs mt-1" style={{ color: `${GOLD} 0.2)` }}>Try a different username</div>
                       </div>
                     ) : (
-                      searchResults.map((r) => {
+                      enrichedSearchResults.map((r) => {
                         const avatarUrl = resolveAvatarUrl(r, sorceryCards);
                         return (
                         <div key={r.id} className="relative flex items-center gap-3 px-3 py-2.5 transition-colors" style={{ background: `${GOLD} 0.03)`, border: `1px solid ${GOLD} 0.08)`, borderRadius: '8px' }}

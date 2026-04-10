@@ -1,7 +1,7 @@
 import { Component, createRef } from 'preact';
 import { toast } from 'sonner';
 import { createTableScene } from '../utils/game/tableScene';
-import { createCardMesh, createPileMesh, updatePileMesh, setCardBackUrls, disposeTextureCache, CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, createTokenMesh, createTokenButtonMesh, TOKEN_REST_Y, TOKEN_DRAG_Y, createLifeHUD, updateLifeHUD } from '../utils/game/cardMesh';
+import { createCardMesh, createPileMesh, updatePileMesh, setCardBackUrls, disposeTextureCache, CARD_WIDTH, CARD_HEIGHT, CARD_THICKNESS, createTokenMesh, createTokenButtonMesh, createHandBackMesh, TOKEN_REST_Y, TOKEN_DRAG_Y, createLifeHUD, updateLifeHUD, STATUS_EFFECTS, buildStatusBadges } from '../utils/game/cardMesh';
 import { createGameState, createTrackerState, spawnDeck, drawFromPile, shufflePile, createTokenInstance, createDiceInstance } from '../utils/game/gameState';
 import { createDiceMesh, animateDiceRoll, setDieFaceUp, DICE_REST_Y, DICE_DRAG_Y, DICE_CONFIGS } from '../utils/game/diceMesh';
 import { loadSpawnConfig, getSpawnPoint, SPAWN_LABELS, SPAWN_COLORS, getTrackerPositions, setTrackerPosition, isTrackerConfigured, getTrackerTokenPosition } from '../utils/game/spawnConfig';
@@ -22,8 +22,6 @@ import {
   moveKinematicBody,
   setBodyRemoteControlled,
   applyRemotePoseAndRest,
-  addLockConstraint,
-  removeConstraint,
 } from '../utils/game/physicsWorld';
 import { CardOwnership, REMOTE_RENDER_DELAY_MS } from '../utils/game/cardOwnership';
 import { perf } from '../utils/perfMonitor';
@@ -46,11 +44,118 @@ import * as THREE from 'three';
 import ArenaMatchResult from './ArenaMatchResult';
 import { isFoilFinish, FOIL_OVERLAY_CLASSES } from '../utils/sorcery/foil.js';
 import PileSearchDialog from './gameBoard/PileSearchDialog';
+import DeckSpawnDialog from './gameBoard/DeckSpawnDialog';
 import GameContextMenu from './gameBoard/GameContextMenu';
+import StatusRingMenu from './gameBoard/StatusRingMenu';
 import TutorialOverlay from './TutorialOverlay';
 import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
 
 const BOARD_TUTORIAL_KEY = 'game-board';
+
+// Medieval-styled keyboard shortcut indicator — stone keycap with gold
+// lettering, embossed shadow to mimic a carved rune. Used in the
+// tutorial's shortcuts step.
+const KBD_STYLE = {
+  display: 'inline-block',
+  padding: '1px 6px',
+  background: `linear-gradient(180deg, rgba(40,34,24,0.9) 0%, rgba(20,17,12,0.95) 100%)`,
+  border: `1px solid rgba(180,140,60,0.35)`,
+  borderRadius: '4px',
+  fontSize: '10px',
+  fontFamily: 'ui-monospace, "SF Mono", "Cascadia Mono", monospace',
+  fontWeight: 700,
+  color: '#d4a843',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+  minWidth: '20px',
+  textAlign: 'center',
+  lineHeight: '18px',
+  letterSpacing: '0.5px',
+};
+
+function Kbd({ children }) {
+  return <span style={KBD_STYLE}>{children}</span>;
+}
+
+const SHORTCUT_SECTIONS = [
+  {
+    label: 'Cards',
+    items: [
+      { keys: ['F'], desc: 'Flip face-down / face-up' },
+      { keys: ['T'], desc: 'Tap / untap' },
+      { keys: ['Space'], desc: 'Inspect in full size' },
+      { keys: ['G'], desc: 'Group / ungroup selection' },
+      { keys: ['2×Click'], desc: 'Quick tap / untap' },
+    ],
+  },
+  {
+    label: 'Camera',
+    items: [
+      { keys: ['W', 'A', 'S', 'D'], desc: 'Pan the view' },
+      { keys: ['Shift', '1'], desc: 'Zoom to overview' },
+      { keys: ['Shift', '2'], desc: 'Zoom to hovered card' },
+      { keys: ['Shift', '3'], desc: 'Flip perspective (P1/P2)' },
+    ],
+  },
+  {
+    label: 'Piles',
+    items: [
+      { keys: ['X'], desc: 'Search Spellbook' },
+      { keys: ['Z'], desc: 'Search Atlas' },
+      { keys: ['C'], desc: 'Search Cemetery' },
+      { keys: ['V'], desc: 'Search Collection' },
+      { keys: ['R'], desc: 'Shuffle hovered pile' },
+      { keys: ['1–9'], desc: 'Draw N from hovered pile' },
+    ],
+  },
+  {
+    label: 'Game',
+    items: [
+      { keys: ['Tab'], desc: 'Pass the turn' },
+      { keys: ['↑', '↓'], desc: 'Adjust life total' },
+      { keys: ['←', '→'], desc: 'Adjust mana' },
+      { keys: ['?'], desc: 'Show this help screen' },
+    ],
+  },
+];
+
+function ShortcutList() {
+  const sectionStyle = {
+    color: 'rgba(180,140,60,0.5)',
+    textShadow: '0 0 8px rgba(180,140,60,0.1)',
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="text-xs" style={{ color: '#A6A09B' }}>
+        These work on the hovered card or marquee selection:
+      </div>
+      <div className="grid gap-x-6 gap-y-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        {SHORTCUT_SECTIONS.map((section) => (
+          <div key={section.label}>
+            <div className="text-[9px] font-semibold uppercase tracking-widest mb-1.5" style={sectionStyle}>
+              {section.label}
+            </div>
+            <div className="flex flex-col gap-1">
+              {section.items.map((item) => (
+                <div key={item.desc} className="flex items-center gap-2">
+                  <span className="shrink-0 flex items-center gap-0.5">
+                    {item.keys.map((k, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className="text-[9px] mx-0.5" style={{ color: 'rgba(166,160,155,0.3)' }}>+</span>}
+                        <Kbd>{k}</Kbd>
+                      </span>
+                    ))}
+                  </span>
+                  <span className="text-[11px]" style={{ color: '#A6A09B' }}>{item.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // Ordered onboarding for the game board. Steps that point at DOM
 // overlays use a selector; in-canvas explanatory steps centre their
@@ -70,7 +175,7 @@ const BOARD_TUTORIAL_STEPS = [
   {
     key: 'piles',
     title: 'Spellbook, Atlas, Cemetery',
-    body: 'Your decks live on the sides of the table as physical piles. Double-click a pile to draw from it, or right-click for draw / shuffle / search options. Cards you send to the cemetery stack there automatically.',
+    body: 'Your decks live on the sides of the table as physical piles. Click a pile to draw from it, or right-click for shuffle / search options. Cards you send to the cemetery stack there automatically.',
   },
   {
     key: 'trackers',
@@ -86,7 +191,8 @@ const BOARD_TUTORIAL_STEPS = [
   {
     key: 'shortcuts',
     title: 'Keyboard Shortcuts',
-    body: 'Keep these in your back pocket — they all work on the currently-hovered card OR the whole marquee selection:\n\n• F — flip card(s) face-down / face-up\n• T — tap / untap card(s)\n• G — group / ungroup the current selection (grouped cards move as one rigid unit)\n• Space — inspect a card in full size\n• Double-click — tap / untap quickly\n• Tab — pass the turn cosmetically',
+    body: <ShortcutList />,
+    width: 560,
   },
   {
     key: 'menu',
@@ -133,6 +239,7 @@ export default class GameBoard extends Component {
     this.pileMeshes = new Map();
     this.dragging = null;
     this.hoveredMesh = null;
+    this.opponentHoveredCardId = null;
     this.lastMouseEvent = null;
     this.sync = new GameSyncBridge();
     // Table-card multi-selection + grouping.
@@ -147,12 +254,11 @@ export default class GameBoard extends Component {
     //                    dragging a selection box on the empty board.
     this.selectedCardIds = new Set();
     this.groups = new Map();
-    // Physics constraints that keep a group's cards rigidly locked
-    // together. One entry per groupId → array of CANNON.LockConstraint
-    // instances. Rebuilt whenever assignGroup / dissolveGroup changes
-    // membership so the constraint topology always matches the groups
-    // Map.
-    this.groupConstraints = new Map();
+    // Timestamp per groupId marking when the group was created. The
+    // per-frame freeze guard in tickPhysicsSync skips groups that are
+    // still within the settling grace period so gravity can pull them
+    // onto the table before they get frozen.
+    this.groupSettleTimes = new Map();
     this.marquee = null;
     this.marqueeOverlayRef = createRef();
     // The "hug rect" is the persistent rounded outline that wraps
@@ -170,11 +276,16 @@ export default class GameBoard extends Component {
     this.spawnMarkers = new Map();
     this.tokenMeshes = new Map();
     this.lifeHUDs = new Map(); // cardId -> { sprite, plusMesh, minusMesh }
+    this.statusHUDs = new Map(); // cardId -> [badge meshes]
     this.diceMeshes = new Map();
     this.trackerPreviewMarkers = [];
     this.trackerCursorPreview = null;
     this.trackerTokenMeshes = new Map();
     this.trackerButtonMeshes = new Map();
+    // 3D face-down cards on the table representing the opponent's hand.
+    // Purely visual — not interactive, no physics. Updated whenever the
+    // `opponentHand` state changes via the `hand:info` sync message.
+    this.opponentHandMeshes = [];
     this.handRetractTimer = null;
     this.autoSaveTimer = null;
     this._socketListenersActive = false;
@@ -189,6 +300,7 @@ export default class GameBoard extends Component {
       activeSpawnKey: null,
       spawnConfig: {},
       contextMenu: null,
+      ringMenu: null,
       handCards: [],
       inspectedCard: null,
       opponentHand: [],
@@ -208,6 +320,7 @@ export default class GameBoard extends Component {
       handRetracted: true,
       searchPile: null,
       searchQuery: '',
+      showShortcutHelp: false,
       trackerEditing: null,
       showDiceMenu: false,
       currentTurn: 'p1',
@@ -345,9 +458,23 @@ export default class GameBoard extends Component {
           requestStateSync();
         }
       }
+      // Determine whether this session should auto-draw opening hands.
+      // Only for fresh competitive or friend matches — not solo/offline,
+      // not reconnections (resumed), not loaded saved sessions.
+      const isOnlineMatch = (this.props.isArenaMatch && roomInfo && !roomInfo.resumed)
+        || (this.props.arenaSelectedDeckId && this.state.connectionStatus !== 'offline');
+
       // Give textures a moment to upload to GPU
       setTimeout(() => {
         this.setState({ isLoading: false });
+
+        // 1 second after the board appears, auto-draw the opening hand:
+        // 3 cards from Atlas (sites) + 3 from Spellbook (spells/minions).
+        if (isOnlineMatch) {
+          setTimeout(() => {
+            if (!this._unmounted) this.performOpeningDraw();
+          }, 1000);
+        }
       }, 500);
     });
     this.autoSaveTimer = setInterval(() => this.autoSave(), 60000);
@@ -395,6 +522,12 @@ export default class GameBoard extends Component {
     }
     this.trackerButtonMeshes.clear();
     this.trackerPreviewMarkers = [];
+    for (const mesh of this.opponentHandMeshes) {
+      mesh.geometry?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => m?.dispose());
+    }
+    this.opponentHandMeshes = [];
     disposeTextureCache();
     this.scene?.dispose();
     this.scene = null;
@@ -479,6 +612,24 @@ export default class GameBoard extends Component {
 
       // Local or free — let local physics own the body
       syncMeshFromBody(mesh);
+
+      // Grouped cards use STATIC bodies once settled (TTS-style).
+      // During the 2s settling window after grouping, bodies stay
+      // DYNAMIC so gravity pulls them onto the table. Once the window
+      // closes, we freeze the group to STATIC so they can't move.
+      const cardGroupId = mesh.userData?.cardInstance?.groupId;
+      if (cardGroupId && body.type === CANNON.Body.DYNAMIC) {
+        const isDraggingGroup = this.dragging
+          && this.dragging.draggingIds?.has(cardId);
+        if (!isDraggingGroup) {
+          const settleStart = this.groupSettleTimes.get(cardGroupId) || 0;
+          if (now - settleStart > 2000) {
+            this.freezeGroup(cardGroupId);
+            this.groupSettleTimes.delete(cardGroupId);
+            continue;
+          }
+        }
+      }
 
       // Auto-claim cascade: a free body can only have woken from a
       // local action because remote-controlled bodies don't collide.
@@ -569,12 +720,22 @@ export default class GameBoard extends Component {
     const tag = event.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return;
 
+    // ? — toggle the keyboard shortcuts help overlay.
+    if (event.key === '?') {
+      this.setState((s) => ({ showShortcutHelp: !s.showShortcutHelp }));
+      return;
+    }
+
     if (event.key === 'Tab') {
       event.preventDefault();
       this.passTurn();
       return;
     }
     if (event.key === 'Escape') {
+      if (this.state.showShortcutHelp) {
+        this.setState({ showShortcutHelp: false });
+        return;
+      }
       if (this.state.showExitConfirm) {
         this.setState({ showExitConfirm: false });
       } else {
@@ -587,19 +748,29 @@ export default class GameBoard extends Component {
       event.preventDefault();
       if (this.state.inspectedCard) {
         this.setState({ inspectedCard: null });
+        // Clear the inspect highlight on the opponent's board
+        this.sync.hoverCard(this.hoveredMesh?.userData?.cardInstance?.id || null);
         return;
       }
 
       // Check table cards
       if (this.hoveredMesh?.userData?.type === 'card') {
-        this.setState({ inspectedCard: this.hoveredMesh.userData.cardInstance });
+        const card = this.hoveredMesh.userData.cardInstance;
+        this.setState({ inspectedCard: card });
+        // Broadcast that we're inspecting this card — the opponent
+        // sees the same highlight as a hover but it persists while
+        // the inspector is open.
+        this.sync.hoverCard(card.id);
         return;
       }
 
-      // Check hand cards
+      // Check hand cards (hand cards don't have table meshes, so no
+      // highlight to show on the opponent's board — but we still
+      // clear any stale table hover).
       const { hoveredHandIndex, handCards } = this.state;
       if (hoveredHandIndex >= 0 && handCards[hoveredHandIndex]) {
         this.setState({ inspectedCard: handCards[hoveredHandIndex] });
+        this.sync.hoverCard(null);
         return;
       }
       return;
@@ -619,7 +790,7 @@ export default class GameBoard extends Component {
         const meshes = [];
         for (const id of this.selectedCardIds) {
           const mesh = this.meshes.get(id);
-          if (mesh?.userData?.type === 'card') meshes.push(mesh);
+          if (mesh?.userData?.type === 'card' && this.isOwnedCard(mesh.userData.cardInstance)) meshes.push(mesh);
         }
         if (meshes.length === 0) return;
         const targetFaceDown = !meshes.some((m) => m.userData.cardInstance.faceDown);
@@ -635,6 +806,7 @@ export default class GameBoard extends Component {
       }
       if (this.hoveredMesh?.userData?.type === 'card') {
         const card = this.hoveredMesh.userData.cardInstance;
+        if (!this.isOwnedCard(card)) return;
         card.faceDown = !card.faceDown;
         animateCardFlip(this.hoveredMesh, card);
         playSound('cardFlip');
@@ -650,7 +822,7 @@ export default class GameBoard extends Component {
         const meshes = [];
         for (const id of this.selectedCardIds) {
           const mesh = this.meshes.get(id);
-          if (mesh?.userData?.type === 'card' && !mesh.userData.cardInstance.isSite) {
+          if (mesh?.userData?.type === 'card' && !mesh.userData.cardInstance.isSite && this.isOwnedCard(mesh.userData.cardInstance)) {
             meshes.push(mesh);
           }
         }
@@ -668,7 +840,7 @@ export default class GameBoard extends Component {
       }
       if (this.hoveredMesh?.userData?.type === 'card') {
         const card = this.hoveredMesh.userData.cardInstance;
-        if (card.isSite) return;
+        if (card.isSite || !this.isOwnedCard(card)) return;
         card.tapped = !card.tapped;
         animateCardTap(this.hoveredMesh, card);
         playSound('cardPlace');
@@ -677,18 +849,31 @@ export default class GameBoard extends Component {
       return;
     }
 
-    if (event.key === '!' && event.shiftKey) {
+    // Backspace while hovering a card sends it to the local player's
+    // cemetery — a quick alternative to right-click → Send to Cemetery.
+    if (event.key === 'Backspace' && this.hoveredMesh?.userData?.type === 'card') {
+      const card = this.hoveredMesh.userData.cardInstance;
+      if (!this.isOwnedCard(card)) return;
+      this.sendCardToPile(card, 'Cemetery');
+      return;
+    }
+
+    // Shift+1/2/3 camera controls. Using event.code (physical key
+    // position) instead of event.key (produced character) so these work
+    // on non-US layouts like QWERTZ, AZERTY, and Nordic — on those
+    // keyboards Shift+1/2/3 produce different characters than !/@/#.
+    if (event.shiftKey && event.code === 'Digit1') {
       this.scene?.zoomToOverview();
       return;
     }
 
-    if (event.key === '@' && event.shiftKey && this.hoveredMesh) {
+    if (event.shiftKey && event.code === 'Digit2' && this.hoveredMesh) {
       const pos = this.hoveredMesh.position;
       this.scene?.zoomToCard(pos.x, pos.z);
       return;
     }
 
-    if (event.key === '#' && event.shiftKey) {
+    if (event.shiftKey && event.code === 'Digit3') {
       this.scene?.flipPerspective();
       return;
     }
@@ -719,6 +904,19 @@ export default class GameBoard extends Component {
         this.incrementTracker(localPlayer, trackerKey);
       } else {
         this.decrementTracker(localPlayer, trackerKey);
+      }
+      event.preventDefault();
+      return;
+    }
+
+    // Token browser — B opens a virtual pile of all token cards that can
+    // be spawned an unlimited number of times. Each click/right-click
+    // creates a brand-new instance so the token never "runs out".
+    if (event.key === 'b' || event.key === 'B') {
+      if (this.state.searchPile && this.state.searchPile.id === 'token-pile') {
+        this.handlePileSearchClose();
+      } else {
+        this.openPileSearch(this.buildTokenPile());
       }
       event.preventDefault();
       return;
@@ -899,9 +1097,21 @@ export default class GameBoard extends Component {
     });
 
     onPlayerLeft(() => {
-      disconnectSocket();
-      toast.error('Opponent disconnected — session ended');
-      this.props.onExit();
+      // Opponent left or disconnected — award the win to the remaining
+      // player. Open the match result dialog and auto-claim the reward
+      // so the player sees their earnings before returning to the hub.
+      if (this.props.isRankedMatch) {
+        toast('Opponent left — you win!');
+        this.setState({ showMatchResult: true }, () => {
+          if (this.matchResultRef) {
+            this.matchResultRef.applyRewards(true, { silent: true });
+          }
+        });
+      } else {
+        disconnectSocket();
+        toast.error('Opponent disconnected — session ended');
+        this.props.onExit();
+      }
     });
 
     onStateSyncRequest(() => {
@@ -917,7 +1127,9 @@ export default class GameBoard extends Component {
       // Preserve our own hand, don't overwrite with remote data
       const myHand = this.state.handCards;
       this.restoreSession(state);
-      this.setState({ handCards: myHand, opponentHand: state.opponentHandInfo || [] });
+      this.setState({ handCards: myHand, opponentHand: state.opponentHandInfo || [] }, () => {
+        this.updateOpponentHandMeshes();
+      });
     });
 
     // Listen for remote game actions — broadcast=false to prevent re-emit loops
@@ -974,8 +1186,6 @@ export default class GameBoard extends Component {
       // Opponent's card has settled. Apply the authoritative final pose,
       // return the body to dynamic + colliding, sleep it, and mark the
       // card free so either side can wake it again on next interaction.
-      // Plays the place sound timed with the visual settle, so cascading
-      // releases naturally produce a mini-avalanche of place sounds.
       'card:release': (data) => {
         perf.count('sync.release.recv');
         const mesh = this.meshes.get(data.cardId);
@@ -985,9 +1195,13 @@ export default class GameBoard extends Component {
         if (Array.isArray(data?.pos) && Array.isArray(data?.quat)) {
           applyRemotePoseAndRest(body, data.pos, data.quat);
         }
+        // Only play sound if the card was recently claimed (< 2s ago).
+        // Physics micro-settles on stacked cards cause rapid claim→
+        // release cycles that fill the board with constant clicking.
+        const claimAge = performance.now() - (this.ownership.claimTime(data.cardId) || 0);
+        if (claimAge < 2000) playSound('cardPlace');
         this.ownership.setFree(data.cardId);
         syncMeshFromBody(mesh);
-        playSound('cardPlace');
       },
       'card:tap': (data) => {
         const mesh = this.meshes.get(data.cardId);
@@ -1022,6 +1236,7 @@ export default class GameBoard extends Component {
           this.meshes.delete(data.cardId);
         }
         this.lifeHUDs.delete(data.cardId);
+        this.statusHUDs.delete(data.cardId);
         this.selectedCardIds.delete(data.cardId);
       },
       // Full-pile sync: authoritative update for a single pile.
@@ -1127,6 +1342,49 @@ export default class GameBoard extends Component {
           if (hud) updateLifeHUD(hud.hpSprite, card.currentLife, 'hp');
         }
       },
+      'card:status': (data) => {
+        const mesh = this.meshes.get(data.cardId);
+        if (!mesh) return;
+        const card = mesh.userData.cardInstance;
+        if (!card.statuses) card.statuses = [];
+        if (data.active) {
+          if (!card.statuses.includes(data.statusKey)) card.statuses.push(data.statusKey);
+        } else {
+          card.statuses = card.statuses.filter((s) => s !== data.statusKey);
+        }
+        this.rebuildStatusBadges(data.cardId);
+      },
+      // Opponent hover highlight — when the other player hovers or
+      // inspects a card, we tint its emissive so it's visible on our
+      // board. Uses a distinct blue tone to differentiate from local
+      // hover (gray 0x222222) and selection (gold 0x5a3f0a).
+      'card:hover': (data) => {
+        const OPPONENT_HOVER_COLOR = 0x0f2a55;
+
+        // Clear previous opponent highlight
+        if (this.opponentHoveredCardId) {
+          const prevMesh = this.meshes.get(this.opponentHoveredCardId);
+          if (prevMesh) {
+            const mats = Array.isArray(prevMesh.material) ? prevMesh.material : [prevMesh.material];
+            const isSelected = this.selectedCardIds.has(this.opponentHoveredCardId);
+            const isLocalHover = this.hoveredMesh?.userData?.cardInstance?.id === this.opponentHoveredCardId;
+            const restoreHex = isSelected ? 0x5a3f0a : isLocalHover ? 0x222222 : 0x000000;
+            for (const m of mats) { if (m.emissive) m.emissive.setHex(restoreHex); }
+          }
+        }
+
+        this.opponentHoveredCardId = data.cardId || null;
+
+        // Apply new opponent highlight
+        if (this.opponentHoveredCardId) {
+          const mesh = this.meshes.get(this.opponentHoveredCardId);
+          if (mesh) {
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (const m of mats) { if (m.emissive) m.emissive.setHex(OPPONENT_HOVER_COLOR); }
+          }
+        }
+      },
+
       // Tracker sync: life, mana, elemental thresholds.
       'tracker:set': (data) => {
         if (!data?.player || !data?.key) return;
@@ -1137,7 +1395,9 @@ export default class GameBoard extends Component {
         this.forceUpdate();
       },
       'hand:info': (data) => {
-        this.setState({ opponentHand: data.cards || [] });
+        this.setState({ opponentHand: data.cards || [] }, () => {
+          this.updateOpponentHandMeshes();
+        });
       },
       'deck:spawn': (data) => {
         if (data.deck) {
@@ -1409,6 +1669,11 @@ export default class GameBoard extends Component {
     return !!pile?.rotated === !this.state.isHost;
   }
 
+  isOwnedCard(cardInstance) {
+    if (this.state.connectionStatus === 'offline') return true;
+    return !!cardInstance?.rotated === !this.state.isHost;
+  }
+
   // --- 3D Interaction ---
 
   getInteractableMeshes() {
@@ -1613,47 +1878,48 @@ export default class GameBoard extends Component {
   }
 
   /**
-   * Chain N-1 LockConstraints between consecutive group members. The
-   * chain is enough to make every pair rigidly connected (transitive
-   * via the intermediate bodies), and it's cheaper than the full
-   * N*(N-1)/2 pairwise version without changing the user-visible
-   * behaviour: the solver propagates corrections through the chain
-   * every step.
+   * Freeze all member bodies in a group by making them STATIC.
+   * Static bodies are immovable (no gravity, no solver jitter) but
+   * other dynamic bodies still collide with them, so a stack sitting
+   * on the table blocks anything dropped on top.
    *
-   * The constraints are created at the members' CURRENT relative pose,
-   * so whatever layout the user grouped them in — stacked, side by
-   * side, fanned out — becomes the rigid shape for the rest of the
-   * group's life.
+   * Inspired by how Tabletop Simulator handles grouped cards: instead
+   * of N bodies with fragile constraints, the group is treated as one
+   * immovable object until the user explicitly picks it up.
    */
-  createGroupConstraints(groupId, cardIds) {
-    if (!this.physicsWorld) return;
-    const ids = [...cardIds];
-    if (ids.length < 2) return;
-    const constraints = [];
-    for (let i = 0; i < ids.length - 1; i++) {
-      const bodyA = this.meshes.get(ids[i])?.userData?.body;
-      const bodyB = this.meshes.get(ids[i + 1])?.userData?.body;
-      if (!bodyA || !bodyB) continue;
-      const c = addLockConstraint(this.physicsWorld, bodyA, bodyB);
-      if (c) constraints.push(c);
+  freezeGroup(groupId) {
+    const members = this.groups.get(groupId);
+    if (!members) return;
+    for (const cardId of members) {
+      const body = this.meshes.get(cardId)?.userData?.body;
+      if (!body) continue;
+      body.velocity.set(0, 0, 0);
+      body.angularVelocity.set(0, 0, 0);
+      body.type = CANNON.Body.STATIC;
+      body.collisionResponse = true;
     }
-    if (constraints.length > 0) this.groupConstraints.set(groupId, constraints);
   }
 
-  /** Tear down every constraint previously created for the given group. */
-  removeGroupConstraints(groupId) {
-    const constraints = this.groupConstraints.get(groupId);
-    if (!constraints) return;
-    for (const c of constraints) removeConstraint(this.physicsWorld, c);
-    this.groupConstraints.delete(groupId);
+  /** Return all member bodies to DYNAMIC so physics can act on them. */
+  unfreezeGroup(groupId) {
+    const members = this.groups.get(groupId);
+    if (!members) return;
+    for (const cardId of members) {
+      const body = this.meshes.get(cardId)?.userData?.body;
+      if (!body) continue;
+      body.velocity.set(0, 0, 0);
+      body.angularVelocity.set(0, 0, 0);
+      body.type = CANNON.Body.DYNAMIC;
+      body.collisionResponse = true;
+      body.wakeUp();
+    }
   }
 
   /**
-   * Assign a groupId to a list of card ids, update the groups cache, and
-   * rebuild the physics constraints that lock the group rigidly. If any
-   * members already had a different group, strip them from the old group
-   * first so a card only belongs to one group at a time — the old group's
-   * constraints are also rebuilt since its chain topology just changed.
+   * Assign a groupId to a list of card ids. Bodies are left DYNAMIC
+   * for a brief settling period (so gravity pulls them onto the table),
+   * then a delayed freeze switches them to STATIC. No constraints are
+   * used — static bodies can't move, so the group is perfectly rigid.
    */
   assignGroup(groupId, cardIds) {
     const members = new Set();
@@ -1676,28 +1942,32 @@ export default class GameBoard extends Component {
     if (members.size === 0) return;
     this.groups.set(groupId, members);
 
-    // Rebuild the new group's constraint chain from scratch so the
-    // topology exactly matches the members Set.
-    this.removeGroupConstraints(groupId);
-    this.createGroupConstraints(groupId, members);
+    // Schedule freeze after a settling window so gravity can pull
+    // the cards onto the table first.
+    this.groupSettleTimes.set(groupId, performance.now());
 
-    // Any old groups that lost members need their chains rebuilt too.
-    // Groups that dropped below 2 members were already deleted above,
-    // so we only rebuild those that still exist.
+    // Any old groups that lost members: if they still have 2+ members
+    // they stay valid. Otherwise dissolve.
     for (const oldGroupId of affectedOldGroups) {
-      this.removeGroupConstraints(oldGroupId);
       const remaining = this.groups.get(oldGroupId);
-      if (remaining && remaining.size >= 2) {
-        this.createGroupConstraints(oldGroupId, remaining);
+      if (!remaining || remaining.size < 2) {
+        if (remaining) {
+          for (const id of remaining) {
+            const m = this.meshes.get(id);
+            if (m?.userData?.cardInstance) delete m.userData.cardInstance.groupId;
+          }
+          this.groups.delete(oldGroupId);
+          this.groupSettleTimes.delete(oldGroupId);
+        }
       }
     }
 
     this.updateSelectionHighlights();
   }
 
-  /** Dissolve a group. Clears groupId from every member and the cache. */
+  /** Dissolve a group. Unfreezes members back to DYNAMIC. */
   dissolveGroup(groupId) {
-    this.removeGroupConstraints(groupId);
+    this.unfreezeGroup(groupId);
     const members = this.groups.get(groupId);
     if (!members) return;
     for (const cardId of members) {
@@ -1707,14 +1977,13 @@ export default class GameBoard extends Component {
       }
     }
     this.groups.delete(groupId);
+    this.groupSettleTimes.delete(groupId);
     this.updateSelectionHighlights();
   }
 
   /**
-   * Remove a card from whatever group it belongs to, cleaning up the
-   * group's constraint chain and dissolving the group entirely if it
-   * drops below 2 members. Called from every card-removal path so we
-   * never leak a LockConstraint referencing a destroyed body.
+   * Remove a card from whatever group it belongs to. Dissolves the
+   * group entirely if it drops below 2 members.
    */
   evictCardFromGroup(cardId) {
     const mesh = this.meshes.get(cardId);
@@ -1724,17 +1993,25 @@ export default class GameBoard extends Component {
     if (!members) return;
     members.delete(cardId);
     delete mesh.userData.cardInstance.groupId;
-    this.removeGroupConstraints(gid);
-    if (members.size >= 2) {
-      this.createGroupConstraints(gid, members);
-    } else {
-      // Singleton "group" is meaningless — clear the last member's
-      // groupId and drop the cache entry.
+    // Make the evicted card dynamic again
+    const body = mesh.userData?.body;
+    if (body && body.type === CANNON.Body.STATIC) {
+      body.type = CANNON.Body.DYNAMIC;
+      body.wakeUp();
+    }
+    if (members.size < 2) {
+      // Singleton — dissolve the remainder
       for (const remainingId of members) {
         const m = this.meshes.get(remainingId);
         if (m?.userData?.cardInstance) delete m.userData.cardInstance.groupId;
+        const b = m?.userData?.body;
+        if (b && b.type === CANNON.Body.STATIC) {
+          b.type = CANNON.Body.DYNAMIC;
+          b.wakeUp();
+        }
       }
       this.groups.delete(gid);
+      this.groupSettleTimes.delete(gid);
     }
   }
 
@@ -1750,7 +2027,7 @@ export default class GameBoard extends Component {
   handleMouseDown = (event) => {
     if (this.props.isSpectating) return;
     if (event.button !== 0) return;
-    this.setState({ contextMenu: null });
+    this.setState({ contextMenu: null, ringMenu: null });
 
     if (this.state.isPlacingSpawns && this.state.activeSpawnKey) {
       const point = this.scene.raycastTablePoint(event);
@@ -1893,7 +2170,33 @@ export default class GameBoard extends Component {
       return;
     }
 
+    // Single-click draw from your own Spellbook or Atlas. Only these
+    // two piles support click-to-draw — Cemetery and Collection are
+    // managed via right-click search. The ownership check prevents
+    // drawing from the opponent's piles.
+    if (hit?.userData.type === 'pile') {
+      const pile = hit.userData.pile;
+      if (this.isOwnedPile(pile) && (pile.name === 'Spellbook' || pile.name === 'Atlas')) {
+        this.drawCard(pile.id);
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (hit?.userData.type === 'card') {
+      if (!this.isOwnedCard(hit.userData.cardInstance)) return;
+      if (event.shiftKey) {
+        // Shift-click: defer to mouseup for the status ring menu.
+        this._pendingCardClick = {
+          hit,
+          x: event.clientX,
+          y: event.clientY,
+          shiftKey: true,
+        };
+        event.preventDefault();
+        return;
+      }
+      // Normal click: start drag immediately.
       const primaryId = hit.userData.cardInstance.id;
       const dragIds = this.collectDragGroupForCard(primaryId);
       this.startCardDrag({
@@ -2018,6 +2321,16 @@ export default class GameBoard extends Component {
     if (this.props.isSpectating) return;
     this.lastMouseEvent = event;
 
+    // Pending shift-click for ring menu: cancel if cursor drifts too far.
+    if (this._pendingCardClick) {
+      const dx = event.clientX - this._pendingCardClick.x;
+      const dy = event.clientY - this._pendingCardClick.y;
+      if (dx * dx + dy * dy > 25) {
+        this._pendingCardClick = null;
+      }
+      return;
+    }
+
     // Marquee drag: update the overlay rect and recompute the selection
     // from every card whose screen-projected position sits inside it.
     if (this.marquee) {
@@ -2049,6 +2362,15 @@ export default class GameBoard extends Component {
     if (this.dragging) {
       const point = this.scene.raycastTablePoint(event);
       if (!point) return;
+
+      // Dice and token drags have no `members` — handle them here
+      // before the card-specific group-drag logic below.
+      if (this.dragging.diceInstance || this.dragging.tokenInstance) {
+        this.dragging.mesh.position.x = point.x + this.dragging.offsetX;
+        this.dragging.mesh.position.z = point.z + this.dragging.offsetZ;
+        return;
+      }
+
       // Every member travels as part of a single rigid group. Single-
       // card drags are synthesised as a 1-member array so the loop
       // below handles both paths.
@@ -2117,14 +2439,20 @@ export default class GameBoard extends Component {
 
     if (this.hoveredMesh !== newHovered) {
 
-      // Remove highlight from old
+      // Remove highlight from old — restore to the correct base state
+      // rather than always resetting to black. If the opponent is
+      // hovering the card or it's in our marquee selection, those
+      // highlights take priority over the blank state.
       if (this.hoveredMesh?.material) {
         if (this.hoveredMesh.userData?.action === 'integrated') {
-          // Integrated button: revert to fully transparent
           this.hoveredMesh.material.opacity = 0;
         } else {
+          const oldCardId = this.hoveredMesh.userData?.cardInstance?.id;
+          const isOpponentHover = oldCardId && oldCardId === this.opponentHoveredCardId;
+          const isSelected = oldCardId && this.selectedCardIds.has(oldCardId);
+          const restoreHex = isSelected ? 0x5a3f0a : isOpponentHover ? 0x0f2a55 : 0x000000;
           const mats = Array.isArray(this.hoveredMesh.material) ? this.hoveredMesh.material : [this.hoveredMesh.material];
-          mats.forEach((m) => { if (m.emissive) m.emissive.setHex(0x000000); });
+          mats.forEach((m) => { if (m.emissive) m.emissive.setHex(restoreHex); });
         }
       }
       // Add highlight to new
@@ -2142,12 +2470,34 @@ export default class GameBoard extends Component {
       this.canvasRef.current.style.cursor = newHovered
         ? "url('/cursors/pointer.png') 20 4, pointer"
         : "url('/cursors/default.png') 4 2, auto";
+
+      // Broadcast to the opponent which card we're hovering so they
+      // see a highlight on their board. Only cards are interesting —
+      // piles, tokens, and buttons don't need remote feedback.
+      const hoveredCardId = newHovered?.userData?.type === 'card'
+        ? newHovered.userData.cardInstance?.id
+        : null;
+      this.sync.hoverCard(hoveredCardId);
     }
 
   };
 
   handleMouseUp = (event) => {
     if (this.props.isSpectating) return;
+
+    // Quick click on a card (no drag started): show the status ring menu.
+    if (this._pendingCardClick) {
+      const { hit, x, y } = this._pendingCardClick;
+      this._pendingCardClick = null;
+      const card = hit.userData.cardInstance;
+      if (card) {
+        playUI(UI.SELECT);
+        this.setState({
+          ringMenu: { cardInstance: card, x: event.clientX, y: event.clientY },
+        });
+      }
+      return;
+    }
 
     // Finish a marquee selection: clear the transient rect and the
     // overlay DOM, leaving this.selectedCardIds populated for the
@@ -2193,6 +2543,16 @@ export default class GameBoard extends Component {
     const members = this.dragging.members || [{ mesh: droppedMesh }];
     for (const m of members) {
       if (m.mesh?.userData?.body) setBodyDynamic(m.mesh.userData.body);
+    }
+    // If any dropped card belongs to a group, reset the settle timer
+    // so the group re-freezes to STATIC after 2s of settling.
+    const droppedGroupIds = new Set();
+    for (const m of members) {
+      const gid = m.mesh?.userData?.cardInstance?.groupId;
+      if (gid && !droppedGroupIds.has(gid)) {
+        droppedGroupIds.add(gid);
+        this.groupSettleTimes.set(gid, performance.now());
+      }
     }
     playSound('cardPlace');
     this.dragging = null;
@@ -2355,14 +2715,14 @@ export default class GameBoard extends Component {
     }
 
     if (hit.userData.type === 'card') {
-      // Include enough info for the menu to decide whether to show
-      // Group selected / Ungroup. selectionSize is the count of cards
-      // the user has marquee-selected, groupId is this card's current
-      // group (if any), and selectionAlreadyGrouped is true when every
-      // card in the selection shares exactly one non-empty groupId —
-      // that case should hide "Group selected" because there's nothing
-      // left to group.
       const cardInstance = hit.userData.cardInstance;
+      // Block context menu on opponent's cards — the only permitted
+      // interaction with the opponent's side is viewing their cemetery
+      // (which goes through the pile branch below, not this one).
+      if (!this.isOwnedCard(cardInstance)) return;
+
+      // Include enough info for the menu to decide whether to show
+      // Group selected / Ungroup.
       const selectedIds = [...this.selectedCardIds];
       let selectionAlreadyGrouped = false;
       if (selectedIds.length >= 2) {
@@ -2618,6 +2978,7 @@ export default class GameBoard extends Component {
     const cardMesh = this.meshes.get(cardId);
     if (!cardMesh) return;
     const card = cardMesh.userData.cardInstance;
+    if (!this.isOwnedCard(card)) return;
     const hud = this.lifeHUDs.get(cardId);
     if (stat === 'atk') {
       if (action === 'increment') card.currentAttack = (card.currentAttack || 0) + 1;
@@ -2774,8 +3135,9 @@ export default class GameBoard extends Component {
     this.scene.scene.add(mesh);
     this.meshes.set(cardInstance.id, mesh);
 
-    // Add ATK + HP HUD for minion-type cards
-    if (cardInstance.type !== 'Site' && cardInstance.type !== 'Avatar') {
+    // Add ATK + HP HUD for minion-type cards only. Spells (Magic),
+    // Auras, Artifacts, Sites, and Avatars have no combat stats.
+    if (cardInstance.type === 'Minion') {
       if (cardInstance.currentLife === undefined || cardInstance.currentAttack === undefined) {
         const fullCard = this.props.sorceryCards?.find((c) => c.unique_id === cardInstance.cardId);
         const defense = parseInt(fullCard?.defense, 10);
@@ -2791,6 +3153,13 @@ export default class GameBoard extends Component {
       mesh.add(hud.hpPlusMesh);  // HP +
       mesh.add(hud.hpMinusMesh); // HP -
       this.lifeHUDs.set(cardInstance.id, hud);
+    }
+
+    // Restore status effect badges (e.g. from session restore)
+    if (cardInstance.statuses?.length > 0) {
+      const badges = buildStatusBadges(cardInstance.statuses, cardInstance.isSite);
+      for (const badge of badges) mesh.add(badge);
+      this.statusHUDs.set(cardInstance.id, badges);
     }
 
     // Restore saved Y position (for stacked cards) or use default
@@ -2815,7 +3184,27 @@ export default class GameBoard extends Component {
       thickness: CARD_THICKNESS,
     });
 
-    if (broadcast) this.sync.placeCard(cardInstance);
+    if (broadcast) {
+      this.sync.placeCard(cardInstance);
+      // When the local player places a site, update their elemental
+      // affinity counters AND add 1 mana immediately — in Sorcery,
+      // a freshly played site produces mana the turn it enters.
+      // Rubble and other "dead" sites (all thresholds 0) are excluded.
+      if (cardInstance.isSite) {
+        const player = cardInstance.rotated ? 'p2' : 'p1';
+        this.recalculateSiteAffinities(player);
+        if (this._siteProvidesMana(cardInstance)) {
+          const { trackers } = this.state.gameState;
+          const def = TRACKER_DEFS.mana;
+          if (trackers[player].mana < def.max) {
+            trackers[player].mana++;
+            this.sync.setTracker(player, 'mana', trackers[player].mana);
+            this.updateTrackerTokenPositions();
+            this.forceUpdate();
+          }
+        }
+      }
+    }
   };
 
   removeCardFromTable = (cardInstance, broadcast = true) => {
@@ -2833,9 +3222,25 @@ export default class GameBoard extends Component {
       this.meshes.delete(cardInstance.id);
     }
     this.lifeHUDs.delete(cardInstance.id);
+    this.statusHUDs.delete(cardInstance.id);
     this.selectedCardIds.delete(cardInstance.id);
     this.ownership.forget(cardInstance.id);
-    if (broadcast) this.sync.removeCard(cardInstance.id);
+    if (broadcast) {
+      this.sync.removeCard(cardInstance.id);
+      if (cardInstance.isSite) {
+        const player = cardInstance.rotated ? 'p2' : 'p1';
+        this.recalculateSiteAffinities(player);
+        if (this._siteProvidesMana(cardInstance)) {
+          const { trackers } = this.state.gameState;
+          if (trackers[player].mana > 0) {
+            trackers[player].mana--;
+            this.sync.setTracker(player, 'mana', trackers[player].mana);
+            this.updateTrackerTokenPositions();
+            this.forceUpdate();
+          }
+        }
+      }
+    }
   };
 
   sendToHand = (cardInstance) => {
@@ -2883,6 +3288,71 @@ export default class GameBoard extends Component {
     this.sync.rollDice(diceInstance.id, targetValue);
   };
 
+  // ── Site-based resource tracking ────────────────────────────────
+  //
+  // Walks this.meshes to find all site cards owned by `player`, then
+  // sets the elemental affinity trackers (earth, water, fire, wind) to
+  // the sum of those sites' thresholds. Called whenever a site enters
+  // or leaves the table.
+  //
+  // Mana is NOT touched here — it resets only on turn start (inside
+  // passTurn) so that mid-turn spending isn't overwritten by placing a
+  // new site.
+
+  // Check whether a site card actually produces mana. Normal sites
+  // contribute 1 mana each; Rubble (and any future "dead" sites) have
+  // all thresholds at 0 and produce nothing.
+  _siteProvidesMana = (cardInstance) => {
+    const fullCard = this.props.sorceryCards?.find((c) => c.unique_id === cardInstance.cardId);
+    if (!fullCard) return false;
+    return ((fullCard.earthThreshold || 0) + (fullCard.waterThreshold || 0) +
+            (fullCard.fireThreshold || 0) + (fullCard.airThreshold || 0)) > 0;
+  };
+
+  recalculateSiteAffinities = (player) => {
+    const playerIsP2 = player === 'p2';
+    const totals = { earth: 0, water: 0, fire: 0, wind: 0 };
+
+    for (const [, mesh] of this.meshes) {
+      const card = mesh.userData.cardInstance;
+      if (!card || !card.isSite) continue;
+      if (card.rotated !== playerIsP2) continue;
+
+      const fullCard = this.props.sorceryCards?.find((c) => c.unique_id === card.cardId);
+      if (!fullCard) continue;
+
+      totals.earth += fullCard.earthThreshold || 0;
+      totals.water += fullCard.waterThreshold || 0;
+      totals.fire += fullCard.fireThreshold || 0;
+      totals.wind += fullCard.airThreshold || 0; // card data uses "air", tracker uses "wind"
+    }
+
+    const { trackers } = this.state.gameState;
+    let changed = false;
+    for (const [key, value] of Object.entries(totals)) {
+      if (trackers[player][key] !== value) {
+        trackers[player][key] = value;
+        this.sync.setTracker(player, key, value);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.updateTrackerTokenPositions();
+      this.forceUpdate();
+    }
+  };
+
+  // Count only mana-producing sites (excludes Rubble and similar).
+  countSitesForPlayer = (player) => {
+    const playerIsP2 = player === 'p2';
+    let count = 0;
+    for (const [, mesh] of this.meshes) {
+      const card = mesh.userData.cardInstance;
+      if (card && card.isSite && card.rotated === playerIsP2 && this._siteProvidesMana(card)) count++;
+    }
+    return count;
+  };
+
   passTurn = () => {
     const localPlayer = this.state.isHost ? 'p1' : 'p2';
     if (this.state.currentTurn !== localPlayer) return;
@@ -2902,6 +3372,17 @@ export default class GameBoard extends Component {
         // ATK is NOT reset on turn end
       }
     }
+
+    // Reset mana for the player whose turn is starting: set it to the
+    // number of sites they currently have in play. This undoes any
+    // mid-turn spending and accounts for sites gained or lost since
+    // their last turn. Elemental affinities are also refreshed in case
+    // a site was destroyed or placed without an immediate recalculation.
+    const { trackers } = this.state.gameState;
+    const manaCount = this.countSitesForPlayer(nextTurn);
+    trackers[nextTurn].mana = manaCount;
+    this.sync.setTracker(nextTurn, 'mana', manaCount);
+    this.recalculateSiteAffinities(nextTurn);
 
     // Auto-untap every card belonging to the player whose turn is starting.
     // Card ownership is encoded via `card.rotated` (false = p1, true = p2),
@@ -2950,6 +3431,50 @@ export default class GameBoard extends Component {
   };
 
 
+  // Replace a site card with a Rubble token at the same position and
+  // send the original site to the acting player's own cemetery.
+  turnToRubble = (cardInstance) => {
+    const mesh = this.meshes.get(cardInstance.id);
+    if (!mesh) { this.closeContextMenu(); return; }
+
+    // Save the site's world position before removing it.
+    const px = mesh.position.x;
+    const pz = mesh.position.z;
+
+    // Resolve Rubble from the card database (sorcery-rubble).
+    const rubbleCard = this.props.sorceryCards?.find((c) => c.unique_id === 'sorcery-rubble');
+    const rubblePrinting = rubbleCard?.printings?.find((p) => p.foiling === 'S') || rubbleCard?.printings?.[0];
+    if (!rubbleCard || !rubblePrinting) {
+      console.warn('[turnToRubble] Rubble card not found in sorceryCards');
+      this.closeContextMenu();
+      return;
+    }
+
+    // Send the original site to the LOCAL player's cemetery.
+    const localRotated = !this.state.isHost;
+    const cemetery = this.findOrCreateCemetery(localRotated);
+    this.removeCardFromTable(cardInstance);
+    cemetery.cards.push(cardInstance);
+    this.updatePileMeshes();
+
+    // Spawn the Rubble card at the same position.
+    const rubbleInstance = {
+      id: `rubble-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      cardId: rubbleCard.unique_id,
+      name: rubbleCard.name,
+      imageUrl: rubblePrinting.image_url,
+      printingId: rubblePrinting.unique_id,
+      foiling: 'S',
+      type: 'Site',
+      isSite: true,
+      rotated: localRotated,
+      x: px,
+      z: pz,
+    };
+    this.addCardToTable(rubbleInstance);
+    this.closeContextMenu();
+  };
+
   deleteDice = (diceInstance) => {
     const mesh = this.diceMeshes.get(diceInstance.id);
     if (mesh) {
@@ -2989,16 +3514,29 @@ export default class GameBoard extends Component {
     );
   };
 
-  // Resolve the destination pile for a given card + name.
-  // Cemetery is special: each player has their own (deterministic id),
-  // routed by the card's rotation.
+  // Resolve the destination pile for a context-menu "put into pile"
+  // action.
+  //
+  // In multiplayer both players have identically-named piles (two
+  // "Spellbook"s, two "Atlas"s, etc.) distinguished only by the
+  // `rotated` flag that marks which player owns them.
+  //
+  // Non-Cemetery piles route to the LOCAL PLAYER's pile — in a sandbox
+  // tabletop "Spellbook (bottom)" means "my Spellbook", regardless of
+  // which player originally owned the card. If you need to put a card
+  // in the opponent's pile, drag it there manually.
+  //
+  // Cemetery is the exception: it routes to the CARD OWNER's cemetery,
+  // matching the TCG convention that destroyed cards go back to their
+  // owner's graveyard.
   findDestinationPile = (cardInstance, pileName) => {
     if (pileName === 'Cemetery') {
       return this.findOrCreateCemetery(cardInstance.rotated);
     }
-    // For other piles (Spellbook, Atlas, Collection), keep the existing
-    // lookup by name — those are spawned from the deck and uniquely named.
-    return this.findPileByName(pileName);
+    const localRotated = !this.state.isHost;
+    return this.state.gameState.piles.find(
+      (p) => p.name === pileName && !!p.rotated === localRotated,
+    );
   };
 
   sendCardToPile = (cardInstance, pileName, shouldShuffle = false) => {
@@ -3013,6 +3551,24 @@ export default class GameBoard extends Component {
     if (cardMesh && pileMesh) {
       this.meshes.delete(cardInstance.id);
       this.lifeHUDs.delete(cardInstance.id);
+      this.statusHUDs.delete(cardInstance.id);
+      // Recalculate affinities and drop mana now (after meshes.delete)
+      // so the counters update immediately, even before the fly-to-pile
+      // animation finishes. Rubble and dead sites are excluded from
+      // the mana adjustment.
+      if (cardInstance.isSite) {
+        const player = cardInstance.rotated ? 'p2' : 'p1';
+        this.recalculateSiteAffinities(player);
+        if (this._siteProvidesMana(cardInstance)) {
+          const { trackers } = this.state.gameState;
+          if (trackers[player].mana > 0) {
+            trackers[player].mana--;
+            this.sync.setTracker(player, 'mana', trackers[player].mana);
+            this.updateTrackerTokenPositions();
+            this.forceUpdate();
+          }
+        }
+      }
       animateCardToPile(cardMesh, pileMesh.position.x, pileMesh.position.z, this.scene.scene, () => {
         pile.cards.push(cardInstance);
         if (shouldShuffle) {
@@ -3080,6 +3636,55 @@ export default class GameBoard extends Component {
     animateCardTap(mesh, cardInstance);
     this.sync.tapCard(cardInstance.id, cardInstance.tapped);
     this.setState({ contextMenu: null });
+  };
+
+  // ── Status effects ──────────────────────────────────────────────
+
+  toggleCardStatus = (cardInstance, statusKey) => {
+    if (!cardInstance.statuses) cardInstance.statuses = [];
+    const active = cardInstance.statuses.includes(statusKey);
+    if (active) {
+      cardInstance.statuses = cardInstance.statuses.filter((s) => s !== statusKey);
+    } else {
+      cardInstance.statuses.push(statusKey);
+    }
+    this.rebuildStatusBadges(cardInstance.id);
+    this.sync.setCardStatus(cardInstance.id, statusKey, !active);
+  };
+
+  clearAllStatuses = (cardInstance) => {
+    if (!cardInstance.statuses || cardInstance.statuses.length === 0) return;
+    const removed = [...cardInstance.statuses];
+    cardInstance.statuses = [];
+    this.rebuildStatusBadges(cardInstance.id);
+    for (const key of removed) {
+      this.sync.setCardStatus(cardInstance.id, key, false);
+    }
+  };
+
+  rebuildStatusBadges = (cardId) => {
+    const mesh = this.meshes.get(cardId);
+    if (!mesh) return;
+    const card = mesh.userData.cardInstance;
+
+    // Remove existing badge meshes from the card.
+    const existing = this.statusHUDs.get(cardId) || [];
+    for (const badge of existing) {
+      mesh.remove(badge);
+      badge.geometry.dispose();
+      badge.material.map?.dispose();
+      badge.material.dispose();
+    }
+
+    const statuses = card.statuses || [];
+    if (statuses.length === 0) {
+      this.statusHUDs.delete(cardId);
+      return;
+    }
+
+    const badges = buildStatusBadges(statuses, card.isSite);
+    for (const badge of badges) mesh.add(badge);
+    this.statusHUDs.set(cardId, badges);
   };
 
   // --- Deck Spawning ---
@@ -3156,6 +3761,72 @@ export default class GameBoard extends Component {
     }
   };
 
+  // ── Opponent hand: 3D face-down cards on the table ──────────────
+  //
+  // Lays out N face-down card meshes near the opponent's table edge so
+  // the local player can see how many cards the opponent is holding
+  // (and whether any are Sites) without revealing the faces. Called
+  // whenever `opponentHand` state changes via the `hand:info` sync
+  // message. The meshes have no physics and no interactivity — they're
+  // purely a visual indicator, like looking across a table and seeing
+  // the back of someone's fanned hand.
+
+  updateOpponentHandMeshes = () => {
+    if (!this.scene) return;
+
+    const { opponentHand } = this.state;
+
+    // Remove old meshes.
+    for (const mesh of this.opponentHandMeshes) {
+      this.scene.scene.remove(mesh);
+      mesh.geometry.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((m) => m.dispose());
+    }
+    this.opponentHandMeshes = [];
+
+    const N = opponentHand.length;
+    if (N === 0) return;
+
+    // ── Position the fan on the opponent's side of the table ──
+    // Host (P1) sits at +Z; their opponent (P2) is at -Z.
+    // Guest (P2) sits at -Z; their opponent (P1) is at +Z.
+    const opponentZ = this.state.isHost ? -58 : 58;
+    const opponentRotation = this.state.isHost ? 0 : Math.PI;
+
+    // Fan geometry — spread cards across up to ~60 world units, tapering
+    // the angle per card as the hand grows so it stays readable.
+    const maxSpread = 50;
+    const spacing = Math.min(CARD_WIDTH * 0.65, maxSpread / Math.max(N, 1));
+    const totalWidth = spacing * (N - 1);
+    const startX = -totalWidth / 2;
+
+    // Subtle arc rotation — cards at the edges tilt outward slightly.
+    const maxTilt = N <= 3 ? 3 : N <= 6 ? 5 : N <= 10 ? 8 : 10; // degrees total arc
+    const tiltPerCard = N > 1 ? maxTilt / (N - 1) : 0;
+
+    for (let i = 0; i < N; i++) {
+      const card = opponentHand[i];
+      const mesh = createHandBackMesh(card.isSite);
+
+      const x = startX + i * spacing;
+      const tiltDeg = N === 1 ? 0 : -maxTilt / 2 + i * tiltPerCard;
+      const tiltRad = (tiltDeg * Math.PI) / 180;
+
+      // Lay flat: rotation.x = -π/2 puts +Z (card face) up.
+      // rotation.z encodes the fan tilt + player orientation.
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.rotation.z = opponentRotation + tiltRad;
+
+      // Slight vertical stacking so overlapping cards don't z-fight.
+      const y = CARD_THICKNESS / 2 + 0.1 + i * 0.05;
+      mesh.position.set(x, y, opponentZ);
+
+      this.scene.scene.add(mesh);
+      this.opponentHandMeshes.push(mesh);
+    }
+  };
+
   // --- Hand to Table ---
 
   startHandCardDrag = (event, cardInstance) => {
@@ -3202,6 +3873,7 @@ export default class GameBoard extends Component {
     sendToHand: this.sendToHand,
     sendCardToPile: this.sendCardToPile,
     deleteCard: this.deleteCard,
+    turnToRubble: this.turnToRubble,
     drawCard: this.handleDrawCardFromPile,
     shufflePile: this.shufflePileAction,
     openPileSearch: this.openPileSearch,
@@ -3213,6 +3885,8 @@ export default class GameBoard extends Component {
     deleteDice: this.deleteDice,
     groupSelected: this.handleGroupSelected,
     ungroup: this.handleUngroup,
+    toggleCardStatus: (cardInstance, statusKey) => { this.toggleCardStatus(cardInstance, statusKey); },
+    clearAllStatuses: (cardInstance) => { this.clearAllStatuses(cardInstance); },
   });
 
   /**
@@ -3246,6 +3920,13 @@ export default class GameBoard extends Component {
   };
 
   takeCardFromPile = (pile, cardInstance) => {
+    if (pile.infinite) {
+      // Token pile — clone with a fresh id so the same token can be
+      // spawned unlimited times without depleting the virtual pile.
+      const clone = { ...cardInstance, id: `${cardInstance.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` };
+      this.addToHand(clone);
+      return;
+    }
     const idx = pile.cards.indexOf(cardInstance);
     if (idx !== -1) pile.cards.splice(idx, 1);
     this.addToHand(cardInstance);
@@ -3278,6 +3959,33 @@ export default class GameBoard extends Component {
 
   closeContextMenu = () => this.setState({ contextMenu: null });
 
+  // Opening draw: each player automatically draws 3 from their Atlas
+  // (site pile) and 3 from their Spellbook at the start of a match.
+  // Staggered with short delays so the cards fan into the hand one at a
+  // time instead of appearing all at once. Only called for competitive
+  // and friend matches — never for solo/offline sessions.
+  performOpeningDraw = () => {
+    const atlas = this.findLocalPileByName('Atlas');
+    const spellbook = this.findLocalPileByName('Spellbook');
+
+    // Build a draw queue. Interleave atlas and spellbook so the visual
+    // pacing feels natural — atlas, spellbook, atlas, spellbook, ...
+    const queue = [];
+    for (let i = 0; i < 3; i++) {
+      if (atlas && atlas.cards.length > 0) queue.push(atlas);
+      if (spellbook && spellbook.cards.length > 0) queue.push(spellbook);
+    }
+
+    queue.forEach((pile, i) => {
+      setTimeout(() => {
+        if (this._unmounted) return;
+        if (pile.cards.length === 0) return;
+        this.drawPileToHand(pile);
+        playSound('cardDeal');
+      }, i * 200);
+    });
+  };
+
   // Pop the top card off a pile into the player's hand.
   drawPileToHand = (pile) => {
     if (pile.cards.length > 0) {
@@ -3287,6 +3995,34 @@ export default class GameBoard extends Component {
       this.updatePileMeshes();
     }
     this.setState({ contextMenu: null });
+  };
+
+  // Build a virtual pile containing every token card in the game. Tokens
+  // are identified by having no mana cost (cost === '') and being a
+  // Minion or Artifact. The pile is flagged `infinite: true` so the
+  // take-to-hand / take-to-field callbacks clone each pick instead of
+  // splicing it out of the array.
+  buildTokenPile = () => {
+    const sorceryCards = this.props.sorceryCards || [];
+    // Rubble is excluded — it's a Site token with its own "Turn to
+    // Rubble" context menu action rather than a spawn-from-browser token.
+    const tokens = sorceryCards
+      .filter((c) => c.cost === '' && (c.type === 'Minion' || c.type === 'Artifact'))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const cards = tokens.map((card) => {
+      // Always pick the Standard printing — tokens must never show as foils.
+      const printing = card.printings?.find((p) => p.foiling === 'S') || card.printings?.[0] || {};
+      return {
+        id: `token-${card.unique_id}`,
+        cardId: card.unique_id,
+        imageUrl: printing.image_url,
+        printingId: printing.unique_id,
+        foiling: 'S',
+        type: card.type,
+        isToken: true,
+      };
+    });
+    return { id: 'token-pile', name: 'Tokens', cards, infinite: true };
   };
 
   openPileSearch = (pile) => {
@@ -3314,6 +4050,14 @@ export default class GameBoard extends Component {
   handlePileSearchTakeToField = (card) => {
     const { searchPile } = this.state;
     if (!searchPile) return;
+
+    if (searchPile.infinite) {
+      // Token pile — spawn a fresh clone directly onto the board.
+      const clone = { ...card, id: `${card.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, x: 0, z: 0 };
+      this.addCardToTable(clone);
+      return;
+    }
+
     const idx = searchPile.cards.indexOf(card);
     if (idx !== -1) searchPile.cards.splice(idx, 1);
     card.x = 0;
@@ -3327,35 +4071,13 @@ export default class GameBoard extends Component {
 
   renderDeckPicker() {
     if (!this.state.showDeckPicker) return null;
-
-    const { savedDecks } = this.props;
-    const sorceryDecks = savedDecks || [];
-
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }} onClick={() => this.setState({ showDeckPicker: false })}>
-        <div className="relative w-[520px] max-h-[70vh] flex flex-col" style={{ ...DIALOG_STYLE, zoom: this.state.viewScale }} onClick={(e) => e.stopPropagation()}>
-          <FourCorners radius={12} />
-          <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>Spawn Deck</h2>
-          <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
-            {sorceryDecks.length === 0 ? (
-              <p className="text-sm" style={{ color: TEXT_MUTED }}>No saved Sorcery decks. Build and save a deck first.</p>
-            ) : (
-              <div className="grid gap-2">
-                {sorceryDecks.map((deck) => (
-                  <div key={deck.id} className="relative flex items-center gap-2 p-3" style={{ background: `${GOLD} 0.03)`, border: `1px solid ${GOLD} 0.12)`, borderRadius: '8px' }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate" style={{ color: TEXT_PRIMARY }}>{deck.name}</div>
-                      <div className="text-xs" style={{ color: TEXT_MUTED }}>{deck.cardCount} cards</div>
-                    </div>
-                    <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 1)}>P1</button>
-                    <button type="button" className="px-2.5 py-1 text-xs font-medium cursor-pointer transition-all" style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }} onClick={() => this.loadAndSpawnDeck(deck.id, 2)}>P2</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <DeckSpawnDialog
+        savedDecks={this.props.savedDecks}
+        sorceryCards={this.props.sorceryCards}
+        onSpawn={(deckId, playerNum) => this.loadAndSpawnDeck(deckId, playerNum)}
+        onClose={() => this.setState({ showDeckPicker: false })}
+      />
     );
   }
 
@@ -3537,8 +4259,10 @@ export default class GameBoard extends Component {
             ) : null}
           </div>
 
-          {/* Spawn Deck — hidden in ranked matches (deck is pre-selected) */}
-          {!this.props.arenaSelectedDeckId ? (
+          {/* Spawn Deck — only in solo play (no pre-selected arena deck
+              and not spectating). Multiplayer matches handle deck spawning
+              through the matchmaking flow. */}
+          {!this.props.arenaSelectedDeckId && !this.props.isSpectating ? (
             <button
               type="button"
               className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
@@ -3718,58 +4442,9 @@ export default class GameBoard extends Component {
 
         </div>
 
-        {/* Opponent hand — fanned arc at top, face down */}
-        {this.state.opponentHand.length > 0 ? (() => {
-          const oCards = this.state.opponentHand;
-          const N = oCards.length;
-          const vs = Math.max(0.8, Math.min(2.5, Math.max((window.innerWidth || 1920) / 1920, (window.innerHeight || 1080) / 1080)));
-          const oCW = Math.round(100 * vs);
-          const oCH = Math.round(140 * vs);
-          const oRadius = Math.round(1200 * vs);
-          const oMaxAngle = N <= 3 ? 3 : N <= 5 ? 3 : N <= 8 ? 3 : N <= 12 ? 2 : 1.2;
-          const oTotalMax = N <= 5 ? 15 : N <= 8 ? 22 : N <= 12 ? 22 : 15;
-          const oAnglePerCard = Math.min(oMaxAngle, oTotalMax / Math.max(N - 1, 1));
-          const oTotalArc = oAnglePerCard * (N - 1);
-          const apiOrigin = getLocalApiOrigin();
-
-          return (
-            <div className="fixed top-0 left-0 right-0 z-[999] pointer-events-none" style={{ height: `${Math.round(80 * vs)}px` }}>
-              {oCards.map((card, i) => {
-                const angleDeg = N === 1 ? 0 : -oTotalArc / 2 + i * oAnglePerCard;
-                const angleRad = angleDeg * (Math.PI / 180);
-                const x = oRadius * Math.sin(angleRad);
-                const y = -(oRadius - oRadius * Math.cos(angleRad)) - Math.round(30 * vs);
-                const backImg = card.isSite
-                  ? `${apiOrigin}/game-assets/cardback-atlas-rounded.png`
-                  : `${apiOrigin}/game-assets/cardback-spellbook-rounded.png`;
-
-                return (
-                  <div
-                    key={i}
-                    className="absolute"
-                    style={{
-                      left: '50%',
-                      top: '0px',
-                      width: `${oCW}px`,
-                      height: `${oCH}px`,
-                      zIndex: i + 1,
-                      transformOrigin: 'top center',
-                      transform: `translateX(calc(-50% + ${x}px)) translateY(${y}px) rotate(${180 + angleDeg}deg)`,
-                    }}
-                  >
-                    <img
-                      src={backImg}
-                      alt="Opponent card"
-                      className="w-full h-full object-cover rounded-lg shadow-[0_4px_15px_rgba(0,0,0,0.4)]"
-                      draggable={false}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })() : null}
-
+        {/* 3D Canvas — opponent hand is rendered as 3D meshes on the
+            table by updateOpponentHandMeshes(), driven by the same
+            opponentHand state that the old 2D overlay used. */}
         {/* 3D Canvas */}
         <div className="relative flex-1 min-h-0">
           <canvas
@@ -3823,6 +4498,14 @@ export default class GameBoard extends Component {
           <GameContextMenu
             contextMenu={this.state.contextMenu}
             actions={this.buildContextMenuActions()}
+            viewScale={this.state.viewScale}
+          />
+
+          <StatusRingMenu
+            ringMenu={this.state.ringMenu}
+            onToggle={(card, statusKey) => this.toggleCardStatus(card, statusKey)}
+            onClearAll={(card) => this.clearAllStatuses(card)}
+            onClose={() => this.setState({ ringMenu: null })}
             viewScale={this.state.viewScale}
           />
 
@@ -3999,6 +4682,51 @@ export default class GameBoard extends Component {
             </div>
           ) : null}
           {this.renderDeckPicker()}
+
+          {/* Shortcut help overlay — toggled by pressing ? */}
+          {this.state.showShortcutHelp ? (
+            <div
+              className="fixed inset-0 z-[1200] flex items-center justify-center"
+              style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+              onClick={() => this.setState({ showShortcutHelp: false })}
+            >
+              <div
+                className="relative"
+                style={{
+                  width: 560,
+                  zoom: this.state.viewScale,
+                  background: `url("/tex-noise-panel.webp"), #0e0a06`,
+                  border: `1px solid ${GOLD} 0.22)`,
+                  borderRadius: '12px',
+                  boxShadow: '0 24px 64px rgba(0,0,0,0.7), 0 0 32px rgba(180,140,60,0.08)',
+                  padding: '20px 22px 18px',
+                  isolation: 'isolate',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <FourCorners radius={12} />
+                <div className="flex items-center justify-between mb-3">
+                  <h2
+                    className="text-lg font-bold arena-heading"
+                    style={{ color: TEXT_PRIMARY, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
+                  >
+                    Keyboard Shortcuts
+                  </h2>
+                  <button
+                    type="button"
+                    className="px-3 py-1 text-xs cursor-pointer transition-all"
+                    style={{ ...BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
+                    data-sound={UI.CANCEL}
+                    onClick={() => this.setState({ showShortcutHelp: false })}
+                  >
+                    Close
+                  </button>
+                </div>
+                <ShortcutList />
+              </div>
+            </div>
+          ) : null}
+
           <PileSearchDialog
             pile={this.state.searchPile}
             query={this.state.searchQuery}
@@ -4032,9 +4760,9 @@ export default class GameBoard extends Component {
               }}
               onClose={() => {
                 this.setState({ showMatchResult: false });
-                if (this.props.isRankedMatch && this.props.onExit) {
-                  this.props.onExit();
-                }
+              }}
+              onMatchComplete={() => {
+                if (this.props.onExit) this.props.onExit();
               }}
             />
           ) : null}
@@ -4043,7 +4771,11 @@ export default class GameBoard extends Component {
               <div className="relative w-80 p-5" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.25)`, borderRadius: '12px', boxShadow: '0 0 60px rgba(0,0,0,0.5)', zoom: this.state.viewScale, isolation: 'isolate' }}>
                 <FourCorners radius={12} />
                 <h2 className="mb-2 text-lg font-semibold arena-heading" style={{ color: TEXT_PRIMARY }}>Leave game?</h2>
-                <p className="mb-4 text-sm" style={{ color: TEXT_MUTED }}>Your game will be auto-saved. Are you sure you want to exit?</p>
+                <p className="mb-4 text-sm" style={{ color: TEXT_MUTED }}>
+                  {this.props.isRankedMatch
+                    ? 'Leaving a ranked match counts as a loss. Your opponent will be awarded the win.'
+                    : 'Your game will be auto-saved. Are you sure you want to exit?'}
+                </p>
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
@@ -4301,6 +5033,11 @@ export default class GameBoard extends Component {
     const retractOffset = Math.round(120 * s);
     const hoverScale = 1.8;
 
+    // Compute how wide the fan of cards actually is so the container only
+    // covers that region. Everything outside the fan passes through to the
+    // canvas beneath — no more full-width blocking div.
+    const N = cards.length;
+
     const isLeft = position === 'left';
     const hoveredKey = isLeft ? 'hoveredAtlasHandIndex' : 'hoveredHandIndex';
     const retractKey = isLeft ? 'atlasHandRetracted' : 'handRetracted';
@@ -4308,6 +5045,22 @@ export default class GameBoard extends Component {
     // Use existing state keys for spellbook hand, simple hover for atlas
     const hovered = isLeft ? (this.state.hoveredAtlasHandIndex ?? -1) : this.state.hoveredHandIndex;
     const retracted = isLeft ? (this.state.atlasHandRetracted !== false) : this.state.handRetracted;
+
+    // For the center hand: shrink the container to just the card fan
+    // width (plus generous padding for hover-expansion) instead of the
+    // full viewport width. This lets clicks in the empty regions on either
+    // side pass through to the canvas beneath.
+    let fanContainerWidth;
+    if (!isLeft) {
+      const maxAPC = N <= 3 ? 3 : N <= 5 ? 3 : N <= 8 ? 3 : N <= 12 ? 2 : 1.2;
+      const tArcMax = N <= 5 ? 15 : N <= 8 ? 22 : N <= 12 ? 22 : 15;
+      const apc = Math.min(maxAPC, tArcMax / Math.max(N - 1, 1));
+      const tArc = apc * (N - 1);
+      const halfArcRad = (tArc / 2) * (Math.PI / 180);
+      const fanSpan = N <= 1 ? 0 : 2 * arcRadius * Math.sin(halfArcRad);
+      // Padding: full hovered card width on each side + spread room
+      fanContainerWidth = Math.round(fanSpan + cardW * hoverScale + spreadBase * 4);
+    }
 
     return (
       <div
@@ -4318,7 +5071,11 @@ export default class GameBoard extends Component {
           transition: 'left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
           overflow: 'visible',
         } : {
-          bottom: '0px', left: '0px', right: '0px',
+          bottom: '0px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: `${fanContainerWidth}px`,
+          maxWidth: '100vw',
           height: retracted ? `${retractedHeight}px` : `${containerHeight}px`,
           transition: 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
         }}

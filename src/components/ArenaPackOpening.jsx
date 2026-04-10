@@ -271,6 +271,21 @@ export default class ArenaPackOpening extends Component {
                               zIndex: { duration: 0 },
                             }}
                           >
+                            {/* Rarity/foil glow — rendered OUTSIDE the
+                                preserve-3d context so box-shadow works
+                                reliably on all platforms (Linux/CEF drops
+                                shadows inside 3D contexts). */}
+                            <div
+                              className={entryFoil ? 'foil-card-aura' : undefined}
+                              style={{
+                                position: 'absolute',
+                                inset: 0,
+                                borderRadius: 14,
+                                boxShadow: entryFoil ? undefined : (isHovered ? RARITY_GLOW_HOVER[rarity] : RARITY_GLOW[rarity]),
+                                transition: 'box-shadow 0.2s ease',
+                                pointerEvents: 'none',
+                              }}
+                            />
                             <motion.div
                               style={{ transformStyle: 'preserve-3d' }}
                               animate={foilPivotAnimate}
@@ -281,15 +296,10 @@ export default class ArenaPackOpening extends Component {
                               } : { duration: 0 }}
                             >
                             <div
-                              className={entryFoil ? 'foil-card-aura' : undefined}
                               style={{
                                 width: cardWidth,
                                 height: cardHeight,
                                 borderRadius: 14,
-                                // Foils get the animated rainbow aura via
-                                // CSS class above; non-foils keep their
-                                // static rarity glow.
-                                boxShadow: entryFoil ? undefined : RARITY_GLOW[rarity],
                                 filter: isHovered ? `brightness(1.15)` : 'none',
                                 transition: 'filter 0.2s ease',
                               }}

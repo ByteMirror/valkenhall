@@ -6,6 +6,7 @@ import {
   getViewportScale, onViewportScaleChange,
 } from '../../lib/medievalTheme';
 import DeckCardTile from '../DeckCardTile';
+import CardInspector from '../CardInspector';
 
 const TYPES = ['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'];
 const ELEMENTS = ['Water', 'Earth', 'Fire', 'Air'];
@@ -42,16 +43,42 @@ export default class PileSearchDialog extends Component {
       typeFilters: new Set(),
       elementFilters: new Set(),
       viewScale: getViewportScale(),
+      hoveredEntry: null,
+      inspectedEntry: null,
     };
   }
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+    document.addEventListener('keydown', this.handleKeyDown);
   }
 
   componentWillUnmount() {
     if (this.unsubScale) this.unsubScale();
+    document.removeEventListener('keydown', this.handleKeyDown);
   }
+
+  // Space toggles the full-screen card inspector for the currently
+  // hovered card. Escape closes it. Typing into the search input is
+  // ignored so the user can still hit space inside the search field.
+  handleKeyDown = (e) => {
+    if (!this.props.pile) return;
+    const tag = e.target?.tagName;
+    const editable = e.target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if ((e.key === ' ' || e.code === 'Space') && !editable) {
+      e.preventDefault();
+      if (this.state.inspectedEntry) {
+        this.setState({ inspectedEntry: null });
+      } else if (this.state.hoveredEntry) {
+        this.setState({ inspectedEntry: this.state.hoveredEntry });
+      }
+      return;
+    }
+    if (e.key === 'Escape' && this.state.inspectedEntry) {
+      e.stopPropagation();
+      this.setState({ inspectedEntry: null });
+    }
+  };
 
   toggleType = (type) => {
     this.setState((s) => {
@@ -100,15 +127,18 @@ export default class PileSearchDialog extends Component {
 
     // Atlas piles only contain sites, so type filters would all be the same.
     // Show element filters instead. Spellbook and Cemetery use type filters.
+    // Token piles skip filters entirely — all entries are tokens so filtering
+    // by type/element adds no value and just takes up space.
     const isAtlas = pile.name === 'Atlas';
+    const isTokenPile = !!pile.infinite;
 
     const lowerQuery = query.toLowerCase();
     const entries = pile.cards
       .map((c, i) => this.buildEntry(c, i))
       .filter(Boolean)
       .filter((e) => !lowerQuery || e.card.name.toLowerCase().includes(lowerQuery))
-      .filter((e) => isAtlas || typeFilters.size === 0 || typeFilters.has(e.card.type))
-      .filter((e) => !isAtlas || elementFilters.size === 0
+      .filter((e) => isTokenPile || isAtlas || typeFilters.size === 0 || typeFilters.has(e.card.type))
+      .filter((e) => isTokenPile || !isAtlas || elementFilters.size === 0
         || e.card.elements?.some((el) => elementFilters.has(el.name)));
 
     // Fixed design size in pixels. The `zoom` factor multiplies these
@@ -163,7 +193,6 @@ export default class PileSearchDialog extends Component {
                 onInput={(e) => onQueryChange(e.target.value)}
                 className="px-3 py-1.5 text-sm outline-none"
                 style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY, width: 220 }}
-                autoFocus
               />
               <button
                 type="button"
@@ -177,7 +206,10 @@ export default class PileSearchDialog extends Component {
           </div>
 
           {/* Filter row — element filters for Atlas (sites only),
-              type filters for Spellbook / Cemetery */}
+              type filters for Spellbook / Cemetery. Hidden for the
+              token pile since all entries share the same purpose and
+              filtering by type/element adds no value. */}
+          {!isTokenPile && (
           <div
             className="flex items-center gap-1 px-4 py-2"
             style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}
@@ -225,6 +257,7 @@ export default class PileSearchDialog extends Component {
               Showing {entries.length} of {pile.cards.length}
             </span>
           </div>
+          )}
 
           {/* Card grid */}
           <div className="flex-1 overflow-y-auto p-4">
@@ -245,6 +278,7 @@ export default class PileSearchDialog extends Component {
                       entry={entry}
                       isSelected={false}
                       onClick={() => onTakeToHand(entry._instance)}
+                      onHoverChange={(hovered) => this.setState({ hoveredEntry: hovered ? entry : null })}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         onTakeToField(entry._instance);
@@ -259,6 +293,15 @@ export default class PileSearchDialog extends Component {
             )}
           </div>
         </div>
+        {this.state.inspectedEntry ? (
+          <CardInspector
+            card={this.state.inspectedEntry.card}
+            imageUrl={this.state.inspectedEntry.printing?.image_url}
+            rarity={this.state.inspectedEntry.card?.rarity}
+            foiling={this.state.inspectedEntry.printing?.foiling}
+            onClose={() => this.setState({ inspectedEntry: null })}
+          />
+        ) : null}
       </div>
     );
   }

@@ -5,7 +5,7 @@ import { updateMusicVolume } from '../utils/arena/musicManager';
 import { UI } from '../utils/arena/uiSounds';
 import { getLocalApiOrigin } from '../utils/localApi';
 import { getGraphicsSettings, saveGraphicsSettings, RESOLUTION_PRESETS } from '../utils/game/graphicsSettings';
-import { areTutorialsEnabled, setTutorialsEnabled, resetTutorial, resetAllTutorials } from '../utils/arena/tutorialState';
+import { setTutorialsEnabled, resetAllTutorials } from '../utils/arena/tutorialState';
 import {
   GOLD, GOLD_TEXT, BG_ATMOSPHERE, VIGNETTE,
   TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, PARCHMENT, PANEL_BG,
@@ -38,33 +38,9 @@ export default class SettingsScreen extends Component {
       checking: false,
       retrying: false,
       viewScale: getViewportScale(),
-      tutorialsEnabled: areTutorialsEnabled(),
       tutorialReplayNote: null,
     };
   }
-
-  toggleTutorials = () => {
-    const next = !this.state.tutorialsEnabled;
-    setTutorialsEnabled(next);
-    this.setState({ tutorialsEnabled: next });
-  };
-
-  replayHubTutorial = () => {
-    const profile = this.props.profile;
-    if (!profile?.id) return;
-    // Clear the seen flag AND ensure the global enable is on, so
-    // the overlay actually auto-plays next time the hub mounts.
-    resetTutorial(profile.id, 'hub-main-menu');
-    setTutorialsEnabled(true);
-    this.setState({
-      tutorialsEnabled: true,
-      tutorialReplayNote: 'The tutorial will play next time you return to the main menu.',
-    });
-    // Also forward a replay request to the parent so it can re-mount
-    // the hub or force the overlay in place immediately — cheap
-    // callback, hub can ignore it if it wants lazy replay.
-    this.props.onReplayHubTutorial?.();
-  };
 
   resetAllTutorialsForAccount = () => {
     const profile = this.props.profile;
@@ -87,6 +63,12 @@ export default class SettingsScreen extends Component {
   setResolution = (resolution) => {
     if (!RESOLUTION_PRESETS[resolution]) return;
     saveGraphicsSettings({ resolution });
+    this.setState({ graphicsSettings: getGraphicsSettings() });
+  };
+
+  setBrightness = (value) => {
+    const clamped = Math.round(Math.max(50, Math.min(150, value)));
+    saveGraphicsSettings({ brightness: clamped / 100 });
     this.setState({ graphicsSettings: getGraphicsSettings() });
   };
 
@@ -207,7 +189,7 @@ export default class SettingsScreen extends Component {
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
             <div>
               <span className="text-sm" style={{ color: TEXT_PRIMARY }}>Resolution</span>
               <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>Render scale for the 3D table — lower for better FPS</div>
@@ -227,6 +209,55 @@ export default class SettingsScreen extends Component {
               ))}
             </div>
           </div>
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm" style={{ color: TEXT_PRIMARY }}>Brightness</span>
+                <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>Adjust overall screen brightness</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="50"
+                  max="150"
+                  value={Math.round((graphicsSettings.brightness ?? 1.0) * 100)}
+                  className="w-28 h-1 accent-amber-500 cursor-pointer"
+                  onInput={(e) => this.setBrightness(parseInt(e.target.value, 10))}
+                />
+                <span className="text-xs w-8 text-right tabular-nums" style={{ color: TEXT_MUTED }}>
+                  {Math.round((graphicsSettings.brightness ?? 1.0) * 100)}%
+                </span>
+              </div>
+            </div>
+            {/* Brightness calibration strip — three instances of the Norse
+                rune at increasing luminance on a pure-black background. At
+                correct brightness the left rune should be invisible, the
+                center barely visible, and the right clearly visible. This is
+                the standard "gamma calibration" pattern from AAA games. */}
+            <div className="mt-3 flex items-stretch gap-px rounded-lg overflow-hidden" style={{ background: '#000', border: `1px solid ${GOLD} 0.1)` }}>
+              {[
+                { opacity: 0.025, label: 'Too dark' },
+                { opacity: 0.07, label: 'Barely visible' },
+                { opacity: 0.18, label: 'Visible' },
+              ].map(({ opacity, label }) => (
+                <div key={label} className="flex-1 flex flex-col items-center justify-center py-3" style={{ background: '#000' }}>
+                  <img
+                    src="/rune-divider.webp"
+                    alt=""
+                    draggable={false}
+                    className="select-none"
+                    style={{ width: 36, height: 36, opacity, filter: 'grayscale(1) brightness(2.5)' }}
+                  />
+                  <div className="text-[8px] mt-1.5 uppercase tracking-widest select-none" style={{ color: `rgba(255,255,255,${Math.min(opacity + 0.06, 0.25)})` }}>
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[10px] text-center" style={{ color: TEXT_MUTED }}>
+              Adjust until the center rune is barely visible
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -235,7 +266,7 @@ export default class SettingsScreen extends Component {
   renderProfileSection() {
     const { profile, onChangeAvatar } = this.props;
     if (!profile) return null;
-    const { tutorialsEnabled, tutorialReplayNote } = this.state;
+    const { tutorialReplayNote } = this.state;
 
     return (
       <div>
@@ -265,52 +296,11 @@ export default class SettingsScreen extends Component {
             </div>
           ) : null}
 
-          {/* Tutorials — global enable + replay controls. The toggle
-              controls whether NEW tutorials auto-play; Replay clears
-              the hub tutorial's seen flag so the next hub mount
-              plays it again. */}
-          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
-            <div>
-              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Show tutorials</div>
-              <div className="text-xs" style={{ color: TEXT_MUTED }}>
-                Play onboarding overlays the first time you see each screen
-              </div>
-            </div>
-            <button
-              type="button"
-              className="px-3 py-1 text-xs font-semibold uppercase tracking-wider cursor-pointer transition-all"
-              style={{
-                ...(tutorialsEnabled ? TOGGLE_ON : TOGGLE_OFF),
-                borderRadius: '6px',
-              }}
-              onClick={this.toggleTutorials}
-            >
-              {tutorialsEnabled ? 'On' : 'Off'}
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
-            <div>
-              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Replay main menu tutorial</div>
-              <div className="text-xs" style={{ color: TEXT_MUTED }}>
-                Walk through the main menu buttons again
-              </div>
-            </div>
-            <button
-              type="button"
-              className="px-3 py-1 text-xs font-medium cursor-pointer transition-all"
-              style={{ ...BEVELED_BTN, color: `${GOLD_TEXT} 0.6)`, borderRadius: '6px' }}
-              onClick={this.replayHubTutorial}
-            >
-              Replay
-            </button>
-          </div>
-
           <div className="flex items-center justify-between px-4 py-3">
             <div>
-              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Reset all tutorials</div>
+              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Reset tutorials</div>
               <div className="text-xs" style={{ color: TEXT_MUTED }}>
-                {tutorialReplayNote || 'Clear every tutorial\'s seen flag so each one plays again'}
+                {tutorialReplayNote || 'Replay all onboarding walkthroughs from the beginning'}
               </div>
             </div>
             <button

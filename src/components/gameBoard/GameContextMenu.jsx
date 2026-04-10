@@ -1,8 +1,10 @@
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   POPOVER_STYLE, SECTION_HEADER_STYLE,
 } from '../../lib/medievalTheme';
 import { DICE_CONFIGS } from '../../utils/game/diceMesh';
+import { STATUS_EFFECTS } from '../../utils/game/cardMesh';
 
 const menuCls = 'flex w-full items-center rounded-lg px-3 py-1.5 cursor-pointer transition-colors';
 const menuHover = (e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; };
@@ -82,7 +84,84 @@ export default function GameContextMenu({ contextMenu, actions, viewScale = 1 })
   return null;
 }
 
+function StatusFlyout({ cardInstance, actions, parentRef }) {
+  const activeStatuses = cardInstance.statuses || [];
+  const flyoutRef = useRef(null);
+  const [side, setSide] = useState('right');
+
+  // On mount, measure the parent trigger and decide which side has room.
+  useEffect(() => {
+    const parent = parentRef?.current;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    const flyoutWidth = 180;
+    const spaceRight = window.innerWidth - rect.right;
+    setSide(spaceRight >= flyoutWidth + 8 ? 'right' : 'left');
+  }, []);
+
+  const posStyle = side === 'right'
+    ? { left: '100%', top: 0, marginLeft: 4 }
+    : { right: '100%', top: 0, marginRight: 4 };
+
+  return (
+    <div
+      ref={flyoutRef}
+      className="absolute z-10 min-w-[170px] max-h-[320px] overflow-y-auto p-1 text-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={{ ...POPOVER_STYLE, ...posStyle }}
+    >
+      {STATUS_EFFECTS.map((effect) => {
+        const isActive = activeStatuses.includes(effect.key);
+        return (
+          <button
+            key={effect.key}
+            type="button"
+            className={menuCls}
+            style={{ color: TEXT_BODY }}
+            onMouseEnter={menuHover}
+            onMouseLeave={menuLeave}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.toggleCardStatus(cardInstance, effect.key);
+            }}
+          >
+            <span
+              className="mr-2 inline-block size-3 rounded-full shrink-0"
+              style={{
+                background: isActive ? effect.color : 'transparent',
+                border: `2px solid ${effect.color}`,
+              }}
+            />
+            <span className={isActive ? 'font-semibold' : ''}>{effect.label}</span>
+          </button>
+        );
+      })}
+      {activeStatuses.length > 0 && (
+        <>
+          <Divider />
+          <button
+            type="button"
+            className={menuCls}
+            style={{ color: '#c45050' }}
+            onMouseEnter={menuHover}
+            onMouseLeave={menuLeave}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.clearAllStatuses(cardInstance);
+            }}
+          >
+            Clear All
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, groupId, selectionAlreadyGrouped }) {
+  const [showStatuses, setShowStatuses] = useState(false);
+  const statusTriggerRef = useRef(null);
+  const activeCount = (cardInstance.statuses || []).length;
+
   // Group selected — shown when the user has a marquee selection that
   // ISN'T already a single cohesive group. The `selectionAlreadyGrouped`
   // flag is computed upstream in GameBoard.handleContextMenu: it's
@@ -94,7 +173,7 @@ function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, group
   const canUngroup = !!groupId;
 
   return (
-    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-visible p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
 
       <MenuButton onClick={() => actions.tapCard(cardInstance, mesh)}>
@@ -106,6 +185,35 @@ function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, group
       <MenuButton onClick={() => actions.sendToHand(cardInstance)}>
         Send to hand
       </MenuButton>
+
+      <Divider />
+      <div
+        ref={statusTriggerRef}
+        className="relative"
+        onMouseEnter={() => setShowStatuses(true)}
+        onMouseLeave={() => setShowStatuses(false)}
+      >
+        <button
+          type="button"
+          className={menuCls}
+          style={{ color: TEXT_BODY }}
+          onMouseEnter={menuHover}
+          onMouseLeave={menuLeave}
+          onClick={(e) => { e.stopPropagation(); setShowStatuses(!showStatuses); }}
+        >
+          Status Effects
+          {activeCount > 0 && (
+            <span
+              className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: `${GOLD} 0.25)`, color: TEXT_PRIMARY }}
+            >
+              {activeCount}
+            </span>
+          )}
+          <span className="ml-1 text-[10px]" style={{ color: TEXT_MUTED }}>▶</span>
+        </button>
+        {showStatuses && <StatusFlyout cardInstance={cardInstance} actions={actions} parentRef={statusTriggerRef} />}
+      </div>
 
       {(canGroup || canUngroup) && <Divider />}
       {canGroup && (
@@ -123,6 +231,11 @@ function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, group
       <MenuButton onClick={() => actions.sendCardToPile(cardInstance, 'Cemetery')}>
         Send to Cemetery
       </MenuButton>
+      {cardInstance.isSite && cardInstance.cardId !== 'sorcery-rubble' && (
+        <MenuButton onClick={() => actions.turnToRubble(cardInstance)}>
+          Turn to Rubble
+        </MenuButton>
+      )}
       <Divider />
       <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest" style={SECTION_HEADER_STYLE}>Put into pile</div>
       <MenuButton onClick={() => actions.sendCardToPile(cardInstance, 'Spellbook', true)}>Spellbook (shuffle)</MenuButton>

@@ -118,6 +118,17 @@ export class GameSyncBridge {
     this._send('card:level', { cardId, level });
   }
 
+  /** Toggle a keyword status effect (Stealth, Ward, etc.) on a card. */
+  setCardStatus(cardId, statusKey, active) {
+    this._send('card:status', { cardId, statusKey, active });
+  }
+
+  /** Broadcast which card the local player is hovering or inspecting.
+   *  Pass `null` to clear the highlight on the opponent's board. */
+  hoverCard(cardId) {
+    this._send('card:hover', { cardId });
+  }
+
   // --- Groups ----------------------------------------------------------
 
   /**

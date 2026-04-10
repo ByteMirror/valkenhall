@@ -607,15 +607,23 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
     perf.endMark(callbacksMark);
 
     if (heldKeys.size > 0) {
-      let dx = 0;
-      let dz = 0;
-      if (heldKeys.has('w') || heldKeys.has('W')) dz -= PAN_SPEED;
-      if (heldKeys.has('s') || heldKeys.has('S')) dz += PAN_SPEED;
-      if (heldKeys.has('a') || heldKeys.has('A')) dx -= PAN_SPEED;
-      if (heldKeys.has('d') || heldKeys.has('D')) dx += PAN_SPEED;
-      if (dx !== 0 || dz !== 0) {
-        orbitTarget.x += dx;
-        orbitTarget.z += dz;
+      let inputForward = 0;
+      let inputRight = 0;
+      if (heldKeys.has('w') || heldKeys.has('W')) inputForward += PAN_SPEED;
+      if (heldKeys.has('s') || heldKeys.has('S')) inputForward -= PAN_SPEED;
+      if (heldKeys.has('d') || heldKeys.has('D')) inputRight += PAN_SPEED;
+      if (heldKeys.has('a') || heldKeys.has('A')) inputRight -= PAN_SPEED;
+      if (inputForward !== 0 || inputRight !== 0) {
+        // Project input into world space via the camera's horizontal
+        // orientation — same technique as the mouse-drag pan — so WASD
+        // always moves relative to the viewer's perspective even when
+        // the board is flipped for player 2.
+        camera.getWorldDirection(_forward);
+        _right.crossVectors(_forward, camera.up).normalize();
+        _forward.crossVectors(camera.up, _right).normalize();
+        orbitTarget.addScaledVector(_right, inputRight);
+        orbitTarget.addScaledVector(_forward, inputForward);
+        orbitTarget.y = 0;
         clampPanTarget();
         updateCameraFromOrbit();
       }
@@ -972,11 +980,11 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
   }
 
   function zoomToOverview() {
-    animateOrbitTo(0, 0, 160, 0.1, 0, 600);
+    animateOrbitTo(0, 0, 160, 0.1, flipped ? Math.PI : 0, 600);
   }
 
   function zoomToCard(x, z) {
-    animateOrbitTo(x, z, 30, 0.15, 0, 400);
+    animateOrbitTo(x, z, 30, 0.15, flipped ? Math.PI : 0, 400);
   }
 
   let flipped = false;
