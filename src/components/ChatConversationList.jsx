@@ -32,10 +32,11 @@ export default class ChatConversationList extends Component {
   loadConversations = async () => {
     try {
       const conversations = await fetchConversations();
-      this.setState({ conversations, loading: false });
+      this.setState({ conversations: Array.isArray(conversations) ? conversations : [], loading: false });
     } catch (err) {
       console.error('[ChatConversationList] Failed to load:', err);
-      this.setState({ loading: false });
+      // Show friends list even if chat API is unavailable
+      this.setState({ conversations: [], loading: false });
     }
   };
 
@@ -127,7 +128,7 @@ export default class ChatConversationList extends Component {
 
           return (
             <button
-              key={conv.friendId}
+              key={friendId}
               type="button"
               className="flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all text-left w-full"
               style={{ borderBottom: `1px solid ${GOLD} 0.06)` }}
