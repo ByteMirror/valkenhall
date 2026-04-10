@@ -57,7 +57,7 @@ describe('Select', () => {
 
     await waitFor(() => {
       expect(menu.style.left).toBe('16px');
-      expect(menu.style.width).toBe('288px');
+      expect(menu.style.minWidth).toBe('288px');
     });
   });
 
