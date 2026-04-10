@@ -11,6 +11,8 @@ let currentActivity = 'hub';
 let onFriendListUpdate = null;
 let onNewNotifications = null;
 let onMailCountUpdate = null;
+let onChatMessage = null;
+let onChatClaimed = null;
 
 let friendList = { friends: [], pendingRequests: [], pendingCount: 0 };
 let unsubscribers = [];
@@ -70,6 +72,8 @@ export async function startPresence(activity, callbacks = {}) {
   onFriendListUpdate = callbacks.onFriendListUpdate || null;
   onNewNotifications = callbacks.onNewNotifications || null;
   onMailCountUpdate = callbacks.onMailCountUpdate || null;
+  onChatMessage = callbacks.onChatMessage || null;
+  onChatClaimed = callbacks.onChatClaimed || null;
   currentActivity = activity;
 
   await connectWebSocket();
@@ -210,6 +214,14 @@ export async function startPresence(activity, callbacks = {}) {
     // Auction proceeds arrive via mail — mail:received will trigger refresh.
   }));
 
+  unsubscribers.push(on('chat:message', (data) => {
+    if (onChatMessage) onChatMessage(data);
+  }));
+
+  unsubscribers.push(on('chat:claimed', (data) => {
+    if (onChatClaimed) onChatClaimed(data);
+  }));
+
   await refreshFriendListInternal();
   await refreshMailCount();
 
@@ -258,5 +270,7 @@ export function stopPresence() {
   onFriendListUpdate = null;
   onNewNotifications = null;
   onMailCountUpdate = null;
+  onChatMessage = null;
+  onChatClaimed = null;
   disconnectWebSocket();
 }

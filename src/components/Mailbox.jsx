@@ -7,6 +7,8 @@ import { refreshMailbox } from '../utils/presenceManager';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import VikingOrnament from './VikingOrnament';
 import MarkdownNotes from './MarkdownNotes';
+import ChatConversationList from './ChatConversationList';
+import ChatView from './ChatView';
 import { Select } from './ui/select';
 import { CoinIcon } from './ui/icons';
 import {
@@ -119,7 +121,11 @@ export default class Mailbox extends Component {
       cardPickerSearch: '',
       error: null,
       viewScale: getViewportScale(),
+      // Chat state — friend tab
+      chatFriend: null, // { friendId, friendName, friendAvatar, online }
     };
+    this.chatViewRef = null;
+    this.chatListRef = null;
   }
 
   componentDidMount() {
@@ -135,6 +141,20 @@ export default class Mailbox extends Component {
   componentDidUpdate(prevProps) {
     if (!prevProps.open && this.props.open) {
       this.loadInbox();
+    }
+    // Route incoming chat WS events to the active chat view
+    if (this.props.lastChatMessage && this.props.lastChatMessage !== prevProps.lastChatMessage) {
+      const msg = this.props.lastChatMessage;
+      if (this.chatViewRef && this.state.chatFriend?.friendId === msg.senderId) {
+        this.chatViewRef.receiveMessage(msg);
+      } else if (this.chatListRef) {
+        this.chatListRef.refresh();
+      }
+    }
+    if (this.props.lastChatClaimed && this.props.lastChatClaimed !== prevProps.lastChatClaimed) {
+      if (this.chatViewRef) {
+        this.chatViewRef.handleClaimed(this.props.lastChatClaimed);
+      }
     }
   }
 
@@ -388,7 +408,10 @@ export default class Mailbox extends Component {
       );
     }
 
-    const filtered = tab === 'all' ? mail : mail.filter(m => {
+    const filtered = tab === 'all' ? mail.filter(m => {
+      const type = m.type || 'friend';
+      return type !== 'friend' && type !== 'draft-invite';
+    }) : mail.filter(m => {
       const type = m.type || 'friend';
       if (tab === 'friend') return type === 'friend' || type === 'draft-invite';
       return type === tab;
@@ -1077,14 +1100,38 @@ export default class Mailbox extends Component {
           )}
 
           <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
-            {view === 'list' && this.renderListView()}
-            {view === 'detail' && this.renderDetailView()}
-            {view === 'compose' && this.renderComposeView()}
+            {this.state.tab === 'friend' ? (
+              this.state.chatFriend ? (
+                <ChatView
+                  ref={(ref) => { this.chatViewRef = ref; }}
+                  friendId={this.state.chatFriend.friendId}
+                  friendName={this.state.chatFriend.friendName}
+                  friendAvatar={this.state.chatFriend.friendAvatar}
+                  online={this.state.chatFriend.online}
+                  profile={this.props.profile}
+                  sorceryCards={this.props.sorceryCards}
+                  onBack={() => this.setState({ chatFriend: null })}
+                  onProfileReload={this.props.onProfileReload}
+                />
+              ) : (
+                <ChatConversationList
+                  ref={(ref) => { this.chatListRef = ref; }}
+                  onSelectFriend={(friend) => this.setState({ chatFriend: friend })}
+                  friendListData={this.props.friendListData}
+                />
+              )
+            ) : (
+              <>
+                {view === 'list' && this.renderListView()}
+                {view === 'detail' && this.renderDetailView()}
+                {view === 'compose' && this.renderComposeView()}
+              </>
+            )}
           </div>
 
           {/* Pinned footer — always at bottom */}
           <div className="shrink-0 px-3 py-2.5 flex items-center justify-end gap-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
-            {view === 'list' && (this.state.tab === 'all' || this.state.tab === 'friend') ? (
+            {view === 'list' && this.state.tab === 'all' && !this.state.chatFriend ? (
               <button
                 type="button"
                 className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"

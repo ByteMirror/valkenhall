@@ -436,6 +436,8 @@ export default class App extends Component {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
       onNewNotifications: this.handleNewNotifications,
       onMailCountUpdate: (counts) => this.setState({ mailboxUnreadCount: counts.count }),
+      onChatMessage: (msg) => this.setState({ lastChatMessage: msg }),
+      onChatClaimed: (data) => this.setState({ lastChatClaimed: data }),
     });
     this.checkAssetDownload();
     this.deliverPatchNews();
@@ -1847,6 +1849,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -1877,6 +1882,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -1986,6 +1994,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -2012,6 +2023,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -2082,6 +2096,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -2113,6 +2130,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -2162,6 +2182,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -2229,6 +2252,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
@@ -2256,6 +2282,9 @@ export default class App extends Component {
               <Mailbox
                 open={this.state.mailboxOpen}
                 onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                lastChatMessage={this.state.lastChatMessage}
+                lastChatClaimed={this.state.lastChatClaimed}
+                onProfileReload={() => this.checkAuth()}
                 profile={this.state.arenaProfile}
                 friendListData={this.state.friendListData}
                 sorceryCards={this.state.sorceryCards}
