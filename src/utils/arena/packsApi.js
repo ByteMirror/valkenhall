@@ -39,7 +39,7 @@ export function resolvePackContents(contents, sorceryCards) {
       card.printings?.find((p) => p.foiling === (entry.foiling || 'S')) ||
       card.printings?.[0] ||
       {};
-    resolved.push({ card, printing });
+    resolved.push({ card, printing, rarity: entry.rarity || card.rarity || 'Ordinary' });
   }
   return resolved;
 }

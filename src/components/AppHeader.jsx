@@ -1,7 +1,8 @@
+import { useState } from 'preact/hooks';
 import { Mail } from 'lucide-react';
 import {
   GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
-  BEVELED_BTN, getViewportScale,
+  BEVELED_BTN, POPOVER_STYLE, getViewportScale,
 } from '../lib/medievalTheme';
 import { CoinIcon, ShardIcon } from './ui/icons';
 
@@ -22,6 +23,7 @@ export default function AppHeader({
   mailboxDropdown,
   onToggleFriends,
   friendListData,
+  draftQueueDropdown,
   zoom,
 }) {
   const viewScale = zoom ?? getViewportScale();
@@ -68,6 +70,9 @@ export default function AppHeader({
             <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: `${GOLD} 0.4)` }}>gold</span>
           </div>
         )}
+
+        {/* Draft queue indicator */}
+        {draftQueueDropdown}
 
         {/* Friends button */}
         {onToggleFriends && (
@@ -118,6 +123,81 @@ export default function AppHeader({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+export function InviteButton({ code }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for environments where clipboard API isn't available
+      const el = document.createElement('textarea');
+      el.value = code;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="relative px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 hover:scale-[1.03] active:scale-[0.98]"
+        style={{ ...BEVELED_BTN, color: ACCENT_GOLD }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.5)`; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${GOLD} 0.3)`; }}
+        onClick={() => setOpen(!open)}
+      >
+        Invite
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            className="absolute left-0 top-full mt-2 z-20 p-4 min-w-[240px]"
+            style={POPOVER_STYLE}
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: `${GOLD} 0.55)` }}>
+              Your Invite Code
+            </div>
+            <div className="flex items-center gap-2 mb-2">
+              <span
+                className="flex-1 text-center text-lg font-bold font-mono tracking-[0.2em] py-1.5 rounded"
+                style={{
+                  color: ACCENT_GOLD,
+                  background: 'rgba(0,0,0,0.3)',
+                  border: `1px solid ${GOLD} 0.2)`,
+                  textShadow: `0 0 12px ${GOLD} 0.3)`,
+                }}
+              >
+                {code}
+              </span>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-all cursor-pointer"
+                style={{ ...BEVELED_BTN, borderRadius: '6px', color: copied ? '#6ab04c' : TEXT_BODY }}
+                onClick={handleCopy}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-[10px] leading-relaxed" style={{ color: TEXT_MUTED }}>
+              Share this code with a friend to invite them to the closed beta. Each code can be used once.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }

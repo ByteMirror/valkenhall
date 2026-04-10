@@ -170,6 +170,24 @@ export async function joinRoom(code) {
   });
 }
 
+export async function spectateRoom(code) {
+  await connectWebSocket();
+  setupSubscriptions();
+
+  return new Promise((resolve, reject) => {
+    joinResolver = resolve;
+    joinRejecter = reject;
+    send('room:spectate', { roomCode: code });
+    setTimeout(() => {
+      if (joinRejecter) {
+        joinRejecter(new Error('Spectate timeout'));
+        joinResolver = null;
+        joinRejecter = null;
+      }
+    }, 10000);
+  });
+}
+
 export function disconnectSocket() {
   if (currentRoomCode) {
     send('room:leave', {});

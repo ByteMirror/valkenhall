@@ -6,6 +6,7 @@ import { loadArenaProfile } from '../utils/arena/profileApi';
 import { refreshMailbox } from '../utils/presenceManager';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import VikingOrnament from './VikingOrnament';
+import MarkdownNotes from './MarkdownNotes';
 import { Select } from './ui/select';
 import { CoinIcon } from './ui/icons';
 import {
@@ -387,7 +388,11 @@ export default class Mailbox extends Component {
       );
     }
 
-    const filtered = tab === 'all' ? mail : mail.filter(m => (m.type || 'friend') === tab);
+    const filtered = tab === 'all' ? mail : mail.filter(m => {
+      const type = m.type || 'friend';
+      if (tab === 'friend') return type === 'friend' || type === 'draft-invite';
+      return type === tab;
+    });
 
     if (filtered.length === 0) {
       return null;
@@ -468,6 +473,86 @@ export default class Mailbox extends Component {
     );
   }
 
+  renderDraftInviteBody(mail) {
+    let invite = null;
+    try { invite = JSON.parse(mail.body); } catch { return null; }
+    if (!invite) return null;
+
+    const startTime = new Date(invite.scheduledAt).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    const accepted = this.state.draftInviteAccepted === mail.id;
+    const accepting = this.state.draftInviteAccepting === mail.id;
+
+    return (
+      <div className="mb-3">
+        <div className="text-xs leading-relaxed mb-3" style={{ color: TEXT_BODY }}>
+          <span className="font-semibold" style={{ color: TEXT_PRIMARY }}>{invite.senderName}</span> has invited you to a draft!
+        </div>
+        <div className="p-3 rounded mb-3" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${GOLD} 0.12)` }}>
+          <div className="text-sm font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>{invite.setLabel} Draft</div>
+          <div className="space-y-1 text-xs" style={{ color: TEXT_BODY }}>
+            <div className="flex justify-between"><span style={{ color: TEXT_MUTED }}>Start time</span><span>{startTime}</span></div>
+            <div className="flex justify-between"><span style={{ color: TEXT_MUTED }}>Players</span><span>{invite.playerCount}/{invite.podSize}</span></div>
+            <div className="flex justify-between"><span style={{ color: TEXT_MUTED }}>Entry cost</span><span style={{ color: COIN_COLOR }}>{invite.entryCost} <CoinIcon size={10} /></span></div>
+          </div>
+        </div>
+        {accepted ? (
+          <div className="text-xs text-center py-2" style={{ color: '#6dba6d' }}>Joined! Opening draft view...</div>
+        ) : (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 py-2 text-xs font-semibold transition-all cursor-pointer rounded"
+              style={{ ...GOLD_BTN, backgroundColor: '#3a2812' }}
+              data-sound={UI.CONFIRM}
+              disabled={accepting}
+              onClick={() => this.handleAcceptDraftInvite(mail.id, invite.eventId)}
+            >
+              {accepting ? 'Joining...' : 'Accept & Join'}
+            </button>
+            <button
+              type="button"
+              className="py-2 px-4 text-xs transition-all cursor-pointer rounded"
+              style={{ ...BEVELED_BTN, backgroundColor: '#0e0a06', color: TEXT_BODY }}
+              data-sound={UI.CANCEL}
+              onClick={() => this.handleDeclineDraftInvite(mail.id)}
+            >
+              Decline
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  handleAcceptDraftInvite = async (mailId, eventId) => {
+    this.setState({ draftInviteAccepting: mailId });
+    try {
+      const { joinDraftEvent } = await import('../utils/arena/draftApi');
+      await joinDraftEvent(eventId);
+      this.setState({ draftInviteAccepting: null, draftInviteAccepted: mailId });
+      // Navigate to draft view after a brief moment
+      setTimeout(() => {
+        this.props.onClose?.();
+        this.props.onAcceptDraftInvite?.(eventId);
+      }, 800);
+    } catch (err) {
+      this.setState({ draftInviteAccepting: null });
+      console.error('[Mailbox] accept draft invite failed:', err);
+    }
+  };
+
+  handleDeclineDraftInvite = async (mailId) => {
+    try {
+      await deleteMail(mailId);
+      this.backToList();
+      this.loadInbox();
+    } catch (err) {
+      console.error('[Mailbox] decline draft invite failed:', err);
+    }
+  };
+
   renderDetailView() {
     const { sorceryCards } = this.props;
     const { selectedMail: m, claiming } = this.state;
@@ -520,11 +605,11 @@ export default class Mailbox extends Component {
 
         {/* Body + Attachments (scrollable together) */}
         <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
-          {m.body && (
-            <div className="text-xs leading-relaxed whitespace-pre-wrap mb-3" style={{ color: TEXT_BODY }}>
-              {m.body}
-            </div>
-          )}
+          {m.type === 'draft-invite' ? this.renderDraftInviteBody(m)
+            : m.body && (m.type === 'news'
+              ? <div className="mb-3"><MarkdownNotes text={m.body} /></div>
+              : <div className="text-xs leading-relaxed whitespace-pre-wrap mb-3" style={{ color: TEXT_BODY }}>{m.body}</div>
+            )}
 
           {/* Attachment grid — inline after text */}
           {hasAttachments && (

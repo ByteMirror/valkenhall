@@ -1176,6 +1176,7 @@ export default class AuctionHouse extends Component {
           onToggleMailbox={onToggleMailbox}
           mailboxUnreadCount={mailboxUnreadCount}
           mailboxDropdown={mailboxDropdown}
+          draftQueueDropdown={this.props.draftQueueDropdown}
           onToggleFriends={onToggleFriends}
           friendListData={friendListData}
           zoom={viewScale}

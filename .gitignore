@@ -21,3 +21,4 @@ public/sorcery-images/
 *.njsproj
 *.sln
 *.sw?
+.vercel

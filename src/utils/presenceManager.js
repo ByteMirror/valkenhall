@@ -138,6 +138,37 @@ export async function startPresence(activity, callbacks = {}) {
     });
   }));
 
+  unsubscribers.push(on('draft:player_disconnected', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'draft-player-disconnected',
+        playerName: data.playerName,
+        eventId: data.eventId,
+        gracePeriodMs: data.gracePeriodMs,
+      }]);
+    }
+  }));
+
+  unsubscribers.push(on('draft:player_reconnected', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'draft-player-reconnected',
+        playerName: data.playerName,
+        eventId: data.eventId,
+      }]);
+    }
+  }));
+
+  unsubscribers.push(on('draft:cancelled', (data) => {
+    if (onNewNotifications) {
+      onNewNotifications([{
+        type: 'draft-aborted',
+        eventId: data.eventId,
+        reason: data.reason,
+      }]);
+    }
+  }));
+
   unsubscribers.push(on('invite:received', (data) => {
     if (onNewNotifications) {
       onNewNotifications([{

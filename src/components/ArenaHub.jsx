@@ -1,6 +1,6 @@
 import { Component } from 'preact';
 import RuneSpinner from './RuneSpinner';
-import AppHeader from './AppHeader';
+import AppHeader, { InviteButton } from './AppHeader';
 import { UI } from '../utils/arena/uiSounds';
 import { xpProgressInLevel } from '../utils/arena/profileDefaults';
 import { ACHIEVEMENTS, getAchievementProgress } from '../utils/arena/achievements';
@@ -233,10 +233,12 @@ export default class ArenaHub extends Component {
           onToggleMailbox={onToggleMailbox}
           mailboxUnreadCount={mailboxUnreadCount}
           mailboxDropdown={this.props.mailboxDropdown}
+          draftQueueDropdown={this.props.draftQueueDropdown}
           onToggleFriends={onToggleFriends}
           friendListData={friendListData}
           zoom={this.state.hubScale}
         >
+          {profile?.inviteCode && <InviteButton code={profile.inviteCode} />}
           {this.props.isAdmin && (
             <button
               type="button"
@@ -278,6 +280,8 @@ export default class ArenaHub extends Component {
               <MenuButton title="Casual Play" onClick={onPlayMatch} dataTutorial="casual-play" />
               <MenuButton title="Store" onClick={onOpenStore} dataTutorial="store" />
               <MenuButton title="Deck Builder" onClick={onOpenDeckBuilder} dataTutorial="deck-builder" />
+              <MenuButton title="Draft" onClick={this.props.onOpenDraft} dataTutorial="draft" />
+              <MenuButton title="Guild" onClick={this.props.onOpenGuild} dataTutorial="guild" />
               <MenuButton title="Auction House" onClick={onOpenAuctionHouse} dataTutorial="auction-house" />
               <MenuButton title="Arcane Trials" onClick={onOpenArcaneTrials} dataTutorial="arcane-trials" />
               <div className="relative" data-tutorial="settings">

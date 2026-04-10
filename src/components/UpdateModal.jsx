@@ -3,6 +3,7 @@ import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   DIALOG_STYLE, PANEL_BG, GOLD_BTN, FourCorners,
 } from '../lib/medievalTheme';
+import MarkdownNotes from './MarkdownNotes';
 
 export default class UpdateModal extends Component {
   constructor(props) {
@@ -58,9 +59,7 @@ export default class UpdateModal extends Component {
               >
                 What's New
               </div>
-              <div style={{ color: TEXT_BODY, whiteSpace: 'pre-wrap' }}>
-                {releaseNotes}
-              </div>
+              <MarkdownNotes text={releaseNotes} />
             </div>
           ) : null}
 

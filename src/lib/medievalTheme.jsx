@@ -241,10 +241,10 @@ export function CornerPlating({ position, color = GOLD_CORNER, radius = 8 }) {
 const KNOT_URL = `/game-assets/ornaments/viking-borre-knot.svg?v=${typeof Date !== 'undefined' ? Date.now() : 0}`;
 
 const KNOT_ROTATIONS = {
-  'top-left': 135,
-  'top-right': -135,
-  'bottom-left': 45,
-  'bottom-right': -45,
+  'top-left': 180,
+  'top-right': -90,
+  'bottom-left': 90,
+  'bottom-right': 0,
 };
 
 export function KnotCorner({

@@ -33,7 +33,7 @@ import GameMenu from './components/GameMenu';
 import LoginScreen from './components/LoginScreen';
 import { clearQueueState, joinQueue, leaveQueue, pollQueueStatus } from './utils/arena/matchmakingApi';
 import { api } from './utils/serverClient';
-import { getStoredToken, validateToken, clearStoredToken } from './utils/authApi';
+import { getStoredToken, validateToken, clearStoredToken, getMyInviteCode } from './utils/authApi';
 import FriendsSidebar from './components/FriendsSidebar';
 import FriendProfileOverlay from './components/FriendProfileOverlay';
 import SpectatorBanner from './components/SpectatorBanner';
@@ -50,6 +50,15 @@ import DeckGallery from './components/DeckGallery';
 import DeckEditor from './components/DeckEditor';
 import Mailbox from './components/Mailbox';
 import ArcaneTrials from './components/ArcaneTrials';
+import DraftBrowser from './components/DraftBrowser';
+import DraftLobby from './components/DraftLobby';
+import DraftPicker from './components/DraftPicker';
+import DraftDeckBuilder from './components/DraftDeckBuilder';
+import DraftTournament from './components/DraftTournament';
+import DraftResults from './components/DraftResults';
+import GuildPanel from './components/GuildPanel';
+import GuildLeaderboard from './components/GuildLeaderboard';
+import DraftQueueIndicator from './components/DraftQueueIndicator';
 
 const PAGE_TRANSITION_PROPS = {
   initial: { opacity: 0 },
@@ -141,6 +150,15 @@ export default class App extends Component {
       mailboxSelectedMailId: null,
       mailboxView: null,
       mailboxComposeRecipientId: null,
+      // Draft state
+      draftEventId: null,
+      draftPhase: null,
+      draftedCards: null,
+      draftFinalStandings: null,
+      draftPrizes: null,
+      draftQueueOpen: false,
+      // Guild state
+      guildId: null,
     };
 
     this.arenaQueuePollTimer = null;
@@ -229,8 +247,7 @@ export default class App extends Component {
             loggedIn: true,
             arenaProfile: this.profileFromServer(serverProfile, token),
             arenaLoading: false,
-          });
-          this.postLoginInit();
+          }, () => this.postLoginInit());
           return;
         }
       } catch {}
@@ -295,6 +312,14 @@ export default class App extends Component {
         matchmaking: 'matchmaking',
         'pack-opening': 'pack-opening',
         'auction-house': 'auction-house',
+        'draft': 'draft',
+        'draft-lobby': 'draft',
+        'draft-picking': 'draft',
+        'draft-building': 'draft',
+        'draft-tournament': 'draft',
+        'draft-results': 'draft',
+        'guild': 'guild',
+        'guild-leaderboard': 'guild',
       };
       updateActivity(activityMap[this.state.arenaView] || 'hub');
     }
@@ -362,8 +387,7 @@ export default class App extends Component {
       authChecking: false,
       arenaProfile: profile,
       arenaLoading: false,
-    });
-    this.postLoginInit();
+    }, () => this.postLoginInit());
   };
 
   initSeason = async () => {
@@ -394,6 +418,19 @@ export default class App extends Component {
     preloadUISounds();
     this.initSeason();
     this.refreshSavedDecks();
+    // Fetch the player's personal invite code — stored on the profile
+    // object so it flows to AppHeader through every screen's existing
+    // profile prop without additional plumbing.
+    const token = this.state.arenaProfile?.serverToken;
+    if (token) {
+      getMyInviteCode(token).then((code) => {
+        if (code && this.state.arenaProfile) {
+          this.setState((s) => ({
+            arenaProfile: { ...s.arenaProfile, inviteCode: code },
+          }));
+        }
+      }).catch(() => {});
+    }
     playMusic('arena-hub', { fadeInDuration: 3000 });
     startPresence('hub', {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
@@ -497,10 +534,15 @@ export default class App extends Component {
   };
 
   handleLeaveSpectate = () => {
+    const returningToDraft = this.state.draftEventId && this.state.draftPhase === 'tournament';
     this.setState({
       isSpectating: false,
       isGameBoardOpen: false,
       spectateRoomCode: null,
+      sessionMode: null,
+      roomCode: null,
+      isArenaMatch: false,
+      ...(returningToDraft ? { arenaView: 'draft-tournament' } : {}),
     });
   };
 
@@ -588,6 +630,27 @@ export default class App extends Component {
         this.addToast({
           title: 'Invite Accepted',
           message: `${n.name || n.senderName || 'Your opponent'} accepted — choose your deck!`,
+        });
+      } else if (n.type === 'draft-player-disconnected') {
+        const secs = Math.round((n.gracePeriodMs || 120000) / 1000);
+        this.addToast({
+          title: 'Player Disconnected',
+          message: `${n.playerName} lost connection. They have ${secs}s to reconnect or the draft will be cancelled.`,
+        });
+      } else if (n.type === 'draft-player-reconnected') {
+        this.addToast({
+          title: 'Player Reconnected',
+          message: `${n.playerName} is back!`,
+        });
+      } else if (n.type === 'draft-aborted') {
+        this.addToast({
+          title: 'Draft Cancelled',
+          message: 'The draft has been cancelled. Your entry has been refunded.',
+        });
+        this.setState({
+          draftEventId: null,
+          draftPhase: null,
+          arenaView: 'hub',
         });
       } else if (n.type === 'matchmaking-matched') {
         clearInterval(this.arenaQueuePollTimer);
@@ -969,6 +1032,151 @@ export default class App extends Component {
     this.setState({ arenaView: 'arcane-trials' });
   };
 
+  // --- Draft handlers ---
+
+  openDraftBrowser = () => {
+    playUI(UI.OPEN);
+    this.setState({ arenaView: 'draft' });
+  };
+
+  openDraftLobby = (eventId) => {
+    this.setState({ arenaView: 'draft', draftEventId: eventId, draftPhase: 'lobby', draftQueueOpen: false });
+  };
+
+  handleToggleDraftQueue = () => {
+    this.setState((s) => ({ draftQueueOpen: !s.draftQueueOpen }));
+  };
+
+  handleDraftQueueLeft = () => {
+    this.setState({ draftEventId: null, draftPhase: null, draftQueueOpen: false, arenaView: 'hub' });
+  };
+
+  handleDraftQueueCancelled = () => {
+    this.setState({ draftEventId: null, draftPhase: null, draftQueueOpen: false, arenaView: 'hub' });
+  };
+
+  renderDraftQueueDropdown = () => {
+    if (!this.state.draftEventId || this.state.draftPhase === 'picking' || this.state.draftPhase === 'building') return null;
+    return (
+      <DraftQueueIndicator
+        eventId={this.state.draftEventId}
+        profile={this.state.arenaProfile}
+        open={this.state.draftQueueOpen}
+        onToggle={this.handleToggleDraftQueue}
+        onOpenLobby={() => this.openDraftLobby(this.state.draftEventId)}
+        onLeft={this.handleDraftQueueLeft}
+        onCancelled={this.handleDraftQueueCancelled}
+      />
+    );
+  };
+
+  handleDraftStarted = (data) => {
+    this.setState({ arenaView: 'draft-picking', draftPhase: 'picking' });
+  };
+
+  handleDraftBuildingPhase = (data) => {
+    this.setState({
+      arenaView: 'draft-building',
+      draftPhase: 'building',
+      draftedCards: data?.draftedCards || [],
+    });
+  };
+
+  handleDraftTournamentStart = (data) => {
+    this.setState({ arenaView: 'draft-tournament', draftPhase: 'tournament' });
+  };
+
+  handleDraftSpectate = (roomCode) => {
+    this.setState({
+      isSpectating: true,
+      isGameBoardOpen: true,
+      spectateRoomCode: roomCode,
+      sessionMode: 'spectate',
+      roomCode: roomCode,
+      isArenaMatch: true,
+      isRankedMatch: false,
+    });
+  };
+
+  handleDraftPlayMatch = async (roomId) => {
+    // Get opponent info from the draft event participants
+    let opponentInfo = null;
+    if (this.state.draftEventId) {
+      try {
+        const { getDraftEvent } = await import('./utils/arena/draftApi');
+        const event = await getDraftEvent(this.state.draftEventId);
+        const opponent = event?.participants?.find((p) => p.playerId !== this.state.arenaProfile?.id);
+        if (opponent) {
+          const { getPublicProfile } = await import('./utils/friendsApi');
+          try {
+            const profile = await getPublicProfile(opponent.playerId);
+            opponentInfo = {
+              name: profile?.name || opponent.playerName || 'Opponent',
+              profileAvatar: profile?.profileAvatar,
+              avatarUrl: profile?.profileAvatar ? this.getArenaAvatarUrl(profile.profileAvatar) : null,
+            };
+          } catch {
+            opponentInfo = { name: opponent.playerName || 'Opponent' };
+          }
+        }
+      } catch {}
+    }
+
+    this.setState({
+      isGameBoardOpen: true,
+      sessionMode: 'join',
+      roomCode: roomId,
+      isArenaMatch: true,
+      isRankedMatch: false,
+      arenaMatchmakingOpponent: opponentInfo,
+    });
+  };
+
+  handleDraftComplete = (data) => {
+    this.setState({
+      arenaView: 'draft-results',
+      draftPhase: 'results',
+      draftFinalStandings: data?.standings || [],
+      draftPrizes: data?.prizes || null,
+      draftedCards: data?.draftedCards || this.state.draftedCards || [],
+    });
+    // Refresh profile to pick up granted cards
+    getStoredToken().then((token) => {
+      if (token) loadArenaProfile(token).then((p) => {
+        if (p) this.setState({ arenaProfile: this.profileFromServer(p, token) });
+      }).catch(() => {});
+    });
+  };
+
+  handleDraftCancelled = () => {
+    toast('Draft event was cancelled. Entry refunded.');
+    this.setState({ arenaView: 'draft', draftEventId: null, draftPhase: null });
+  };
+
+  handleDraftBack = () => {
+    playUI(UI.CLOSE);
+    this.setState({
+      arenaView: 'hub',
+      draftEventId: null,
+      draftPhase: null,
+      draftedCards: null,
+      draftFinalStandings: null,
+      draftPrizes: null,
+    });
+  };
+
+  // --- Guild handlers ---
+
+  openGuild = () => {
+    playUI(UI.OPEN);
+    this.setState({ arenaView: 'guild' });
+  };
+
+  openGuildLeaderboard = () => {
+    playUI(UI.OPEN);
+    this.setState({ arenaView: 'guild-leaderboard' });
+  };
+
   handleOpenSettings = () => {
     this.setState({ settingsOpen: true, gameMenuOpen: false });
   };
@@ -1043,6 +1251,25 @@ export default class App extends Component {
 
     const { arenaProfile } = this.state;
     if (!arenaProfile) return;
+
+    // Report draft match result if this is a draft tournament game
+    if (this.state.draftEventId && this.state.draftPhase === 'tournament') {
+      try {
+        const { reportDraftMatchResult } = await import('./utils/arena/draftApi');
+        // Find the current match from standings
+        const { getDraftStandings } = await import('./utils/arena/draftApi');
+        const data = await getDraftStandings(this.state.draftEventId);
+        const myMatch = (data.currentPairings || []).find(
+          (p) => p.player1Id === arenaProfile.id || p.player2Id === arenaProfile.id
+        );
+        if (myMatch && myMatch.status !== 'complete') {
+          const winnerId = reward.won ? arenaProfile.id : (myMatch.player1Id === arenaProfile.id ? myMatch.player2Id : myMatch.player1Id);
+          await reportDraftMatchResult(this.state.draftEventId, myMatch.id, winnerId);
+        }
+      } catch (err) {
+        console.error('[handleMatchReward] draft match result report failed:', err);
+      }
+    }
 
     const opp = this.state.arenaMatchmakingOpponent;
     const opponentName = opp?.name || opp?.username || opp?.displayName || 'Opponent';
@@ -1412,6 +1639,16 @@ export default class App extends Component {
   handleGameMenuQuit = () => window.close();
 
   handleGameMenuMainMenu = () => {
+    // If in an active draft, warn the player before leaving
+    if (this.state.draftEventId && this.state.draftPhase && this.state.draftPhase !== 'lobby') {
+      if (!confirm('You are in an active draft. Leaving will disconnect you — if you don\'t reconnect within 2 minutes, the draft will be cancelled and your entry refunded. Are you sure?')) {
+        this.setState({ gameMenuOpen: false });
+        return;
+      }
+      // Clear draft state on client — server will handle the disconnect grace period
+      this.setState({ draftEventId: null, draftPhase: null });
+    }
+
     // If the player is matchmaking, leave the queue first (fire-and-forget —
     // we don't want network errors to block returning to the menu).
     if (this.state.arenaMatchmaking) {
@@ -1571,7 +1808,7 @@ export default class App extends Component {
       return (
         <>
           <LoginScreen onLogin={this.handleLogin} />
-          {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} /> : null}
+          {this.state.gameMenuOpen ? <GameMenu onResume={this.handleGameMenuResume} onQuit={this.handleGameMenuQuit} onOpenSettings={this.handleOpenSettings} appVersion={this.state.updateStatus?.currentVersion} /> : null}
           {this.renderAuthOverlay()}
         </>
       );
@@ -1617,6 +1854,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
             onToggleFriends={this.handleToggleFriendsSidebar}
@@ -1646,6 +1884,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
             onToggleFriends={this.handleToggleFriendsSidebar}
@@ -1690,10 +1929,13 @@ export default class App extends Component {
             onExit={() => {
               this.gameBoardRef = null;
               const returningToArena = this.state.isArenaMatch;
+              const returningToDraft = this.state.draftEventId && this.state.draftPhase === 'tournament';
               stopMusic(2000);
               this.setState({
-                isGameBoardOpen: false, sessionMode: null, sessionId: null, roomCode: null, isArenaMatch: false, isRankedMatch: false,
-                ...(returningToArena ? { arenaView: 'hub' } : {}),
+                isGameBoardOpen: false, sessionMode: null, sessionId: null, roomCode: null,
+                isArenaMatch: false, isRankedMatch: false, isSpectating: false, spectateRoomCode: null,
+                arenaMatchmakingOpponent: null,
+                ...(returningToDraft ? { arenaView: 'draft-tournament' } : returningToArena ? { arenaView: 'hub' } : {}),
               });
             }}
           />
@@ -1726,6 +1968,8 @@ export default class App extends Component {
             onOpenDeckBuilder={this.openArenaDeckBuilder}
             onOpenAuctionHouse={this.openAuctionHouse}
             onOpenArcaneTrials={this.openArcaneTrials}
+            onOpenDraft={this.openDraftBrowser}
+            onOpenGuild={this.openGuild}
             onUpdateName={this.updateArenaName}
             onUpdateAvatar={this.updateArenaAvatar}
             onUpdateProfile={(profile) => this.setState({ arenaProfile: profile })}
@@ -1749,8 +1993,10 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
           />
         ) : null}
         {this.state.arenaView === 'arcane-trials' && !this.state.isGameBoardOpen ? (
@@ -1759,6 +2005,7 @@ export default class App extends Component {
             progress={this.state.arenaProfile?.seasonProgress}
             sorceryCards={this.state.sorceryCards}
             profile={this.state.arenaProfile}
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
             onToggleMailbox={this.handleToggleMailbox}
             mailboxUnreadCount={this.state.mailboxUnreadCount}
             mailboxDropdown={
@@ -1772,6 +2019,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
             onToggleFriends={this.handleToggleFriendsSidebar}
@@ -1823,6 +2071,7 @@ export default class App extends Component {
             profile={this.state.arenaProfile}
             sorceryCards={this.state.sorceryCards}
             pendingPacks={this.state.arenaPendingPacks}
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
             onBuyPack={this.buyArenaPack}
             onOpenPacks={this.openNextPack}
             onProfileUpdate={this.handleShardPurchaseUpdate}
@@ -1840,6 +2089,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
             onToggleFriends={this.handleToggleFriendsSidebar}
@@ -1853,6 +2103,7 @@ export default class App extends Component {
             profile={this.state.arenaProfile}
             savedDecks={this.state.savedDecks}
             sorceryCards={this.state.sorceryCards}
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
             onRefreshDecks={this.refreshSavedDecks}
             onUpdateProfile={(profile) => this.setState({ arenaProfile: profile }, () => saveArenaProfile(profile))}
             onBack={() => this.setState({ arenaView: 'hub' })}
@@ -1869,6 +2120,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
             onToggleFriends={this.handleToggleFriendsSidebar}
@@ -1889,6 +2141,135 @@ export default class App extends Component {
             canAffordAnother={this.state.arenaProfile?.coins >= CURRENCY.PACK_PRICE}
             remainingPacks={this.state.arenaPendingPacks?.length || 0}
           />
+        ) : null}
+        {showArena && this.state.arenaView === 'draft' ? (
+          <motion.div key="draft" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
+          <DraftBrowser
+            profile={this.state.arenaProfile}
+            sorceryCards={this.state.sorceryCards}
+            guildId={this.state.guildId}
+            friendListData={this.state.friendListData}
+            activeDraftEventId={this.state.draftEventId}
+            onDraftJoined={(eventId) => this.setState({ draftEventId: eventId, draftPhase: 'lobby' })}
+            onDraftLeft={() => this.setState({ draftEventId: null, draftPhase: null })}
+            onDraftCancelled={this.handleDraftCancelled}
+            onDraftStarted={this.handleDraftStarted}
+            onBack={() => { playUI(UI.CLOSE); this.setState({ arenaView: 'hub' }); }}
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
+              />
+            }
+            onToggleFriends={this.handleToggleFriendsSidebar}
+          />
+          </motion.div>
+        ) : null}
+        {showArena && this.state.arenaView === 'draft-picking' && this.state.draftEventId ? (
+          <DraftPicker
+            eventId={this.state.draftEventId}
+            profile={this.state.arenaProfile}
+            sorceryCards={this.state.sorceryCards}
+            onBuildingPhase={this.handleDraftBuildingPhase}
+          />
+        ) : null}
+        {showArena && this.state.arenaView === 'draft-building' && this.state.draftEventId ? (
+          <DraftDeckBuilder
+            eventId={this.state.draftEventId}
+            profile={this.state.arenaProfile}
+            sorceryCards={this.state.sorceryCards}
+            draftedCards={this.state.draftedCards}
+            onTournamentStart={this.handleDraftTournamentStart}
+          />
+        ) : null}
+        {showArena && this.state.arenaView === 'draft-tournament' && this.state.draftEventId ? (
+          <DraftTournament
+            eventId={this.state.draftEventId}
+            profile={this.state.arenaProfile}
+            sorceryCards={this.state.sorceryCards}
+            onPlayMatch={this.handleDraftPlayMatch}
+            onSpectate={this.handleDraftSpectate}
+            onDraftComplete={this.handleDraftComplete}
+          />
+        ) : null}
+        {showArena && this.state.arenaView === 'draft-results' ? (
+          <DraftResults
+            eventId={this.state.draftEventId}
+            profile={this.state.arenaProfile}
+            sorceryCards={this.state.sorceryCards}
+            draftedCards={this.state.draftedCards}
+            finalStandings={this.state.draftFinalStandings}
+            prizes={this.state.draftPrizes}
+            onBack={this.handleDraftBack}
+          />
+        ) : null}
+        {showArena && this.state.arenaView === 'guild' ? (
+          <motion.div key="guild" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
+          <GuildPanel
+            profile={this.state.arenaProfile}
+            friendListData={this.state.friendListData}
+            onBack={() => { playUI(UI.CLOSE); this.setState({ arenaView: 'hub' }); }}
+            onOpenDraftBrowser={this.openDraftBrowser}
+            onOpenGuildLeaderboard={this.openGuildLeaderboard}
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
+              />
+            }
+            onToggleFriends={this.handleToggleFriendsSidebar}
+          />
+          </motion.div>
+        ) : null}
+        {showArena && this.state.arenaView === 'guild-leaderboard' ? (
+          <motion.div key="guild-leaderboard" className="fixed inset-0 z-[45]" {...PAGE_TRANSITION_PROPS}>
+          <GuildLeaderboard
+            profile={this.state.arenaProfile}
+            myGuildId={this.state.guildId}
+            onBack={() => { playUI(UI.CLOSE); this.setState({ arenaView: 'guild' }); }}
+            draftQueueDropdown={this.renderDraftQueueDropdown()}
+            onToggleMailbox={this.handleToggleMailbox}
+            mailboxUnreadCount={this.state.mailboxUnreadCount}
+            mailboxDropdown={
+              <Mailbox
+                open={this.state.mailboxOpen}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                profile={this.state.arenaProfile}
+                friendListData={this.state.friendListData}
+                sorceryCards={this.state.sorceryCards}
+                onProfileUpdate={this.handleMailProfileUpdate}
+                selectedMailId={this.state.mailboxSelectedMailId}
+                initialView={this.state.mailboxView}
+                composeRecipientId={this.state.mailboxComposeRecipientId}
+                onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
+              />
+            }
+            onToggleFriends={this.handleToggleFriendsSidebar}
+            friendListData={this.state.friendListData}
+          />
+          </motion.div>
         ) : null}
         {this.state.tradeActive ? (
           <TradeWindow
@@ -1940,6 +2321,7 @@ export default class App extends Component {
             onOpenSettings={this.handleOpenSettings}
             onMainMenu={(this.state.isGameBoardOpen || this.state.arenaView !== 'hub') ? this.handleGameMenuMainMenu : null}
             inSession={this.state.isGameBoardOpen && !!this.state.sessionMode}
+            appVersion={this.state.updateStatus?.currentVersion}
           />
         ) : null}
         {this.renderAuthOverlay()}

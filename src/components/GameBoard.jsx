@@ -1019,22 +1019,43 @@ export default class GameBoard extends Component {
       return;
     }
 
+    if (sessionMode === 'spectate') {
+      try {
+        this.setState({ loadingMessage: 'Joining as spectator...' });
+        const { spectateRoom } = await import('../utils/game/socketClient');
+        const roomInfo = await spectateRoom(joinRoomCode);
+        this.setState({
+          roomCode: roomInfo.roomCode,
+          connectionStatus: 'connected',
+          isHost: false,
+          loadingMessage: 'Watching match...',
+          roomInfo,
+        });
+        this.setupSocketListeners();
+      } catch (error) {
+        console.error('Failed to join as spectator:', error);
+        this.setState({ connectionStatus: 'offline' });
+      }
+      return;
+    }
+
     if (sessionMode === 'join') {
       const maxRetries = isArenaMatch ? 15 : 1;
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
           this.setState({ loadingMessage: attempt > 0 ? `Connecting to host (attempt ${attempt + 1})...` : 'Connecting to host...' });
           const roomInfo = await joinRoom(joinRoomCode);
+          const isHost = !!roomInfo.isHost;
           this.setState({
             roomCode: roomInfo.roomCode,
             connectionStatus: 'connected',
-            isHost: false,
+            isHost,
             loadingMessage: 'Preparing battlefield...',
             roomInfo,
           });
           this.setupSocketListeners();
           // Rotate camera 180° for player 2 perspective
-          this.scene?.setOrbitTheta(Math.PI);
+          if (!isHost) this.scene?.setOrbitTheta(Math.PI);
           return;
         } catch (error) {
           console.error(`Failed to join room (attempt ${attempt + 1}):`, error);
@@ -2025,7 +2046,11 @@ export default class GameBoard extends Component {
   }
 
   handleMouseDown = (event) => {
-    if (this.props.isSpectating) return;
+    // Spectators can orbit the camera (right-click / middle-click) but can't interact with cards
+    if (this.props.isSpectating) {
+      if (event.button !== 0) return; // allow non-left-click through for camera
+      return;
+    }
     if (event.button !== 0) return;
     this.setState({ contextMenu: null, ringMenu: null });
 
@@ -2318,7 +2343,6 @@ export default class GameBoard extends Component {
   }
 
   handleMouseMove = (event) => {
-    if (this.props.isSpectating) return;
     this.lastMouseEvent = event;
 
     // Pending shift-click for ring menu: cancel if cursor drifts too far.
@@ -2483,7 +2507,7 @@ export default class GameBoard extends Component {
   };
 
   handleMouseUp = (event) => {
-    if (this.props.isSpectating) return;
+    if (this.props.isSpectating) return; // No click actions for spectators
 
     // Quick click on a card (no drag started): show the status ring menu.
     if (this._pendingCardClick) {
@@ -3788,10 +3812,11 @@ export default class GameBoard extends Component {
     const N = opponentHand.length;
     if (N === 0) return;
 
-    // ── Position the fan on the opponent's side of the table ──
-    // Host (P1) sits at +Z; their opponent (P2) is at -Z.
-    // Guest (P2) sits at -Z; their opponent (P1) is at +Z.
-    const opponentZ = this.state.isHost ? -58 : 58;
+    // ── Position the fan BEHIND the opponent's table edge ──
+    // Table half-depth is ~70 units; placing the hand at ±82 puts it
+    // ~12 units past the edge so it's visually "off the board" — the
+    // same place a real player would hold their cards.
+    const opponentZ = this.state.isHost ? -82 : 82;
     const opponentRotation = this.state.isHost ? 0 : Math.PI;
 
     // Fan geometry — spread cards across up to ~60 world units, tapering
@@ -4053,7 +4078,9 @@ export default class GameBoard extends Component {
 
     if (searchPile.infinite) {
       // Token pile — spawn a fresh clone directly onto the board.
-      const clone = { ...card, id: `${card.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, x: 0, z: 0 };
+      // P2 (guest) tokens must be rotated so ownership is correct.
+      const isLocalP2 = !this.state.isHost;
+      const clone = { ...card, id: `${card.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, x: 0, z: isLocalP2 ? 0 : 0, rotated: isLocalP2 };
       this.addCardToTable(clone);
       return;
     }
@@ -4234,12 +4261,12 @@ export default class GameBoard extends Component {
                   </button>
                 ) : null}
 
-                {this.props.isRankedMatch && this.state.connectionStatus === 'connected' ? (
+                {this.props.isArenaMatch && this.state.connectionStatus === 'connected' ? (
                   <button type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-pointer" style={{ color: ACCENT_GOLD }} onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} onClick={() => this.setState({ showMatchResult: true, showGameMenu: false })}>
                     End Match
                   </button>
                 ) : null}
-                {this.props.isRankedMatch && this.state.connectionStatus !== 'connected' ? (
+                {this.props.isArenaMatch && this.state.connectionStatus !== 'connected' ? (
                   <div className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs cursor-not-allowed" style={{ color: TEXT_MUTED }}>
                     End Match (waiting for opponent)
                   </div>
@@ -4262,7 +4289,7 @@ export default class GameBoard extends Component {
           {/* Spawn Deck — only in solo play (no pre-selected arena deck
               and not spectating). Multiplayer matches handle deck spawning
               through the matchmaking flow. */}
-          {!this.props.arenaSelectedDeckId && !this.props.isSpectating ? (
+          {!this.props.arenaSelectedDeckId && !this.state.roomInfo?.hostDeck && !this.props.isSpectating ? (
             <button
               type="button"
               className="size-10 rounded-xl flex items-center justify-center cursor-pointer transition-all" style={{ background: PANEL_BG, border: `1px solid ${GOLD} 0.2)`, color: TEXT_BODY }}
@@ -4737,7 +4764,7 @@ export default class GameBoard extends Component {
             onTakeToField={this.handlePileSearchTakeToField}
           />
           {this.renderCardInspector()}
-          {this.state.showMatchResult && this.props.isRankedMatch ? (
+          {this.state.showMatchResult && this.props.isArenaMatch ? (
             <ArenaMatchResult
               ref={(ref) => { this.matchResultRef = ref; }}
               matchDurationMinutes={this.state.matchStartTime ? Math.round((Date.now() - this.state.matchStartTime) / 60000) : 0}

@@ -245,8 +245,8 @@ function Select({
       aria-label={ariaLabel}
       className={cn(
         portalMenu
-          ? 'fixed z-[140] overflow-hidden p-1.5'
-          : 'absolute left-0 top-full z-30 mt-2 w-full overflow-hidden p-1.5',
+          ? 'fixed z-[140] p-1.5'
+          : 'absolute left-0 top-full z-30 mt-2 w-full p-1.5',
         menuClassName
       )}
       style={
@@ -255,10 +255,12 @@ function Select({
               ...SELECT_MENU_STYLE,
               left: `${menuPosition?.left ?? MENU_VIEWPORT_PADDING}px`,
               top: `${menuPosition?.top ?? MENU_VIEWPORT_PADDING}px`,
-              width: `${menuPosition?.width ?? menuPreferredWidth ?? 0}px`,
+              minWidth: `${menuPosition?.width ?? menuPreferredWidth ?? 0}px`,
+              maxHeight: 'min(280px, calc(100vh - 40px))',
+              overflowY: 'auto',
               visibility: menuPosition ? 'visible' : 'hidden',
             }
-          : SELECT_MENU_STYLE
+          : { ...SELECT_MENU_STYLE, maxHeight: 'min(280px, calc(100vh - 40px))', overflowY: 'auto' }
       }
     >
       {searchable ? (
@@ -349,9 +351,9 @@ function Select({
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate">{option.label}</span>
+              <span className="block whitespace-nowrap">{option.label}</span>
               {option.description ? (
-                <span className="mt-0.5 block truncate text-xs" style={{ color: TEXT_MUTED }}>{option.description}</span>
+                <span className="mt-0.5 block whitespace-nowrap text-xs" style={{ color: TEXT_MUTED }}>{option.description}</span>
               ) : null}
             </span>
           </button>
