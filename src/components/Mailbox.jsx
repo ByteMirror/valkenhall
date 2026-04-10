@@ -387,7 +387,7 @@ export default class Mailbox extends Component {
             type="button"
             className="flex-1 py-1.5 text-[11px] font-medium text-center transition-all cursor-pointer"
             style={tab === t.key ? MAILBOX_TAB_ACTIVE : MAILBOX_TAB_INACTIVE}
-            onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null })}
+            onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null, chatFriend: null })}
           >
             {t.label}
           </button>
@@ -1150,16 +1150,6 @@ export default class Mailbox extends Component {
               const hasAtt = cards.length > 0 || coins > 0;
               return (
                 <>
-                  {isFriend && (
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 text-[11px] font-medium cursor-pointer transition-all"
-                      style={{ ...MAILBOX_BEVELED_BTN, color: TEXT_BODY, borderRadius: '6px' }}
-                      onClick={() => this.openReply(m)}
-                    >
-                      Reply
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="px-3 py-1.5 text-[10px] cursor-pointer transition-all ml-auto"

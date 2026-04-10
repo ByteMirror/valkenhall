@@ -54,20 +54,67 @@ export default class ChatConversationList extends Component {
       );
     }
 
-    // Merge online status from presence data
-    const onlineMap = new Map();
-    if (friendListData?.friends) {
-      for (const f of friendListData.friends) {
-        onlineMap.set(f.id, f.online);
-      }
+    // Build a unified list: friends with conversation history first
+    // (sorted by most recent message), then remaining friends without
+    // history (sorted by online status, then name). This lets users
+    // start chatting with ANY friend directly from this list.
+    const friends = friendListData?.friends || [];
+    const convMap = new Map();
+    for (const conv of conversations) convMap.set(conv.friendId, conv);
+
+    const entries = [];
+
+    // Friends with conversations — sorted by most recent message (server order)
+    for (const conv of conversations) {
+      const friend = friends.find((f) => f.id === conv.friendId);
+      const online = friend?.online ?? false;
+      const lastMsg = conv.lastMessage;
+      const isSentByMe = lastMsg?.senderId !== conv.friendId;
+      let preview = '';
+      if (lastMsg?.type === 'draft-invite') preview = 'Draft invite';
+      else if (lastMsg?.type === 'attachment') preview = 'Sent an attachment';
+      else preview = truncate(lastMsg?.body);
+      if (isSentByMe && preview) preview = `You: ${preview}`;
+
+      entries.push({
+        friendId: conv.friendId,
+        friendName: conv.friendName || friend?.name || 'Unknown',
+        friendAvatar: conv.friendAvatar || friend?.profileAvatar,
+        online,
+        lastMsg,
+        preview,
+        unreadCount: conv.unreadCount || 0,
+        hasHistory: true,
+      });
     }
 
-    if (conversations.length === 0) {
+    // Friends without conversations
+    for (const f of friends) {
+      if (convMap.has(f.id)) continue;
+      entries.push({
+        friendId: f.id,
+        friendName: f.name || 'Unknown',
+        friendAvatar: f.profileAvatar,
+        online: f.online ?? false,
+        lastMsg: null,
+        preview: '',
+        unreadCount: 0,
+        hasHistory: false,
+      });
+    }
+
+    // Sort no-history friends: online first, then alphabetical
+    const withHistory = entries.filter((e) => e.hasHistory);
+    const withoutHistory = entries.filter((e) => !e.hasHistory)
+      .sort((a, b) => (b.online - a.online) || (a.friendName || '').localeCompare(b.friendName || ''));
+    const sorted = [...withHistory, ...withoutHistory];
+
+    if (sorted.length === 0) {
       return (
         <div className="text-center py-12">
-          <p className="text-xs" style={{ color: TEXT_MUTED }}>No conversations yet</p>
+          <p className="text-xs" style={{ color: TEXT_MUTED }}>No friends yet</p>
           <p className="text-[10px] mt-1" style={{ color: TEXT_MUTED }}>
-            Open a friend's profile and start chatting
+            Add friends to start chatting
           </p>
         </div>
       );
@@ -75,15 +122,8 @@ export default class ChatConversationList extends Component {
 
     return (
       <div className="flex flex-col">
-        {conversations.map((conv) => {
-          const online = onlineMap.get(conv.friendId) ?? false;
-          const lastMsg = conv.lastMessage;
-          const isSentByMe = lastMsg?.senderId !== conv.friendId;
-          let preview = '';
-          if (lastMsg?.type === 'draft-invite') preview = 'Draft invite';
-          else if (lastMsg?.type === 'attachment') preview = 'Sent an attachment';
-          else preview = truncate(lastMsg?.body);
-          if (isSentByMe && preview) preview = `You: ${preview}`;
+        {sorted.map((entry) => {
+          const { friendId, friendName, friendAvatar, online, lastMsg, preview, unreadCount } = entry;
 
           return (
             <button
@@ -94,9 +134,9 @@ export default class ChatConversationList extends Component {
               onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.04)`; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               onClick={() => onSelectFriend({
-                friendId: conv.friendId,
-                friendName: conv.friendName,
-                friendAvatar: conv.friendAvatar,
+                friendId,
+                friendName,
+                friendAvatar,
                 online,
               })}
             >
@@ -110,7 +150,7 @@ export default class ChatConversationList extends Component {
                     color: TEXT_PRIMARY,
                   }}
                 >
-                  {(conv.friendName || '?')[0].toUpperCase()}
+                  {(friendName || '?')[0].toUpperCase()}
                 </div>
                 {online && (
                   <div
@@ -128,9 +168,9 @@ export default class ChatConversationList extends Component {
                 <div className="flex items-center justify-between">
                   <span
                     className="text-xs font-medium truncate"
-                    style={{ color: conv.unreadCount > 0 ? TEXT_PRIMARY : TEXT_BODY }}
+                    style={{ color: unreadCount > 0 ? TEXT_PRIMARY : TEXT_BODY }}
                   >
-                    {conv.friendName || 'Unknown'}
+                    {friendName}
                   </span>
                   <span className="text-[10px] shrink-0 ml-2" style={{ color: TEXT_MUTED }}>
                     {timeAgo(lastMsg?.createdAt)}
@@ -139,11 +179,11 @@ export default class ChatConversationList extends Component {
                 <div className="flex items-center justify-between mt-0.5">
                   <span
                     className="text-[11px] truncate"
-                    style={{ color: conv.unreadCount > 0 ? TEXT_BODY : TEXT_MUTED }}
+                    style={{ color: unreadCount > 0 ? TEXT_BODY : TEXT_MUTED }}
                   >
-                    {preview || 'No messages'}
+                    {preview || 'Start a conversation'}
                   </span>
-                  {conv.unreadCount > 0 && (
+                  {unreadCount > 0 && (
                     <span
                       className="shrink-0 ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                       style={{
@@ -153,7 +193,7 @@ export default class ChatConversationList extends Component {
                         textAlign: 'center',
                       }}
                     >
-                      {conv.unreadCount}
+                      {unreadCount}
                     </span>
                   )}
                 </div>
