@@ -34,6 +34,17 @@ function createRoundedBoxGeometry(width, height, depth, radius) {
 }
 
 export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
+  // Check WebGL support before attempting to create the renderer.
+  // On some Windows + CEF configurations, the WebGL context silently
+  // fails, leaving the game stuck on the loading screen.
+  const testCtx = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  if (!testCtx) {
+    throw new Error('WebGL is not available. Your GPU or browser configuration may not support it.');
+  }
+  // Release the test context so Three.js can create its own
+  const loseExt = testCtx.getExtension('WEBGL_lose_context');
+  if (loseExt) loseExt.loseContext();
+
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   // Pixel ratio comes from the user's graphics settings (Settings → Display).
   // Defaults to `high` which matches the legacy `min(devicePixelRatio, 1.5)` cap.

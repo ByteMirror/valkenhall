@@ -52,11 +52,24 @@ export default {
       bundleCEF: true,
       defaultRenderer: 'cef',
       icon: 'public/app-icon.png',
+      // Full GPU override set for Windows CEF. The GPU process can crash
+      // silently on some Windows drivers (especially Intel integrated),
+      // leaving WebGL/Three.js stuck on a black screen.
+      // - ignore-gpu-blocklist: allow GPUs that Chromium would normally block
+      // - use-angle=d3d11: force ANGLE's D3D11 backend (most compatible)
+      // - use-gl=angle: use ANGLE translation layer for OpenGL calls
+      // - enable-gpu-rasterization: offload raster work to GPU
+      // - disable-gpu-sandbox: prevent sandbox from blocking GPU init
       chromiumFlags: {
         'disable-gpu': false,
+        'disable-gpu-compositing': false,
+        'disable-gpu-memory-buffer-video-frames': false,
         'ignore-gpu-blocklist': true,
+        'use-angle': 'd3d11',
+        'use-gl': 'angle',
         'enable-zero-copy': true,
         'enable-gpu-rasterization': true,
+        'disable-gpu-sandbox': true,
       },
     },
   },

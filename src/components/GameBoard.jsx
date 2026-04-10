@@ -359,7 +359,26 @@ export default class GameBoard extends Component {
       `${apiOrigin}/game-assets/cardback-spellbook-rounded.png`,
       `${apiOrigin}/game-assets/cardback-atlas-rounded.png`
     );
-    this.scene = createTableScene(canvas, `${apiOrigin}/game-assets/battlemap.webp`, `${apiOrigin}/game-assets/table-background-hd.png`);
+
+    try {
+      this.scene = createTableScene(canvas, `${apiOrigin}/game-assets/battlemap.webp`, `${apiOrigin}/game-assets/table-background-hd.png`);
+    } catch (err) {
+      console.error('[GameBoard] Failed to create 3D scene:', err);
+      this.setState({
+        connectionFailed: true,
+        loadingMessage: 'Failed to initialize 3D renderer',
+      });
+      return;
+    }
+
+    if (!this.scene) {
+      console.error('[GameBoard] Scene creation returned null');
+      this.setState({
+        connectionFailed: true,
+        loadingMessage: 'Failed to initialize 3D renderer',
+      });
+      return;
+    }
 
     canvas.addEventListener('mousedown', this.handleMouseDown);
     canvas.addEventListener('mousemove', this.handleMouseMove);
@@ -1063,7 +1082,7 @@ export default class GameBoard extends Component {
             await new Promise((r) => setTimeout(r, 2000));
             disconnectSocket();
           } else {
-            this.setState({ connectionStatus: 'offline' });
+            this.setState({ connectionStatus: 'offline', connectionFailed: true, loadingMessage: 'Connection failed' });
           }
         }
       }
@@ -4197,11 +4216,56 @@ export default class GameBoard extends Component {
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={() => contextMenu && this.setState({ contextMenu: null })}>
         {/* Loading overlay */}
-        {this.state.isLoading ? (
+        {this.state.isLoading || this.state.connectionFailed ? (
           <div className="fixed inset-0 z-[2000] bg-black flex items-center justify-center">
             <div className="flex flex-col items-center gap-4" style={{ zoom: this.state.viewScale }}>
-              <RuneSpinner size={64} />
-              <p className="text-sm" style={{ color: TEXT_BODY }}>{this.state.loadingMessage}</p>
+              {this.state.connectionFailed ? (
+                <>
+                  <div className="text-lg font-bold arena-heading" style={{ color: '#c45050' }}>Connection Failed</div>
+                  <p className="text-sm text-center max-w-xs" style={{ color: TEXT_BODY }}>
+                    Unable to connect to the game server. Check your internet connection and try again.
+                  </p>
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      type="button"
+                      className="px-5 py-2 text-sm font-semibold cursor-pointer transition-all"
+                      style={{ ...GOLD_BTN, borderRadius: '8px' }}
+                      onClick={() => {
+                        this.setState({ connectionFailed: false, isLoading: true, loadingMessage: 'Reconnecting...' });
+                        this.initSession().then(async () => {
+                          const { roomInfo } = this.state;
+                          if (this.props.isArenaMatch && roomInfo?.hostDeck && roomInfo?.guestDeck) {
+                            if (!roomInfo.resumed) {
+                              try {
+                                this.sync.withSuppressed(() => {
+                                  this.spawnSelectedDeck(roomInfo.hostDeck, 1);
+                                  this.spawnSelectedDeck(roomInfo.guestDeck, 2);
+                                });
+                              } catch {}
+                            }
+                          }
+                          setTimeout(() => this.setState({ isLoading: false }), 500);
+                        });
+                      }}
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      className="px-5 py-2 text-sm cursor-pointer transition-all"
+                      style={{ ...BEVELED_BTN, borderRadius: '8px', color: TEXT_BODY }}
+                      onClick={() => { if (this.props.onExit) this.props.onExit(); }}
+                    >
+                      Back
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <RuneSpinner size={64} />
+                  <p className="text-sm" style={{ color: TEXT_BODY }}>{this.state.loadingMessage}</p>
+                </>
+              )}
             </div>
           </div>
         ) : null}
