@@ -4,11 +4,12 @@ import {
   VIGNETTE, GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, BEVELED_BTN,
   DANGER_BTN, FourCorners, OrnamentalDivider, MenuButton, getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
+import ReportIssueDialog from './ReportIssueDialog';
 
 export default class GameMenu extends Component {
   constructor(props) {
     super(props);
-    this.state = { viewScale: getViewportScale(), confirmMainMenu: false };
+    this.state = { viewScale: getViewportScale(), confirmMainMenu: false, showReport: false };
   }
 
   componentDidMount() {
@@ -35,8 +36,8 @@ export default class GameMenu extends Component {
   cancelMainMenu = () => this.setState({ confirmMainMenu: false });
 
   render() {
-    const { onResume, onQuit, onOpenSettings, onMainMenu } = this.props;
-    const { viewScale, confirmMainMenu } = this.state;
+    const { onResume, onQuit, onOpenSettings, onMainMenu, appVersion } = this.props;
+    const { viewScale, confirmMainMenu, showReport } = this.state;
 
     return (
       <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', zoom: viewScale }}>
@@ -45,6 +46,7 @@ export default class GameMenu extends Component {
         <div className="flex flex-col gap-1 w-64 relative">
           <MenuButton title="Resume" onClick={onResume} />
           <MenuButton title="Settings" onClick={onOpenSettings} />
+          <MenuButton title="Report Issue" onClick={() => this.setState({ showReport: true })} />
           {onMainMenu ? <MenuButton title="Main Menu" onClick={this.handleMainMenuClick} /> : null}
           <OrnamentalDivider className="my-2" />
           <button
@@ -59,6 +61,13 @@ export default class GameMenu extends Component {
             Quit Game
           </button>
         </div>
+
+        {showReport ? (
+          <ReportIssueDialog
+            appVersion={appVersion}
+            onClose={() => this.setState({ showReport: false })}
+          />
+        ) : null}
 
         {confirmMainMenu ? (
           <div className="fixed inset-0 z-[210] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>

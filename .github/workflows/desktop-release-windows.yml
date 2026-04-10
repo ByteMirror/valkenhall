@@ -1,4 +1,4 @@
-name: Desktop Release
+name: Desktop Release (Windows)
 
 on:
   push:
@@ -10,30 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.6
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-      - name: Run test suite
-        run: bun test
-
-  build:
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target_id: darwin-arm64
-            runner: macos-14
-          - target_id: linux-x64
-            runner: ubuntu-latest
-    runs-on: ${{ matrix.runner }}
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,20 +34,6 @@ jobs:
           echo "Injected version: ${VERSION}"
       - name: Build web renderer
         run: bun run build
-      - name: Dereference symlinks in tar (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          # Electrobun's Zig-based self-extractor doesn't support symlinks in
-          # tar archives (TarUnsupportedFileType). Wrap tar so that create
-          # operations automatically dereference symlinks.
-          mkdir -p "$HOME/.local/bin"
-          cat > "$HOME/.local/bin/tar" << 'WRAPPER'
-          #!/bin/bash
-          case "$1" in -*c*) exec /usr/bin/tar -h "$@" ;; esac
-          exec /usr/bin/tar "$@"
-          WRAPPER
-          chmod +x "$HOME/.local/bin/tar"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build desktop app
         run: bunx electrobun build --env=stable
       - name: List build output
@@ -83,22 +47,21 @@ jobs:
       - name: Upload Electrobun build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-release-${{ matrix.target_id }}
+          name: desktop-release-win-x64
           path: artifacts/
           if-no-files-found: error
 
-  publish:
+  publish-windows:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: build-windows
     runs-on: ubuntu-latest
     steps:
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: desktop-release-*
-          merge-multiple: true
+          name: desktop-release-win-x64
           path: release-artifacts
-      - name: Publish GitHub release assets
+      - name: Publish to existing GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: release-artifacts/*

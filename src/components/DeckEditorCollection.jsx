@@ -643,7 +643,6 @@ export default class DeckEditorCollection extends Component {
             imageUrl={inspectedEntry.printing?.image_url}
             rarity={inspectedEntry.card?.rarity}
             foiling={inspectedEntry.printing?.foiling}
-            zoom={1}
             onClose={() => this.setState({ inspectedEntry: null })}
           />
         ) : null}

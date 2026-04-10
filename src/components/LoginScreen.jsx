@@ -1,14 +1,17 @@
 import { Component } from 'preact';
 import { cn } from '../lib/utils';
-import { requestLoginCode, verifyLoginCode, setStoredToken } from '../utils/authApi';
+import { requestLoginCode, verifyLoginCode, setStoredToken, validateInviteCode } from '../utils/authApi';
 
 export default class LoginScreen extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      step: 'email',
+      step: 'email', // 'email' | 'invite' | 'code'
       email: '',
       code: '',
+      inviteCode: '',
+      inviterName: null,
+      isExistingUser: false,
       error: null,
       loading: false,
     };
@@ -21,21 +24,52 @@ export default class LoginScreen extends Component {
 
     this.setState({ loading: true, error: null });
     try {
-      await requestLoginCode(email.trim());
-      this.setState({ step: 'code', loading: false });
+      const result = await requestLoginCode(email.trim());
+      // Existing users skip the invite code step entirely
+      if (result.isExistingUser) {
+        this.setState({ step: 'code', isExistingUser: true, loading: false });
+      } else {
+        this.setState({ step: 'invite', isExistingUser: false, loading: false });
+      }
     } catch (err) {
       this.setState({ error: err.message, loading: false });
     }
   };
 
+  handleInviteSubmit = async (e) => {
+    e.preventDefault();
+    const { inviteCode } = this.state;
+    if (!inviteCode.trim()) return;
+
+    this.setState({ loading: true, error: null });
+    try {
+      const result = await validateInviteCode(inviteCode.trim());
+      if (!result.valid) {
+        this.setState({ error: 'Invalid or already used invite code', loading: false });
+        return;
+      }
+      this.setState({
+        step: 'code',
+        inviterName: result.inviterName,
+        loading: false,
+      });
+    } catch (err) {
+      this.setState({ error: 'Failed to validate invite code', loading: false });
+    }
+  };
+
   handleCodeSubmit = async (e) => {
     e.preventDefault();
-    const { email, code } = this.state;
+    const { email, code, inviteCode, isExistingUser } = this.state;
     if (!code.trim()) return;
 
     this.setState({ loading: true, error: null });
     try {
-      const result = await verifyLoginCode(email.trim(), code.trim());
+      const result = await verifyLoginCode(
+        email.trim(),
+        code.trim(),
+        isExistingUser ? null : inviteCode.trim(),
+      );
       await setStoredToken(result.token);
       this.props.onLogin(result);
     } catch (err) {
@@ -49,7 +83,7 @@ export default class LoginScreen extends Component {
   };
 
   render() {
-    const { step, email, code, error, loading } = this.state;
+    const { step, email, code, inviteCode, inviterName, error, loading } = this.state;
 
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
@@ -82,10 +116,52 @@ export default class LoginScreen extends Component {
                 {loading ? 'Sending...' : 'Send Login Code'}
               </button>
             </form>
+          ) : step === 'invite' ? (
+            <form onSubmit={this.handleInviteSubmit}>
+              <p className="text-sm text-white/70 mb-1">New account for</p>
+              <p className="text-sm text-white font-medium mb-4">{email}</p>
+              <p className="text-xs text-white/50 mb-3">
+                Valkenhall is in closed beta. Enter an invite code from an existing player to continue.
+              </p>
+              <label className="block text-sm text-white/70 mb-2">Invite Code</label>
+              <input
+                type="text"
+                value={inviteCode}
+                placeholder="ABCD1234"
+                className="w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-white text-center text-lg tracking-[0.3em] font-mono uppercase placeholder-white/20 outline-none focus:border-white/40 mb-4"
+                onInput={(e) => this.setState({ inviteCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8), error: null })}
+                autoFocus
+                disabled={loading}
+                maxLength={8}
+              />
+              {error ? <p className="text-red-400 text-sm mb-3">{error}</p> : null}
+              <button
+                type="submit"
+                disabled={loading || inviteCode.length < 8}
+                className={cn(
+                  'w-full rounded-xl py-3 text-sm font-semibold transition-all mb-3',
+                  loading || inviteCode.length < 8
+                    ? 'bg-white/5 text-white/20 cursor-not-allowed'
+                    : 'bg-amber-500 text-black hover:bg-amber-400'
+                )}
+              >
+                {loading ? 'Checking...' : 'Validate Invite'}
+              </button>
+              <button
+                type="button"
+                className="w-full text-xs text-white/40 hover:text-white/60"
+                onClick={() => this.setState({ step: 'email', inviteCode: '', error: null, loading: false })}
+              >
+                Use a different email
+              </button>
+            </form>
           ) : (
             <form onSubmit={this.handleCodeSubmit}>
               <p className="text-sm text-white/70 mb-1">We sent a 6-digit code to</p>
-              <p className="text-sm text-white font-medium mb-4">{email}</p>
+              <p className="text-sm text-white font-medium mb-2">{email}</p>
+              {inviterName ? (
+                <p className="text-xs text-amber-400/70 mb-4">Invited by {inviterName}</p>
+              ) : null}
               <input
                 type="text"
                 inputMode="numeric"
@@ -113,7 +189,7 @@ export default class LoginScreen extends Component {
               <button
                 type="button"
                 className="w-full text-xs text-white/40 hover:text-white/60"
-                onClick={() => this.setState({ step: 'email', code: '', error: null })}
+                onClick={() => this.setState({ step: 'email', code: '', error: null, loading: false })}
               >
                 Use a different email
               </button>
