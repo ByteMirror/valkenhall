@@ -48,7 +48,7 @@ function TabsTrigger({ children, className, disabled = false, value, ...props })
       disabled={disabled}
       tabIndex={isActive ? 0 : -1}
       className={cn(
-        'inline-flex items-center justify-center rounded-md px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-all cursor-pointer disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex items-center justify-center rounded-md px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-all disabled:pointer-events-none disabled:opacity-50',
         className
       )}
       style={isActive ? {

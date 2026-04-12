@@ -48,7 +48,6 @@ function chipStyle(active) {
     fontSize: '11px',
     fontWeight: 600,
     transition: 'all 0.15s ease',
-    cursor: 'pointer',
     color: active ? '#e8d5a0' : 'rgba(166,160,155,0.45)',
     background: active ? `${GOLD} 0.15)` : 'transparent',
     border: active ? `1px solid ${GOLD} 0.25)` : '1px solid transparent',
