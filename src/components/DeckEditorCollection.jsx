@@ -378,6 +378,7 @@ export default class DeckEditorCollection extends Component {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-0.5">
             <FilterLabel>Element</FilterLabel>
+            <button type="button" style={chipStyle(elementFilters.size === 0)} onClick={() => this.clearFilter('elementFilters')}>All</button>
             {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
               <button key={el} type="button" className="flex items-center gap-1" style={chipStyle(elementFilters.has(el))} onClick={() => this.toggleFilter('elementFilters', el)}>
                 <SorceryElementIcon element={el} className="size-3" />
@@ -390,6 +391,7 @@ export default class DeckEditorCollection extends Component {
 
           <div className="flex items-center gap-0.5">
             <FilterLabel>Type</FilterLabel>
+            <button type="button" style={chipStyle(typeFilters.size === 0)} onClick={() => this.clearFilter('typeFilters')}>All</button>
             {['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'].map((t) => (
               <button key={t} type="button" style={chipStyle(typeFilters.has(t))} onClick={() => this.toggleFilter('typeFilters', t)}>{t}</button>
             ))}
@@ -400,6 +402,7 @@ export default class DeckEditorCollection extends Component {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-0.5">
             <FilterLabel>Set</FilterLabel>
+            <button type="button" style={chipStyle(setFilters.size === 0)} onClick={() => this.clearFilter('setFilters')}>All</button>
             {['gothic', 'arthurian', 'beta'].map((s) => (
               <button key={s} type="button" style={chipStyle(setFilters.has(s))} onClick={() => this.toggleFilter('setFilters', s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
             ))}
@@ -409,6 +412,7 @@ export default class DeckEditorCollection extends Component {
 
           <div className="flex items-center gap-0.5">
             <FilterLabel>Rarity</FilterLabel>
+            <button type="button" style={chipStyle(rarityFilters.size === 0)} onClick={() => this.clearFilter('rarityFilters')}>All</button>
             {['Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (
               <button key={r} type="button" style={chipStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
             ))}
