@@ -64,8 +64,8 @@ When the user asks to create a release, cut a release, ship a version, or simila
 - Runs the test suite
 - Builds for macOS (arm64), Linux (x64), Windows (x64) in parallel
 - Injects the version from the git tag into `electrobun.config.ts` (replacing `version: '0.1.0'`)
-- Generates Electrobun artifacts per platform: `update.json`, `.tar.zst` (full bundle), `.patch` (delta from previous version), and platform installer (`.dmg`, `.zip`, `.tar.gz`)
-- Publishes all artifacts to a GitHub Release at the tag
+- Generates per-platform artifacts: `update.json`, `.tar.zst` (full bundle used by the auto-updater), `.patch` (delta from previous version), and a user-facing installer — `.dmg` on macOS, `.zip` on Windows, `.run` on Linux (a self-extracting ELF binary repackaged from Electrobun's default `.tar.gz` wrapper by `scripts/build-desktop.sh`)
+- Publishes all artifacts to a GitHub Release at the tag. Linux users download the `.run` file, `chmod +x`, and run it directly — no extraction step required
 
 ### After the release
 
