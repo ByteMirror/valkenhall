@@ -41,20 +41,26 @@ const SET_ID_MAP = {
   beta: 'Beta',
 };
 
-const TOGGLE_BASE = {
-  padding: '3px 8px',
-  borderRadius: '4px',
-  fontSize: '11px',
-  fontWeight: 600,
-  transition: 'all 0.15s ease',
-  textTransform: 'capitalize',
-};
-
-function toggleStyle(active) {
+function chipStyle(active) {
   return {
-    ...TOGGLE_BASE,
-    ...(active ? TAB_ACTIVE : TAB_INACTIVE),
+    padding: '3px 8px',
+    borderRadius: '6px',
+    fontSize: '11px',
+    fontWeight: 600,
+    transition: 'all 0.15s ease',
+    cursor: 'pointer',
+    color: active ? '#e8d5a0' : 'rgba(166,160,155,0.45)',
+    background: active ? `${GOLD} 0.15)` : 'transparent',
+    border: active ? `1px solid ${GOLD} 0.25)` : '1px solid transparent',
   };
+}
+
+function FilterLabel({ children }) {
+  return (
+    <span className="text-[9px] font-semibold uppercase tracking-widest mr-1.5 shrink-0 select-none" style={{ color: `${GOLD} 0.35)` }}>
+      {children}
+    </span>
+  );
 }
 
 export default class DeckEditorCollection extends Component {
@@ -323,82 +329,109 @@ export default class DeckEditorCollection extends Component {
   renderFilterBar() {
     const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters } = this.state;
     const { options: keywordOptions } = this._getKeywordIndex();
+    const anyActive = elementFilters.size > 0 || typeFilters.size > 0 || setFilters.size > 0 || rarityFilters.size > 0 || keywordFilters.size > 0 || searchQuery.trim();
 
     return (
-      <div className="flex flex-col gap-1.5 mb-3">
-        {/* Row 1: Search + Elements + Type */}
-        <div className="flex flex-wrap items-center gap-2">
+      <div
+        className="mb-3 rounded-xl p-2.5 flex flex-col gap-2"
+        style={{
+          background: 'rgba(0, 0, 0, 0.2)',
+          border: `1px solid ${GOLD} 0.08)`,
+        }}
+      >
+        {/* Row 1: Search + Scope toggle + Clear */}
+        <div className="flex items-center gap-2">
           <input
             type="text"
             placeholder="Search cards..."
             value={searchQuery}
             onInput={(e) => this.setState({ searchQuery: e.target.value, visibleCount: 40 })}
-            className="px-3 py-1 text-sm flex-shrink-0"
-            style={{ ...INPUT_STYLE, width: 160 }}
+            className="flex-1 min-w-0 px-3 py-1.5 text-xs rounded-lg outline-none"
+            style={{
+              background: 'rgba(0,0,0,0.3)',
+              border: `1px solid ${GOLD} 0.1)`,
+              color: TEXT_BODY,
+            }}
           />
+          <div className="flex items-center rounded-lg shrink-0" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${GOLD} 0.1)`, padding: '2px' }}>
+            {[
+              { id: 'deck', label: 'In Deck' },
+              { id: 'owned', label: 'Owned' },
+              { id: 'all', label: 'All' },
+            ].map((scope) => (
+              <button key={scope.id} type="button" style={chipStyle(this.state.cardScope === scope.id)} onClick={() => this.setState({ cardScope: scope.id, visibleCount: 40 })}>{scope.label}</button>
+            ))}
+          </div>
+          {anyActive ? (
+            <button
+              type="button"
+              className="text-[10px] shrink-0 cursor-pointer transition-all"
+              style={{ color: ACCENT_GOLD }}
+              onClick={() => this.setState({ searchQuery: '', elementFilters: new Set(), typeFilters: new Set(), setFilters: new Set(), rarityFilters: new Set(), keywordFilters: new Set(), visibleCount: 40 })}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
 
-          <div className="flex items-center" style={{ ...TAB_BAR_STYLE, borderRight: `1px solid ${GOLD} 0.12)`, paddingRight: 8 }}>
-            <button type="button" style={toggleStyle(elementFilters.size === 0)} onClick={() => this.clearFilter('elementFilters')}>All</button>
+        {/* Row 2: Element + Type */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-0.5">
+            <FilterLabel>Element</FilterLabel>
             {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
-              <button key={el} type="button" className="flex items-center gap-1" style={toggleStyle(elementFilters.has(el))} onClick={() => this.toggleFilter('elementFilters', el)}>
+              <button key={el} type="button" className="flex items-center gap-1" style={chipStyle(elementFilters.has(el))} onClick={() => this.toggleFilter('elementFilters', el)}>
                 <SorceryElementIcon element={el} className="size-3" />
                 <span className="hidden sm:inline">{el}</span>
               </button>
             ))}
           </div>
 
-          <div className="flex items-center" style={TAB_BAR_STYLE}>
-            <button type="button" style={toggleStyle(typeFilters.size === 0)} onClick={() => this.clearFilter('typeFilters')}>All</button>
-            {['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'].map((t) => (
-              <button key={t} type="button" style={toggleStyle(typeFilters.has(t))} onClick={() => this.toggleFilter('typeFilters', t)}>{t}</button>
-            ))}
-          </div>
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
 
-          <div className="ml-auto flex items-center" style={TAB_BAR_STYLE}>
-            {[
-              { id: 'deck', label: 'In Deck' },
-              { id: 'owned', label: 'Owned' },
-              { id: 'all', label: 'All Cards' },
-            ].map((scope) => (
-              <button key={scope.id} type="button" style={toggleStyle(this.state.cardScope === scope.id)} onClick={() => this.setState({ cardScope: scope.id, visibleCount: 40 })}>{scope.label}</button>
+          <div className="flex items-center gap-0.5">
+            <FilterLabel>Type</FilterLabel>
+            {['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'].map((t) => (
+              <button key={t} type="button" style={chipStyle(typeFilters.has(t))} onClick={() => this.toggleFilter('typeFilters', t)}>{t}</button>
             ))}
           </div>
         </div>
 
-        {/* Row 2: Set + Rarity */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center" style={TAB_BAR_STYLE}>
-            <span className="text-[9px] mr-0.5 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Set</span>
-            <button type="button" style={toggleStyle(setFilters.size === 0)} onClick={() => this.clearFilter('setFilters')}>All</button>
+        {/* Row 3: Set + Rarity + Keywords */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-0.5">
+            <FilterLabel>Set</FilterLabel>
             {['gothic', 'arthurian', 'beta'].map((s) => (
-              <button key={s} type="button" style={toggleStyle(setFilters.has(s))} onClick={() => this.toggleFilter('setFilters', s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
+              <button key={s} type="button" style={chipStyle(setFilters.has(s))} onClick={() => this.toggleFilter('setFilters', s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
             ))}
           </div>
 
-          <div className="flex items-center" style={TAB_BAR_STYLE}>
-            <span className="text-[9px] mr-0.5 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Rarity</span>
-            <button type="button" style={toggleStyle(rarityFilters.size === 0)} onClick={() => this.clearFilter('rarityFilters')}>All</button>
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
+
+          <div className="flex items-center gap-0.5">
+            <FilterLabel>Rarity</FilterLabel>
             {['Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (
-              <button key={r} type="button" style={toggleStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
+              <button key={r} type="button" style={chipStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
             ))}
           </div>
 
-          <div className="flex items-center gap-1 ml-2">
-            <span className="text-[9px] uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Keywords</span>
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
+
+          <div className="flex items-center gap-1">
+            <FilterLabel>Keyword</FilterLabel>
             <MultiSelect
               ariaLabel="Keyword filter"
-              className="w-[180px]"
+              className="w-[160px]"
               options={keywordOptions}
               value={Array.from(keywordFilters)}
               onValueChange={(next) =>
                 this.setState({ keywordFilters: new Set(next), visibleCount: 40 })
               }
-              placeholder="Any keyword"
+              placeholder="Any"
               menuSearchPlaceholder="Search keywords…"
               noOptionsMessage="No keywords"
               menuPreferredWidth={260}
               portalMenu
-              triggerHeight={28}
+              triggerHeight={26}
             />
           </div>
         </div>
