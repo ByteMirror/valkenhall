@@ -1,10 +1,12 @@
 import { Component } from 'preact';
+import { createPortal } from 'preact/compat';
 import { motion, AnimatePresence } from 'framer-motion';
 import RuneSpinner from './RuneSpinner';
 import { fetchInbox, sendMail, claimMail, deleteMail } from '../utils/arena/mailApi';
 import { loadArenaProfile } from '../utils/arena/profileApi';
 import { refreshMailbox } from '../utils/presenceManager';
 import { playUI, UI } from '../utils/arena/uiSounds';
+import CardInspector from './CardInspector';
 import VikingOrnament from './VikingOrnament';
 import MarkdownNotes from './MarkdownNotes';
 import ChatConversationList from './ChatConversationList';
@@ -84,28 +86,30 @@ function resolveCardName(cardId, sorceryCards) {
 }
 
 function timeAgo(timestamp) {
-  const diff = Date.now() - timestamp;
+  const date = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+  if (isNaN(date)) return '';
+  const diff = Date.now() - date;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  if (days < 30) return `${days}d ago`;
+  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 const TAB_KEYS = [
-  { key: 'all', label: 'All' },
-  { key: 'friend', label: 'Friends' },
-  { key: 'auction', label: 'Auction' },
-  { key: 'news', label: 'News' },
+  { key: 'friend', label: 'Friends', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
+  { key: 'auction', label: 'Auction', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { key: 'news', label: 'News', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z' },
 ];
 
 export default class Mailbox extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      tab: 'all',
+      tab: 'friend',
       view: props.initialView === 'compose' ? 'compose' : 'list',
       mail: [],
       loading: true,
@@ -119,6 +123,8 @@ export default class Mailbox extends Component {
       composeCoins: 0,
       showCardPicker: false,
       cardPickerSearch: '',
+      pickerHoveredEntry: null,
+      inspectedCard: null,
       error: null,
       viewScale: getViewportScale(),
       // Chat state — friend tab
@@ -130,17 +136,23 @@ export default class Mailbox extends Component {
 
   componentDidMount() {
     this.unsubScale = onViewportScaleChange((scale) => this.setState({ viewScale: scale }));
+    window.addEventListener('keydown', this.handlePickerKeyDown);
     this.loadInbox();
   }
 
   componentWillUnmount() {
     this._unmounted = true;
     this.unsubScale?.();
+    window.removeEventListener('keydown', this.handlePickerKeyDown);
   }
 
   componentDidUpdate(prevProps) {
     if (!prevProps.open && this.props.open) {
       this.loadInbox();
+      // Open chat directly if a chatFriend prop is provided
+      if (this.props.chatFriend) {
+        this.setState({ tab: 'friend', chatFriend: this.props.chatFriend });
+      }
     }
     // Route incoming chat WS events to the active chat view
     if (this.props.lastChatMessage && this.props.lastChatMessage !== prevProps.lastChatMessage) {
@@ -157,6 +169,28 @@ export default class Mailbox extends Component {
       }
     }
   }
+
+  handlePickerKeyDown = (e) => {
+    if (e.repeat) return;
+    const tag = e.target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+
+    if ((e.key === ' ' || e.code === 'Space') && this.state.showCardPicker) {
+      e.preventDefault();
+      if (this.state.inspectedCard) {
+        playUI(UI.INSPECTOR_CLOSE);
+        this.setState({ inspectedCard: null });
+      } else if (this.state.pickerHoveredEntry) {
+        playUI(UI.INSPECTOR_OPEN);
+        this.setState({ inspectedCard: this.state.pickerHoveredEntry });
+      }
+    }
+    if (e.key === 'Escape' && this.state.inspectedCard) {
+      e.stopPropagation();
+      playUI(UI.INSPECTOR_CLOSE);
+      this.setState({ inspectedCard: null });
+    }
+  };
 
   loadInbox = async () => {
     this.setState({ loading: true, error: null });
@@ -378,20 +412,29 @@ export default class Mailbox extends Component {
   };
 
   renderTabBar() {
-    const { tab, view } = this.state;
+    const { tab } = this.state;
     return (
-      <div className="flex gap-1 px-3 pt-3 pb-2">
-        {TAB_KEYS.map(t => (
-          <button
-            key={t.key}
-            type="button"
-            className="flex-1 py-1.5 text-[11px] font-medium text-center transition-all cursor-pointer"
-            style={tab === t.key ? MAILBOX_TAB_ACTIVE : MAILBOX_TAB_INACTIVE}
-            onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null, chatFriend: null })}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="shrink-0 flex" style={{ borderTop: `1px solid ${GOLD} 0.12)`, background: SOLID_BASE }}>
+        {TAB_KEYS.map(t => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              className="flex-1 flex flex-col items-center gap-0.5 py-2 cursor-pointer transition-all"
+              style={{
+                color: active ? ACCENT_GOLD : TEXT_MUTED,
+                background: active ? `${GOLD} 0.06)` : 'transparent',
+              }}
+              onClick={() => this.setState({ tab: t.key, view: 'list', selectedMail: null, error: null, chatFriend: null })}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d={t.icon} />
+              </svg>
+              <span className="text-[9px] font-semibold uppercase tracking-wider">{t.label}</span>
+            </button>
+          );
+        })}
       </div>
     );
   }
@@ -408,10 +451,7 @@ export default class Mailbox extends Component {
       );
     }
 
-    const filtered = tab === 'all' ? mail.filter(m => {
-      const type = m.type || 'friend';
-      return type !== 'friend' && type !== 'draft-invite';
-    }) : mail.filter(m => {
+    const filtered = mail.filter(m => {
       const type = m.type || 'friend';
       if (tab === 'friend') return type === 'friend' || type === 'draft-invite';
       return type === tab;
@@ -1046,20 +1086,20 @@ export default class Mailbox extends Component {
     const { open, onClose } = this.props;
     const { view, error } = this.state;
 
-    return (
+    return createPortal(
       <AnimatePresence>
         {!open ? null : (
       <>
         <div className="fixed inset-0 z-[59]" onClick={onClose} />
         <motion.div
-          className="absolute flex flex-col z-[60]"
+          className="fixed flex flex-col z-[60]"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            top: 'calc(100% + 8px)',
-            right: 0,
+            top: 48,
+            right: 16,
             width: 400,
             maxHeight: 'min(580px, calc(100vh - 80px))',
             height: 580,
@@ -1091,8 +1131,6 @@ export default class Mailbox extends Component {
             </button>
           </div>
 
-          {view === 'list' && this.renderTabBar()}
-
           {view === 'list' && error && (
             <div className="mx-3 mb-1 px-2.5 py-1.5 text-[10px] rounded-md" style={{ background: 'rgba(180,60,60,0.08)', border: '1px solid rgba(180,60,60,0.25)', color: '#c45050' }}>
               {error}
@@ -1100,26 +1138,28 @@ export default class Mailbox extends Component {
           )}
 
           <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
-            {this.state.tab === 'friend' ? (
-              this.state.chatFriend ? (
-                <ChatView
-                  ref={(ref) => { this.chatViewRef = ref; }}
-                  friendId={this.state.chatFriend.friendId}
-                  friendName={this.state.chatFriend.friendName}
-                  friendAvatar={this.state.chatFriend.friendAvatar}
-                  online={this.state.chatFriend.online}
-                  profile={this.props.profile}
-                  sorceryCards={this.props.sorceryCards}
-                  onBack={() => this.setState({ chatFriend: null })}
-                  onProfileReload={this.props.onProfileReload}
-                />
-              ) : (
-                <ChatConversationList
-                  ref={(ref) => { this.chatListRef = ref; }}
-                  onSelectFriend={(friend) => this.setState({ chatFriend: friend })}
-                  friendListData={this.props.friendListData}
-                />
-              )
+            {this.state.tab === 'friend' && this.state.chatFriend ? (
+              <ChatView
+                ref={(ref) => { this.chatViewRef = ref; }}
+                friendId={this.state.chatFriend.friendId}
+                friendName={this.state.chatFriend.friendName}
+                friendAvatar={this.state.chatFriend.friendAvatar}
+                online={this.state.chatFriend.online}
+                profile={this.props.profile}
+                sorceryCards={this.props.sorceryCards}
+                onBack={() => this.setState({ chatFriend: null })}
+                onProfileReload={this.props.onProfileReload}
+                onOpenCardPicker={() => this.setState({ showCardPicker: true, cardPickerSearch: '' })}
+                onCardAttached={(cardId, foiling) => {
+                  if (this.chatViewRef) this.chatViewRef.addCard(cardId, foiling);
+                }}
+              />
+            ) : this.state.tab === 'friend' ? (
+              <ChatConversationList
+                ref={(ref) => { this.chatListRef = ref; }}
+                onSelectFriend={(friend) => this.setState({ chatFriend: friend })}
+                friendListData={this.props.friendListData}
+              />
             ) : (
               <>
                 {view === 'list' && this.renderListView()}
@@ -1130,18 +1170,7 @@ export default class Mailbox extends Component {
           </div>
 
           {/* Pinned footer — always at bottom */}
-          <div className="shrink-0 px-3 py-2.5 flex items-center justify-end gap-2" style={{ borderTop: `1px solid ${GOLD} 0.08)` }}>
-            {view === 'list' && this.state.tab === 'all' && !this.state.chatFriend ? (
-              <button
-                type="button"
-                className="px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-all"
-                style={{ ...MAILBOX_GOLD_BTN, borderRadius: '6px' }}
-                data-sound={UI.CONFIRM}
-                onClick={() => this.openCompose()}
-              >
-                Compose
-              </button>
-            ) : null}
+          <div className="shrink-0 px-3 py-1 flex items-center justify-end gap-2">
             {view === 'detail' && this.state.selectedMail ? (() => {
               const m = this.state.selectedMail;
               const isFriend = (m.type || 'friend') === 'friend';
@@ -1189,14 +1218,18 @@ export default class Mailbox extends Component {
             ) : null}
           </div>
 
+          {/* Bottom navigation rail */}
+          {this.renderTabBar()}
+
           {/* Card picker — anchored to left of this panel */}
           <AnimatePresence>
-            {this.state.view === 'compose' && this.state.showCardPicker ? this.renderCardPicker() : null}
+            {this.state.showCardPicker ? this.renderCardPicker() : null}
           </AnimatePresence>
         </motion.div>
       </>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
     );
   }
 
@@ -1217,9 +1250,12 @@ export default class Mailbox extends Component {
       : collection;
 
     return (
+      <>
+      {/* Backdrop — click anywhere outside the picker to close it */}
+      <div className="fixed inset-0 z-[58]" onClick={() => this.setState({ showCardPicker: false, inspectedCard: null, pickerHoveredEntry: null })} />
       <motion.div
         key="card-picker"
-        className="absolute flex flex-col"
+        className="absolute flex flex-col z-[59]"
         initial={{ opacity: 0, x: 12, scale: 0.96 }}
         animate={{ opacity: 1, x: 0, scale: 1 }}
         exit={{ opacity: 0, x: 12, scale: 0.96 }}
@@ -1243,9 +1279,16 @@ export default class Mailbox extends Component {
             <span className="text-xs font-bold arena-heading" style={{ color: TEXT_PRIMARY }}>
               Attach Cards
             </span>
-            <span className="text-[10px] tabular-nums" style={{ color: TEXT_MUTED }}>
-              {composeCards.length}/10 selected
-            </span>
+            <button
+              type="button"
+              className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-colors"
+              style={{ color: TEXT_MUTED }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_BODY; e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => this.setState({ showCardPicker: false, inspectedCard: null, pickerHoveredEntry: null })}
+            >
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+            </button>
           </div>
           <input
             type="text"
@@ -1266,11 +1309,13 @@ export default class Mailbox extends Component {
               const foiling = entry.foiling || 'S';
               const imgUrl = resolveCardImage(entry.cardId, sorceryCards);
               const name = resolveCardName(entry.cardId, sorceryCards);
-              const selectedCount = composeCards.filter(
+              const chatCards = this.chatViewRef?.state?.attachCards || [];
+              const activeCards = this.state.chatFriend ? chatCards : composeCards;
+              const selectedCount = activeCards.filter(
                 c => c.cardId === entry.cardId && c.foiling === foiling
               ).length;
               const isSelected = selectedCount > 0;
-              const canAddMore = selectedCount < entry.quantity && composeCards.length < 10;
+              const canAddMore = selectedCount < entry.quantity && activeCards.length < 10;
               const isFoil = foiling === 'F' || foiling === 'R';
               const foilColor = foiling === 'R' ? '#c480e0' : ACCENT_GOLD;
               return (
@@ -1282,9 +1327,23 @@ export default class Mailbox extends Component {
                       ? { border: `2px solid ${isFoil ? foilColor : ACCENT_GOLD}`, boxShadow: `0 0 10px ${GOLD} 0.25)` }
                       : { border: `2px solid ${isFoil ? foilColor + '55' : `${GOLD} 0.1)`}` }
                     }
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = isFoil ? foilColor : `${GOLD} 0.3)`; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = isFoil ? foilColor + '55' : `${GOLD} 0.1)`; }}
-                    onClick={() => { if (canAddMore) this.addCardToCompose(entry.cardId, foiling); }}
+                    onMouseEnter={e => {
+                      if (!isSelected) e.currentTarget.style.borderColor = isFoil ? foilColor : `${GOLD} 0.3)`;
+                      const card = sorceryCards?.find(c => c.unique_id === entry.cardId);
+                      if (card) this.setState({ pickerHoveredEntry: { card, printing: card.printings?.find(p => (p.foiling || 'S') === foiling) || card.printings?.[0], rarity: card.rarity } });
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) e.currentTarget.style.borderColor = isFoil ? foilColor + '55' : `${GOLD} 0.1)`;
+                      this.setState({ pickerHoveredEntry: null });
+                    }}
+                    onClick={() => {
+                      if (!canAddMore) return;
+                      if (this.state.chatFriend && this.chatViewRef) {
+                        this.chatViewRef.addCard(entry.cardId, foiling);
+                      } else {
+                        this.addCardToCompose(entry.cardId, foiling);
+                      }
+                    }}
                   >
                     {imgUrl ? (
                       <img src={imgUrl} alt={name} className="w-full aspect-[5/7] object-cover" />
@@ -1340,6 +1399,16 @@ export default class Mailbox extends Component {
           </div>
         </div>
       </motion.div>
+      {this.state.inspectedCard && (
+        <CardInspector
+          card={this.state.inspectedCard.card}
+          imageUrl={this.state.inspectedCard.printing?.image_url}
+          rarity={this.state.inspectedCard.rarity}
+          foiling={this.state.inspectedCard.printing?.foiling}
+          onClose={() => { playUI(UI.INSPECTOR_CLOSE); this.setState({ inspectedCard: null }); }}
+        />
+      )}
+      </>
     );
   }
 }

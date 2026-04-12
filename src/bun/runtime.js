@@ -8,6 +8,15 @@ import {
   CARD_IMAGE_EXT,
   CARD_IMAGE_CONTENT_TYPE,
 } from './imageConverter.js';
+import {
+  connectToDiscord,
+  disconnectDiscord,
+  setActivity,
+  clearActivity,
+  isConnected as isDiscordConnected,
+  getUser as getDiscordUser,
+  consumeJoinSecret,
+} from './discord.js';
 
 // Performance log path. Fixed location so the dev tooling can tail it.
 // JSON-lines format — one object per line, append-only, truncated only
@@ -146,6 +155,20 @@ export function startRendererServer({
           return handlePerfLogReset();
         }
 
+        if (pathname === '/api/discord/activity' && request.method === 'PUT') {
+          return handleDiscordActivity(request);
+        }
+        if (pathname === '/api/discord/status' && request.method === 'GET') {
+          return Response.json({
+            connected: isDiscordConnected(),
+            user: getDiscordUser(),
+          });
+        }
+        if (pathname === '/api/discord/join' && request.method === 'GET') {
+          const secret = consumeJoinSecret();
+          return Response.json({ secret });
+        }
+
         return serveStaticFile(distDir, pathname);
       } catch (err) {
         console.error(`[runtime] error handling ${pathname}:`, err);
@@ -156,6 +179,10 @@ export function startRendererServer({
       }
     },
   });
+
+  // Connect to Discord Rich Presence in the background. Silently no-ops
+  // if Discord isn't running — reconnects automatically when it comes up.
+  connectToDiscord();
 
   return server;
 }
@@ -247,6 +274,22 @@ function handlePerfLogReset() {
     return new Response('ok', { status: 204 });
   } catch (err) {
     return Response.json({ error: err?.message || 'reset failed' }, { status: 500 });
+  }
+}
+
+// ── Discord Rich Presence ─────────────────────────────────────────
+
+async function handleDiscordActivity(request) {
+  try {
+    const { activity } = await request.json();
+    if (activity) {
+      setActivity(activity);
+    } else {
+      clearActivity();
+    }
+    return Response.json({ ok: true });
+  } catch (err) {
+    return Response.json({ error: err?.message || 'Failed to set activity' }, { status: 400 });
   }
 }
 

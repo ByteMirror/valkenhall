@@ -47,6 +47,7 @@ import PileSearchDialog from './gameBoard/PileSearchDialog';
 import DeckSpawnDialog from './gameBoard/DeckSpawnDialog';
 import GameContextMenu from './gameBoard/GameContextMenu';
 import StatusRingMenu from './gameBoard/StatusRingMenu';
+import { getDiscordSettings } from '../utils/arena/discordSettings';
 import TutorialOverlay from './TutorialOverlay';
 import { shouldAutoPlay, markTutorialSeen, hydrateTutorialState } from '../utils/arena/tutorialState';
 
@@ -313,6 +314,7 @@ export default class GameBoard extends Component {
       currentSessionId: null,
       currentSessionName: '',
       showGameMenu: false,
+      allowSpectators: getDiscordSettings().allowSpectators,
       showSpawnConfirm: false,
       pendingSpawnDeckId: null,
       pendingSpawnPlayerNum: 1,
@@ -4303,6 +4305,28 @@ export default class GameBoard extends Component {
                     </button>
                   </>
                 )}
+
+                {/* Spectator toggle */}
+                {this.state.connectionStatus !== 'offline' ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs cursor-pointer"
+                    style={{ color: TEXT_BODY }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    onClick={() => this.setState((s) => ({ allowSpectators: !s.allowSpectators }))}
+                  >
+                    Allow Spectators
+                    <span
+                      className="rounded-md px-2 py-0.5 text-[10px] font-medium"
+                      style={this.state.allowSpectators
+                        ? { border: `1px solid ${GOLD} 0.4)`, background: `${GOLD} 0.12)`, color: '#d4a843' }
+                        : { border: `1px solid ${GOLD} 0.1)`, background: 'transparent', color: TEXT_MUTED }}
+                    >
+                      {this.state.allowSpectators ? 'On' : 'Off'}
+                    </span>
+                  </button>
+                ) : null}
 
                 <div className="mx-1 my-2.5 h-px" style={{ background: `${GOLD} 0.08)` }} />
 

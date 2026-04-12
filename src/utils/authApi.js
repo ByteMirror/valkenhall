@@ -10,11 +10,11 @@ const MATCHMAKING_URL = 'https://valkenhall-server-production.up.railway.app';
 const IS_CEF = typeof location !== 'undefined' && new URLSearchParams(location.search).get('runtime') === 'cef';
 const TOKEN_KEY = IS_CEF ? 'valkenhall-token-cef' : 'valkenhall-token';
 
-export async function requestLoginCode(email) {
+export async function requestLoginCode(email, { checkOnly = false } = {}) {
   const res = await fetch(`${MATCHMAKING_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, checkOnly }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

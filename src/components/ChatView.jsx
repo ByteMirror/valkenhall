@@ -2,11 +2,13 @@ import { Component, createRef } from 'preact';
 import { fetchMessages, sendChatMessage, claimChatMessage, markChatRead } from '../utils/arena/chatApi';
 import { CoinIcon } from './ui/icons';
 import RuneSpinner from './RuneSpinner';
-import { UI } from '../utils/arena/uiSounds';
+import { playUI, UI } from '../utils/arena/uiSounds';
+import CardInspector from './CardInspector';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, COIN_COLOR,
   PANEL_BG, GOLD_BTN, BEVELED_BTN, INPUT_STYLE, DANGER_BTN,
 } from '../lib/medievalTheme';
+import { resolveAvatarUrl } from '../utils/arena/avatarUtils';
 
 const SENT_BUBBLE = {
   background: 'rgba(180, 140, 60, 0.06)',
@@ -60,22 +62,50 @@ export default class ChatView extends Component {
       inputText: '',
       sending: false,
       // Attachment state
-      showAttachPanel: false,
+      showAttachMenu: false,
+      showGoldInput: false,
       attachCards: [],   // [{ cardId, foiling }]
       attachCoins: 0,
-      cardSearch: '',
+      hoveredCard: null,
+      inspectedCard: null,
     };
     this.scrollRef = createRef();
     this.bottomRef = createRef();
   }
 
   componentDidMount() {
+    window.addEventListener('keydown', this.handleInspectorKey);
     this.loadMessages();
   }
 
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this.handleInspectorKey);
+  }
+
+  handleInspectorKey = (e) => {
+    if (e.repeat) return;
+    const tag = e.target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === ' ' || e.code === 'Space') {
+      if (this.state.inspectedCard) {
+        e.preventDefault();
+        playUI(UI.INSPECTOR_CLOSE);
+        this.setState({ inspectedCard: null });
+      } else if (this.state.hoveredCard) {
+        e.preventDefault();
+        playUI(UI.INSPECTOR_OPEN);
+        this.setState({ inspectedCard: this.state.hoveredCard });
+      }
+    }
+    if (e.key === 'Escape' && this.state.inspectedCard) {
+      playUI(UI.INSPECTOR_CLOSE);
+      this.setState({ inspectedCard: null });
+    }
+  };
+
   componentDidUpdate(prevProps) {
     if (prevProps.friendId !== this.props.friendId) {
-      this.setState({ messages: [], loading: true, hasOlder: true, inputText: '', attachCards: [], attachCoins: 0, showAttachPanel: false });
+      this.setState({ messages: [], loading: true, hasOlder: true, inputText: '', attachCards: [], attachCoins: 0, showAttachMenu: false, showGoldInput: false });
       this.loadMessages();
     }
   }
@@ -121,7 +151,8 @@ export default class ChatView extends Component {
   };
 
   scrollToBottom = () => {
-    this.bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    const container = this.scrollRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   };
 
   handleScroll = (e) => {
@@ -164,7 +195,8 @@ export default class ChatView extends Component {
         inputText: '',
         attachCards: [],
         attachCoins: 0,
-        showAttachPanel: false,
+        showAttachMenu: false,
+        showGoldInput: false,
         sending: true,
       }),
       this.scrollToBottom
@@ -266,30 +298,36 @@ export default class ChatView extends Component {
           )}
 
           {hasCards && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
+            <div className="flex flex-wrap gap-1.5 mt-2">
               {msg.attachedCards.map((card, i) => {
                 const imgUrl = resolveCardImage(card.cardId, sorceryCards);
                 const name = resolveCardName(card.cardId, sorceryCards);
                 return (
                   <div
                     key={`${card.cardId}-${i}`}
-                    className="relative rounded overflow-hidden"
+                    className="relative rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-[1.03]"
                     style={{
-                      width: 44,
-                      border: `1px solid ${GOLD} 0.15)`,
+                      width: 68,
+                      border: `1.5px solid ${GOLD} 0.2)`,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
                       opacity: msg.claimed ? 0.4 : 1,
                     }}
                     title={`${name}${card.quantity > 1 ? ` x${card.quantity}` : ''}`}
+                    onMouseEnter={() => {
+                      const fullCard = sorceryCards?.find(c => c.unique_id === card.cardId);
+                      if (fullCard) this.setState({ hoveredCard: { card: fullCard, printing: fullCard.printings?.[0], rarity: fullCard.rarity } });
+                    }}
+                    onMouseLeave={() => this.setState({ hoveredCard: null })}
                   >
                     {imgUrl ? (
-                      <img src={imgUrl} alt={name} className="w-full aspect-[63/88] object-cover" />
+                      <img src={imgUrl} alt={name} className="w-full aspect-[63/88] object-cover" draggable={false} />
                     ) : (
-                      <div className="w-full aspect-[63/88] flex items-center justify-center text-[7px]" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
+                      <div className="w-full aspect-[63/88] flex items-center justify-center text-[8px] text-center px-0.5" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
                         {name}
                       </div>
                     )}
                     {card.quantity > 1 && (
-                      <div className="absolute top-0 right-0 text-[8px] font-bold px-0.5" style={{ background: 'rgba(0,0,0,0.7)', color: TEXT_PRIMARY }}>
+                      <div className="absolute top-0.5 right-0.5 text-[9px] font-bold px-1 rounded" style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_PRIMARY }}>
                         x{card.quantity}
                       </div>
                     )}
@@ -356,126 +394,116 @@ export default class ChatView extends Component {
     );
   };
 
-  renderAttachmentPanel() {
-    const { profile, sorceryCards } = this.props;
-    const { attachCards, attachCoins, cardSearch } = this.state;
-    const collection = profile?.collection || [];
-    const maxCoins = profile?.coins || 0;
-
-    // Build card list from collection
-    const searchLower = cardSearch.toLowerCase();
-    const available = collection
-      .filter((c) => c.quantity > 0)
-      .map((c) => {
-        const name = resolveCardName(c.cardId, sorceryCards);
-        return { ...c, name };
-      })
-      .filter((c) => !searchLower || c.name.toLowerCase().includes(searchLower))
-      .slice(0, 40);
-
+  renderAttachMenu() {
     return (
       <div
-        className="shrink-0 px-3 py-2 overflow-y-auto"
+        className="absolute bottom-full left-2.5 mb-2 rounded-xl overflow-hidden z-20"
         style={{
-          maxHeight: '200px',
-          borderTop: `1px solid ${GOLD} 0.12)`,
-          background: 'rgba(12, 10, 8, 0.95)',
+          background: 'rgba(18, 14, 10, 0.98)',
+          border: `1px solid ${GOLD} 0.2)`,
+          boxShadow: '0 -8px 24px rgba(0,0,0,0.5)',
+          minWidth: 160,
         }}
       >
-        {/* Coins */}
-        <div className="flex items-center gap-2 mb-2">
-          <CoinIcon size={14} />
-          <input
-            type="number"
-            min={0}
-            max={maxCoins}
-            value={attachCoins || ''}
-            placeholder="0"
-            className="w-20 px-2 py-1 text-xs rounded"
-            style={{ ...INPUT_STYLE, color: COIN_COLOR, backgroundColor: '#0e0a06' }}
-            onInput={(e) => {
-              const val = Math.max(0, Math.min(maxCoins, parseInt(e.target.value, 10) || 0));
-              this.setState({ attachCoins: val });
-            }}
-          />
-          <span className="text-[10px]" style={{ color: TEXT_MUTED }}>/ {maxCoins}</span>
-        </div>
+        <button
+          type="button"
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs cursor-pointer transition-all hover:bg-white/5"
+          style={{ color: TEXT_PRIMARY }}
+          onClick={() => {
+            this.setState({ showAttachMenu: false });
+            this.props.onOpenCardPicker?.();
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 15l6-6 4 4 4-4 4 4" />
+          </svg>
+          Send Cards
+        </button>
+        <button
+          type="button"
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs cursor-pointer transition-all hover:bg-white/5"
+          style={{ color: COIN_COLOR }}
+          onClick={() => this.setState({ showAttachMenu: false, showGoldInput: true })}
+        >
+          <CoinIcon size={15} />
+          Send Gold
+        </button>
+      </div>
+    );
+  }
 
-        {/* Card search */}
+  renderGoldInput() {
+    const maxCoins = this.props.profile?.coins || 0;
+    const { attachCoins } = this.state;
+    return (
+      <div className="shrink-0 px-2.5 py-1.5 flex items-center gap-2">
+        <CoinIcon size={14} />
         <input
-          type="text"
-          placeholder="Search cards..."
-          value={cardSearch}
-          className="w-full px-2 py-1 text-xs rounded mb-2"
-          style={{ ...INPUT_STYLE, color: TEXT_BODY, backgroundColor: '#0e0a06' }}
-          onInput={(e) => this.setState({ cardSearch: e.target.value })}
+          type="number"
+          min={0}
+          max={maxCoins}
+          value={attachCoins || ''}
+          placeholder="Enter amount"
+          className="flex-1 px-3 py-1.5 text-xs rounded-full leading-5 outline-none"
+          style={{
+            background: 'rgba(212,168,67,0.06)',
+            border: `1px solid ${GOLD} 0.2)`,
+            borderRadius: '20px',
+            color: COIN_COLOR,
+            height: '32px',
+          }}
+          onInput={(e) => {
+            const val = Math.max(0, Math.min(maxCoins, parseInt(e.target.value, 10) || 0));
+            this.setState({ attachCoins: val });
+          }}
         />
-
-        {/* Card grid */}
-        <div className="grid grid-cols-6 gap-1">
-          {available.map((c, i) => {
-            const imgUrl = resolveCardImage(c.cardId, sorceryCards);
-            return (
-              <button
-                key={`${c.cardId}-${c.foiling || 'S'}-${i}`}
-                type="button"
-                className="relative rounded overflow-hidden cursor-pointer transition-all"
-                style={{
-                  border: `1px solid ${GOLD} 0.1)`,
-                  opacity: attachCards.length >= 10 ? 0.4 : 1,
-                }}
-                title={`${c.name} (${c.quantity}x)`}
-                onClick={() => this.addCard(c.cardId, c.foiling || 'S')}
-                disabled={attachCards.length >= 10}
-              >
-                {imgUrl ? (
-                  <img src={imgUrl} alt={c.name} className="w-full aspect-[63/88] object-cover" />
-                ) : (
-                  <div className="w-full aspect-[63/88] flex items-center justify-center text-[6px]" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
-                    {c.name}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {available.length === 0 && (
-          <div className="text-center py-2 text-[10px]" style={{ color: TEXT_MUTED }}>
-            {cardSearch ? 'No matching cards' : 'No cards in collection'}
-          </div>
-        )}
+        <span className="text-[10px] shrink-0" style={{ color: TEXT_MUTED }}>/ {maxCoins}</span>
+        <button
+          type="button"
+          className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer shrink-0"
+          style={{ color: TEXT_MUTED, background: 'rgba(255,255,255,0.04)' }}
+          onClick={() => this.setState({ showGoldInput: false, attachCoins: 0 })}
+        >
+          <svg width="10" height="10" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+        </button>
       </div>
     );
   }
 
   render() {
-    const { friendName, online, onBack } = this.props;
-    const { messages, loading, loadingOlder, inputText, showAttachPanel, attachCards, attachCoins } = this.state;
+    const { friendName, friendAvatar, online, onBack, sorceryCards } = this.props;
+    const avatarUrl = resolveAvatarUrl({ profileAvatar: friendAvatar }, sorceryCards);
+    const { messages, loading, loadingOlder, inputText, showAttachMenu, showGoldInput, attachCards, attachCoins } = this.state;
     const hasAttachments = attachCards.length > 0 || attachCoins > 0;
     const canSend = inputText.trim() || hasAttachments;
 
     return (
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-3 py-2.5 shrink-0" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
+        {/* Header — clean, no separator */}
+        <div className="flex items-center gap-2.5 px-3 py-2 shrink-0">
           <button
             type="button"
-            className="text-[11px] cursor-pointer transition-all"
+            className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-white/5"
             style={{ color: TEXT_MUTED }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = TEXT_PRIMARY; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; }}
             data-sound={UI.CANCEL}
             onClick={onBack}
           >
-            &larr;
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
           </button>
           <div className="relative">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: `${GOLD} 0.1)`, border: `1px solid ${GOLD} 0.2)`, color: TEXT_PRIMARY }}
-            >
-              {(friendName || '?')[0].toUpperCase()}
-            </div>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={friendName} className="w-8 h-8 rounded-full object-cover object-top" style={{ border: `1px solid ${GOLD} 0.2)` }} />
+            ) : (
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{ background: `${GOLD} 0.1)`, border: `1px solid ${GOLD} 0.2)`, color: TEXT_PRIMARY }}
+              >
+                {(friendName || '?')[0].toUpperCase()}
+              </div>
+            )}
             {online && (
               <div
                 className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
@@ -483,9 +511,9 @@ export default class ChatView extends Component {
               />
             )}
           </div>
-          <div>
-            <div className="text-xs font-medium" style={{ color: TEXT_PRIMARY }}>{friendName}</div>
-            <div className="text-[10px]" style={{ color: online ? '#4ade80' : TEXT_MUTED }}>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>{friendName}</div>
+            <div className="text-[9px]" style={{ color: online ? '#4ade80' : TEXT_MUTED }}>
               {online ? 'Online' : 'Offline'}
             </div>
           </div>
@@ -513,72 +541,97 @@ export default class ChatView extends Component {
           <div ref={this.bottomRef} />
         </div>
 
-        {/* Attachment preview strip */}
+        {/* Attachment preview — floating above input, overlapping chat */}
         {hasAttachments && (
-          <div className="shrink-0 px-3 py-1.5 flex items-center gap-1.5 flex-wrap" style={{ borderTop: `1px solid ${GOLD} 0.08)`, background: 'rgba(12, 10, 8, 0.6)' }}>
-            {attachCards.map((card, i) => {
-              const imgUrl = resolveCardImage(card.cardId, this.props.sorceryCards);
-              const name = resolveCardName(card.cardId, this.props.sorceryCards);
-              return (
-                <div key={i} className="relative group">
-                  <div
-                    className="w-8 h-11 rounded overflow-hidden"
-                    style={{ border: `1px solid ${GOLD} 0.2)` }}
-                    title={name}
-                  >
-                    {imgUrl ? (
-                      <img src={imgUrl} alt={name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[6px]" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>{name}</div>
-                    )}
+          <div className="relative shrink-0" style={{ zIndex: 5 }}>
+            <div
+              className="absolute bottom-0 left-0 right-0 px-3 pb-2 pt-3 flex gap-2.5 overflow-x-auto"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {attachCards.map((card, i) => {
+                const imgUrl = resolveCardImage(card.cardId, this.props.sorceryCards);
+                const name = resolveCardName(card.cardId, this.props.sorceryCards);
+                return (
+                  <div key={i} className="relative shrink-0">
+                    <div
+                      className="rounded-xl"
+                      style={{ overflow: 'hidden' }}
+                      style={{
+                        width: 72,
+                        height: Math.round(72 * 88 / 63),
+                        border: `1.5px solid ${GOLD} 0.3)`,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
+                      }}
+                    >
+                      {imgUrl ? (
+                        <img src={imgUrl} alt={name} className="w-full h-full object-cover" draggable={false} />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[8px] text-center px-1" style={{ background: `${GOLD} 0.06)`, color: TEXT_MUTED }}>{name}</div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer"
+                      style={{ background: '#b04040', color: '#fff', fontSize: 11, fontWeight: 700, border: '2px solid #0e0a06' }}
+                      onClick={() => this.removeCard(i)}
+                    >
+                      &times;
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] cursor-pointer"
-                    style={{ background: '#b04040', color: '#fff', border: '1px solid rgba(0,0,0,0.3)' }}
-                    onClick={() => this.removeCard(i)}
-                  >
-                    &times;
-                  </button>
+                );
+              })}
+              {attachCoins > 0 && (
+                <div className="flex items-center gap-1.5 px-3 rounded-xl shrink-0 self-end" style={{ height: 36, background: `${GOLD} 0.1)`, border: `1.5px solid ${GOLD} 0.25)`, boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
+                  <CoinIcon size={16} />
+                  <span className="text-sm font-bold" style={{ color: COIN_COLOR }}>{attachCoins}</span>
                 </div>
-              );
-            })}
-            {attachCoins > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1 rounded" style={{ background: `${GOLD} 0.08)`, border: `1px solid ${GOLD} 0.15)` }}>
-                <CoinIcon size={10} />
-                <span className="text-[10px] font-medium" style={{ color: COIN_COLOR }}>{attachCoins}</span>
-              </div>
-            )}
+              )}
+            </div>
+            {/* Spacer to push input bar down — half the card height so cards overlap chat */}
+            <div style={{ height: Math.round(72 * 88 / 63) / 2 + 16 }} />
           </div>
         )}
 
-        {/* Attachment picker panel */}
-        {showAttachPanel && this.renderAttachmentPanel()}
+        {/* Gold amount input */}
+        {showGoldInput && this.renderGoldInput()}
 
-        {/* Input bar */}
-        <div
-          className="shrink-0 px-3 py-2 flex items-end gap-2"
-          style={{ borderTop: `1px solid ${GOLD} 0.08)` }}
-        >
-          {/* Attach button */}
+        {/* Input bar — all elements aligned on one line */}
+        <div className="shrink-0 px-2.5 py-2 flex items-center gap-2 relative">
+          {/* Popover menu */}
+          {showAttachMenu && this.renderAttachMenu()}
+          {/* Backdrop to close menu */}
+          {showAttachMenu && <div className="fixed inset-0 z-10" onClick={() => this.setState({ showAttachMenu: false })} />}
+
+          {/* Plus button (circular) */}
           <button
             type="button"
-            className="px-2 py-2 text-xs cursor-pointer transition-all shrink-0 rounded"
+            className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all shrink-0 relative z-20"
             style={{
-              ...(showAttachPanel ? { background: `${GOLD} 0.12)`, border: `1px solid ${ACCENT_GOLD}`, color: ACCENT_GOLD } : { ...BEVELED_BTN, color: TEXT_MUTED }),
-              borderRadius: '6px',
+              background: showAttachMenu ? `${GOLD} 0.15)` : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${showAttachMenu ? ACCENT_GOLD : 'rgba(255,255,255,0.08)'}`,
+              color: showAttachMenu ? ACCENT_GOLD : TEXT_MUTED,
             }}
             title="Attach cards or coins"
-            onClick={() => this.setState((s) => ({ showAttachPanel: !s.showAttachPanel }))}
+            onClick={() => this.setState((s) => ({ showAttachMenu: !s.showAttachMenu, showGoldInput: false }))}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
             </svg>
           </button>
 
+          {/* Input field */}
           <textarea
-            className="flex-1 px-3 py-2 text-xs rounded-lg resize-none"
-            style={{ ...INPUT_STYLE, color: TEXT_BODY, backgroundColor: '#0e0a06', maxHeight: '80px', minHeight: '36px' }}
+            className="flex-1 px-3 py-1.5 text-xs rounded-full resize-none leading-5"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '20px',
+              color: TEXT_BODY,
+              maxHeight: '80px',
+              minHeight: '32px',
+              height: '32px',
+              outline: 'none',
+            }}
             placeholder="Type a message..."
             maxLength={500}
             rows={1}
@@ -590,21 +643,37 @@ export default class ChatView extends Component {
             }}
             onKeyDown={this.handleKeyDown}
           />
+
+          {/* Send button (circular) */}
           <button
             type="button"
-            className="px-3 py-2 text-xs font-semibold cursor-pointer transition-all shrink-0"
+            className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all shrink-0"
             style={{
-              ...GOLD_BTN,
-              borderRadius: '6px',
-              opacity: canSend ? 1 : 0.4,
-              pointerEvents: canSend ? 'auto' : 'none',
+              background: canSend ? `linear-gradient(180deg, rgba(212,168,67,0.9) 0%, rgba(160,120,40,0.9) 100%)` : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${canSend ? 'rgba(212,168,67,0.5)' : 'rgba(255,255,255,0.08)'}`,
+              color: canSend ? '#0e0a06' : TEXT_MUTED,
+              opacity: canSend ? 1 : 0.5,
             }}
             data-sound={UI.CONFIRM}
+            disabled={!canSend}
             onClick={this.handleSend}
           >
-            Send
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
           </button>
         </div>
+
+        {/* Card Inspector */}
+        {this.state.inspectedCard && (
+          <CardInspector
+            card={this.state.inspectedCard.card}
+            imageUrl={this.state.inspectedCard.printing?.image_url}
+            rarity={this.state.inspectedCard.rarity}
+            foiling={this.state.inspectedCard.printing?.foiling}
+            onClose={() => { playUI(UI.INSPECTOR_CLOSE); this.setState({ inspectedCard: null }); }}
+          />
+        )}
       </div>
     );
   }

@@ -364,8 +364,10 @@ export default class FriendProfileOverlay extends Component {
                 style={{ ...BEVELED_BTN, color: ACCENT_GOLD, borderRadius: '6px' }}
                 onClick={() => { if (onSendMail) onSendMail(profileId); }}
               >
-                <Mail size={12} />
-                Mail
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                </svg>
+                Chat
               </button>
               {isFriend !== false ? (
                 <button

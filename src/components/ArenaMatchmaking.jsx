@@ -35,7 +35,9 @@ export default class ArenaMatchmaking extends Component {
     const seconds = elapsed % 60;
 
     if (opponent) {
-      const rankColor = TIER_COLORS[opponent.tier] || 'text-white';
+      const tier = opponent.rank?.tier || opponent.tier;
+      const division = opponent.rank?.division || opponent.division;
+      const rankColor = TIER_COLORS[tier] || 'text-white';
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: BG_ATMOSPHERE }}>
           <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
@@ -45,7 +47,7 @@ export default class ArenaMatchmaking extends Component {
             <h2 className="text-2xl font-bold arena-heading mb-4" style={{ color: '#d4a843', textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,160,60,0.15)' }}>Opponent Found!</h2>
             <div className="text-lg font-semibold mb-1 arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{opponent.name}</div>
             <div className={cn('text-sm font-medium mb-6', rankColor)}>
-              {formatRank(opponent.tier, opponent.division)}
+              {formatRank(tier, division)}
             </div>
             <OrnamentalDivider className="mb-4" />
             <div className="text-sm animate-pulse" style={{ color: TEXT_BODY }}>Connecting...</div>

@@ -24,9 +24,15 @@ export default class LoginScreen extends Component {
 
     this.setState({ loading: true, error: null });
     try {
-      const result = await requestLoginCode(email.trim());
-      // Existing users skip the invite code step entirely
+      // Check if this email is already registered WITHOUT sending a
+      // login code. New users need to enter an invite code first —
+      // the email is only sent after the invite is validated so the
+      // user doesn't get a 6-digit code while staring at an 8-char
+      // invite field.
+      const result = await requestLoginCode(email.trim(), { checkOnly: true });
       if (result.isExistingUser) {
+        // Existing user — send the code now and go straight to verification
+        await requestLoginCode(email.trim());
         this.setState({ step: 'code', isExistingUser: true, loading: false });
       } else {
         this.setState({ step: 'invite', isExistingUser: false, loading: false });
@@ -38,7 +44,7 @@ export default class LoginScreen extends Component {
 
   handleInviteSubmit = async (e) => {
     e.preventDefault();
-    const { inviteCode } = this.state;
+    const { email, inviteCode } = this.state;
     if (!inviteCode.trim()) return;
 
     this.setState({ loading: true, error: null });
@@ -48,13 +54,15 @@ export default class LoginScreen extends Component {
         this.setState({ error: 'Invalid or already used invite code', loading: false });
         return;
       }
+      // Invite is valid — NOW send the login code email
+      await requestLoginCode(email.trim());
       this.setState({
         step: 'code',
         inviterName: result.inviterName,
         loading: false,
       });
     } catch (err) {
-      this.setState({ error: 'Failed to validate invite code', loading: false });
+      this.setState({ error: err.message, loading: false });
     }
   };
 

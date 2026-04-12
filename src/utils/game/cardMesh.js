@@ -47,6 +47,13 @@ function loadTexture(url) {
 export function setCardBackUrls(spellbookUrl, atlasUrl) {
   spellbookBackTexture = loadTexture(spellbookUrl);
   atlasBackTexture = loadTexture(atlasUrl);
+  // The atlas card back image is landscape (horizontal), but it's mapped
+  // onto a portrait card geometry that gets rotated 90° by the mesh.
+  // Pre-rotate the texture -90° so it aligns correctly after the mesh
+  // rotation. Without this the back appears sideways on the board,
+  // in hand, and on the pile.
+  atlasBackTexture.center.set(0.5, 0.5);
+  atlasBackTexture.rotation = Math.PI / 2;
 }
 
 function getBackTexture(isSite) {

@@ -8,6 +8,7 @@ import { getUnreadCount } from './arena/mailApi';
 const FRIEND_REFRESH_INTERVAL_MS = 30_000;
 
 let currentActivity = 'hub';
+let currentActivityData = null;
 let onFriendListUpdate = null;
 let onNewNotifications = null;
 let onMailCountUpdate = null;
@@ -243,11 +244,57 @@ export async function startPresence(activity, callbacks = {}) {
   if (typeof window !== 'undefined') window.addEventListener('focus', focusHandler);
 }
 
-export function updateActivity(activity) {
+export function updateActivity(activity, data) {
   currentActivity = activity;
-  // Server tracks online status automatically via WebSocket connection.
-  // Activity is retained locally in case a future `presence:activity` message
-  // is added to the server protocol.
+  currentActivityData = data || null;
+
+  updateDiscordPresence(activity, data);
+}
+
+function updateDiscordPresence(activity, data) {
+  import('../utils/arena/discordSettings.js').then(({ getDiscordSettings }) => {
+    const settings = getDiscordSettings();
+    if (!settings.showActivity) {
+      import('./discordPresence.js').then((dp) => dp.clearPresence()).catch(() => {});
+      return;
+    }
+    // Merge the spectator preference into match data
+    if (activity === 'in-match' && data) {
+      data._allowSpectators = settings.allowSpectators;
+    }
+    _sendDiscordPresence(activity, data);
+  }).catch(() => {});
+}
+
+function _sendDiscordPresence(activity, data) {
+  import('./discordPresence.js').then((dp) => {
+    switch (activity) {
+      case 'hub':
+        dp.setPresenceHub();
+        break;
+      case 'store':
+        dp.setPresenceStore();
+        break;
+      case 'deckbuilder':
+      case 'deck-select':
+        dp.setPresenceDeckBuilder();
+        break;
+      case 'matchmaking':
+        dp.setPresenceMatchmaking();
+        break;
+      case 'in-match':
+        dp.setPresenceMatch(data || {});
+        break;
+      case 'auction-house':
+        dp.setPresenceAuctionHouse();
+        break;
+      case 'draft':
+        dp.setPresenceDraft(data || {});
+        break;
+      default:
+        dp.setPresenceHub();
+    }
+  }).catch(() => {});
 }
 
 export function stopPresence() {

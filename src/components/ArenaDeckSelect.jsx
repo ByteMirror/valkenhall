@@ -81,7 +81,7 @@ export default class ArenaDeckSelect extends Component {
       <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: BG_ATMOSPHERE, zoom: viewScale }}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
 
-        <div className="relative w-full max-w-4xl mx-4 flex flex-col" style={{ ...DIALOG_STYLE, maxHeight: 'calc(100vh - 80px)' }}>
+        <div className="relative w-full max-w-4xl mx-4 flex flex-col" style={{ ...DIALOG_STYLE, height: 'min(640px, calc(100vh - 80px))' }}>
           <FourCorners radius={12} />
 
           {/* Header */}

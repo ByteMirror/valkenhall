@@ -42,6 +42,7 @@ import LoadingIndicator from './components/LoadingIndicator';
 import FirstRunDownload from './components/FirstRunDownload';
 import TradeWindow from './components/TradeWindow';
 import { startPresence, stopPresence, updateActivity, refreshFriendList } from './utils/presenceManager';
+import { startJoinPolling, stopJoinPolling } from './utils/discordPresence';
 import * as friendsApi from './utils/friendsApi';
 import { createUpdateManager } from './utils/updateManager';
 import UpdateModal from './components/UpdateModal';
@@ -325,7 +326,11 @@ export default class App extends Component {
     }
 
     if (!prevState.isGameBoardOpen && this.state.isGameBoardOpen && this.state.sessionMode) {
-      updateActivity('in-match');
+      updateActivity('in-match', {
+        ranked: this.state.isRankedMatch,
+        opponentName: this.state.arenaMatchmakingOpponent?.name,
+        roomCode: this.state.roomCode,
+      });
     }
   }
 
@@ -432,6 +437,15 @@ export default class App extends Component {
       }).catch(() => {});
     }
     playMusic('arena-hub', { fadeInDuration: 3000 });
+    // Set initial Discord Rich Presence — componentDidUpdate only fires
+    // on view *changes*, so the first hub load needs an explicit call.
+    updateActivity('hub');
+    // Poll for Discord "Join Game" clicks — when a friend clicks join
+    // on our profile, launch spectator mode with the received room code.
+    startJoinPolling((roomCode) => {
+      if (this.state.isGameBoardOpen || this.state.isSpectating) return;
+      this.handleSpectateAllowed(roomCode);
+    });
     startPresence('hub', {
       onFriendListUpdate: (data) => this.setState({ friendListData: data }),
       onNewNotifications: this.handleNewNotifications,
@@ -1190,9 +1204,11 @@ export default class App extends Component {
   handleToggleMailbox = () => {
     this.setState((s) => ({
       mailboxOpen: !s.mailboxOpen,
+      friendsSidebarOpen: false, // close friends when opening mailbox
       mailboxSelectedMailId: null,
       mailboxView: null,
       mailboxComposeRecipientId: null,
+      mailboxChatFriend: null,
     }));
   };
 
@@ -1205,12 +1221,20 @@ export default class App extends Component {
   };
 
   handleSendMailFromProfile = (friendId) => {
+    // Find friend info from the friend list
+    const friend = this.state.friendListData?.friends?.find((f) => f.id === friendId);
     this.setState({
       viewingFriendProfile: null,
       mailboxOpen: true,
-      mailboxView: 'compose',
-      mailboxComposeRecipientId: friendId,
+      mailboxView: null,
       mailboxSelectedMailId: null,
+      mailboxComposeRecipientId: null,
+      mailboxChatFriend: friend ? {
+        friendId: friend.id,
+        friendName: friend.name,
+        friendAvatar: friend.profileAvatar,
+        online: friend.online,
+      } : { friendId, friendName: 'Player', online: false },
     });
   };
 
@@ -1632,7 +1656,7 @@ export default class App extends Component {
       // the gap between background poll cycles so opening it never shows a
       // stale avatar from a friend who just changed it.
       if (next) refreshFriendList();
-      return { friendsSidebarOpen: next };
+      return { friendsSidebarOpen: next, mailboxOpen: false }; // close mailbox when opening friends
     });
   };
 
@@ -1848,7 +1872,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -1859,6 +1883,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -1881,7 +1906,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -1892,6 +1917,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -1993,7 +2019,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2004,6 +2030,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -2022,7 +2049,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2033,6 +2060,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -2095,7 +2123,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2106,6 +2134,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -2129,7 +2158,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2140,6 +2169,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -2181,7 +2211,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2192,6 +2222,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -2251,7 +2282,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2262,6 +2293,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }
@@ -2281,7 +2313,7 @@ export default class App extends Component {
             mailboxDropdown={
               <Mailbox
                 open={this.state.mailboxOpen}
-                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null })}
+                onClose={() => this.setState({ mailboxOpen: false, mailboxSelectedMailId: null, mailboxView: null, mailboxComposeRecipientId: null, mailboxChatFriend: null })}
                 lastChatMessage={this.state.lastChatMessage}
                 lastChatClaimed={this.state.lastChatClaimed}
                 onProfileReload={() => this.checkAuth()}
@@ -2292,6 +2324,7 @@ export default class App extends Component {
                 selectedMailId={this.state.mailboxSelectedMailId}
                 initialView={this.state.mailboxView}
                 composeRecipientId={this.state.mailboxComposeRecipientId}
+                chatFriend={this.state.mailboxChatFriend}
                 onAcceptDraftInvite={(eventId) => { this.setState({ draftEventId: eventId, draftPhase: 'lobby', arenaView: 'draft' }); }}
               />
             }

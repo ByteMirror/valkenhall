@@ -1,6 +1,7 @@
 import { Component } from 'preact';
 import RuneSpinner from './RuneSpinner';
 import { getSoundSettings, saveSoundSettings } from '../utils/arena/soundSettings';
+import { getDiscordSettings, saveDiscordSettings } from '../utils/arena/discordSettings';
 import { updateMusicVolume } from '../utils/arena/musicManager';
 import { UI } from '../utils/arena/uiSounds';
 import { getLocalApiOrigin } from '../utils/localApi';
@@ -16,6 +17,7 @@ import {
 const SECTIONS = [
   { key: 'display', label: 'Display', icon: '\u25A3' },
   { key: 'sound', label: 'Sound', icon: '\u266B' },
+  { key: 'discord', label: 'Discord', icon: '\u{1F3AE}' },
   { key: 'profile', label: 'Profile', icon: '\u2726' },
   { key: 'updates', label: 'Updates', icon: '\u2B06' },
   { key: 'danger', label: 'Account', icon: '\u26A0' },
@@ -33,6 +35,7 @@ export default class SettingsScreen extends Component {
     this.state = {
       activeSection: 'display',
       soundSettings: getSoundSettings(),
+      discordSettings: getDiscordSettings(),
       graphicsSettings: getGraphicsSettings(),
       displayMode: 'fullscreen',
       checking: false,
@@ -120,6 +123,41 @@ export default class SettingsScreen extends Component {
     await this.props.updateManager?.retry();
     this.setState({ retrying: false });
   };
+
+  updateDiscord = (key, value) => {
+    const next = { ...this.state.discordSettings, [key]: value };
+    saveDiscordSettings(next);
+    this.setState({ discordSettings: next });
+  };
+
+  renderDiscordSection() {
+    const ds = this.state.discordSettings;
+    return (
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_LABEL}>Discord</div>
+        <div className="flex flex-col overflow-hidden" style={PANEL}>
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
+            <div>
+              <span className="text-sm block" style={{ color: TEXT_PRIMARY }}>Show Discord Activity</span>
+              <span className="text-[10px] block mt-0.5" style={{ color: TEXT_MUTED }}>Display what you're doing in Valkenhall on your Discord profile</span>
+            </div>
+            <button type="button" className="rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer transition-colors shrink-0" style={ds.showActivity ? TOGGLE_ON : TOGGLE_OFF} onClick={() => this.updateDiscord('showActivity', !ds.showActivity)}>
+              {ds.showActivity ? 'On' : 'Off'}
+            </button>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <span className="text-sm block" style={{ color: TEXT_PRIMARY }}>Allow Spectators</span>
+              <span className="text-[10px] block mt-0.5" style={{ color: TEXT_MUTED }}>Let Discord friends watch your matches via the Join button</span>
+            </div>
+            <button type="button" className="rounded-md px-2 py-0.5 text-[10px] font-medium cursor-pointer transition-colors shrink-0" style={ds.allowSpectators ? TOGGLE_ON : TOGGLE_OFF} onClick={() => this.updateDiscord('allowSpectators', !ds.allowSpectators)} disabled={!ds.showActivity}>
+              {ds.allowSpectators ? 'On' : 'Off'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   renderSoundSection() {
     const ss = this.state.soundSettings;
@@ -525,6 +563,7 @@ export default class SettingsScreen extends Component {
             <div className="flex-1 min-w-0 overflow-y-auto">
               {activeSection === 'display' ? this.renderDisplaySection() : null}
               {activeSection === 'sound' ? this.renderSoundSection() : null}
+              {activeSection === 'discord' ? this.renderDiscordSection() : null}
               {activeSection === 'profile' ? this.renderProfileSection() : null}
               {activeSection === 'updates' ? this.renderUpdatesSection() : null}
               {activeSection === 'danger' ? this.renderDangerSection() : null}
