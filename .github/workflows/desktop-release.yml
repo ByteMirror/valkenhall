@@ -56,22 +56,8 @@ jobs:
           echo "Injected version: ${VERSION}"
       - name: Build web renderer
         run: bun run build
-      - name: Dereference symlinks in tar (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          # Electrobun's Zig-based self-extractor doesn't support symlinks in
-          # tar archives (TarUnsupportedFileType). Wrap tar so that create
-          # operations automatically dereference symlinks.
-          mkdir -p "$HOME/.local/bin"
-          cat > "$HOME/.local/bin/tar" << 'WRAPPER'
-          #!/bin/bash
-          case "$1" in -*c*) exec /usr/bin/tar -h --hard-dereference "$@" ;; esac
-          exec /usr/bin/tar "$@"
-          WRAPPER
-          chmod +x "$HOME/.local/bin/tar"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build desktop app
-        run: bunx electrobun build --env=stable
+        run: bash scripts/build-desktop.sh --env=stable
       - name: List build output
         if: always()
         shell: bash

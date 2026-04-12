@@ -11,7 +11,7 @@
     "desktop:dev": "bun run build:renderer && concurrently -k \"bun run desktop:renderer:dev\" \"bun run desktop:dev:app\"",
     "desktop:renderer:dev": "concurrently -k \"bun --watch scripts/build-web.js\" \"bun run preview\"",
     "desktop:dev:app": "ELECTROBUN_RENDERER_URL=http://127.0.0.1:4173?runtime=cef bun scripts/desktop-dev.js",
-    "desktop:build": "bun run build && electrobun build",
+    "desktop:build": "bun run build && bash scripts/build-desktop.sh",
     "update-cards": "bash ./update_cards.sh",
     "update-sorcery-cards": "bash ./update_sorcery_cards.sh",
     "download-sorcery-images": "bun scripts/download-sorcery-images.js",
