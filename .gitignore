@@ -10,6 +10,8 @@ dist-ssr
 build/dev-macos-arm64/
 server/.cache/
 public/sorcery-images/
+build
+artifacts
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +24,4 @@ public/sorcery-images/
 *.sln
 *.sw?
 .vercel
+
