@@ -578,34 +578,33 @@ export default class ArenaHub extends Component {
                   {/* Header */}
                   <div className="px-5 pt-5 pb-3 shrink-0">
                     <span className="arena-heading text-sm font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.55)`, textShadow: '0 0 12px rgba(180,140,60,0.15)' }}>Leaderboard</span>
-                    {/* Search */}
-                    <input
-                      type="text"
-                      value={leaderboardSearch}
-                      placeholder="Search..."
-                      className="w-full mt-3 px-2.5 py-1 text-[10px] outline-none"
-                      style={{
-                        background: 'rgba(0,0,0,0.25)',
-                        border: `1px solid ${GOLD} 0.12)`,
-                        borderRadius: '6px',
-                        color: '#A6A09B',
-                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
-                      }}
-                      onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
-                    />
-                    {/* Tier filter tabs */}
-                    <div className="flex items-center mt-2" style={TAB_BAR_STYLE}>
-                      {[{ value: 'all', label: 'All' }, ...TIERS.map(t => ({ value: t, label: TIER_LABELS[t] }))].map((t) => (
-                        <button
-                          key={t.value}
-                          type="button"
-                          className="shrink-0 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide transition-all cursor-pointer"
-                          style={leaderboardFilter === t.value ? TAB_ACTIVE : TAB_INACTIVE}
-                          onClick={() => this.setState({ leaderboardFilter: t.value })}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
+                    {/* Search + Tier filter — single row */}
+                    <div className="flex items-center gap-2 mt-3">
+                      <input
+                        type="text"
+                        value={leaderboardSearch}
+                        placeholder="Search..."
+                        className="flex-1 min-w-0 px-2.5 py-1 text-[10px] outline-none rounded-lg"
+                        style={{
+                          background: 'rgba(0,0,0,0.3)',
+                          border: `1px solid ${GOLD} 0.1)`,
+                          color: '#A6A09B',
+                        }}
+                        onInput={(e) => this.setState({ leaderboardSearch: e.target.value })}
+                      />
+                      <div className="flex items-center shrink-0" style={TAB_BAR_STYLE}>
+                        {[{ value: 'all', label: 'All' }, ...TIERS.map(t => ({ value: t, label: TIER_LABELS[t] }))].map((t) => (
+                          <button
+                            key={t.value}
+                            type="button"
+                            className="shrink-0 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide transition-all cursor-pointer"
+                            style={leaderboardFilter === t.value ? TAB_ACTIVE : TAB_INACTIVE}
+                            onClick={() => this.setState({ leaderboardFilter: t.value })}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   {/* Divider */}
