@@ -692,7 +692,7 @@ export default class DeckEditorCollection extends Component {
           const isHovered = this.state.hoveredCard?.key === key;
 
           const cardStyle = unowned
-            ? { opacity: 0.3, filter: 'grayscale(1) brightness(0.6)' }
+            ? { opacity: 0.55, filter: 'grayscale(0.5) brightness(0.8)' }
             : {};
 
           return (
