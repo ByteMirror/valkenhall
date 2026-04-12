@@ -55,6 +55,27 @@ function chipStyle(active) {
   };
 }
 
+// Sorcery TCG umbrella types — thematic groupings that span subtypes
+// and card names. Evil matches by subtype; Royalty and Knight match by
+// words in the card name.
+const UMBRELLAS = {
+  Evil: { subtypes: new Set(['Demon', 'Undead', 'Monster']) },
+  Royalty: { namePatterns: [/\bKing\b/i, /\bQueene?\b/i, /\bPrince\b/i, /\bPrincess\b/i] },
+  Knight: { namePatterns: [/\bKnights?\b/i, /\bSir\b/i, /\bDame\b/i] },
+};
+
+function cardMatchesUmbrella(card, umbrella) {
+  const def = UMBRELLAS[umbrella];
+  if (!def) return false;
+  if (def.subtypes) {
+    return (card.traits || []).some((t) => def.subtypes.has(t));
+  }
+  if (def.namePatterns) {
+    return def.namePatterns.some((re) => re.test(card.name));
+  }
+  return false;
+}
+
 function FilterLabel({ children }) {
   return (
     <span className="text-[9px] font-semibold uppercase tracking-widest mr-1.5 shrink-0 select-none" style={{ color: `${GOLD} 0.35)` }}>
@@ -74,6 +95,7 @@ export default class DeckEditorCollection extends Component {
       rarityFilters: new Set(),
       keywordFilters: new Set(),
       subtypeFilters: new Set(),
+      umbrellaFilters: new Set(),
       cardScope: (props.chosenCards?.length || 0) > 0 ? 'deck' : 'owned',
       hoveredCard: null,
       inspectedEntry: null,
@@ -227,7 +249,7 @@ export default class DeckEditorCollection extends Component {
 
   getFilteredCards() {
     const { sorceryCards, ownedMap, chosenCards, collection } = this.props;
-    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, subtypeFilters, cardScope } = this.state;
+    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, subtypeFilters, umbrellaFilters, cardScope } = this.state;
 
     let cards = sorceryCards || [];
 
@@ -284,6 +306,15 @@ export default class DeckEditorCollection extends Component {
       cards = cards.filter((c) =>
         (c.traits || []).some((t) => subtypeFilters.has(t)),
       );
+    }
+
+    if (umbrellaFilters.size > 0) {
+      cards = cards.filter((c) => {
+        for (const umb of umbrellaFilters) {
+          if (cardMatchesUmbrella(c, umb)) return true;
+        }
+        return false;
+      });
     }
 
     cards.sort((a, b) => {
@@ -350,10 +381,10 @@ export default class DeckEditorCollection extends Component {
   }
 
   renderFilterBar() {
-    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, subtypeFilters } = this.state;
+    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, subtypeFilters, umbrellaFilters } = this.state;
     const { options: keywordOptions } = this._getKeywordIndex();
     const subtypeOptions = this._getSubtypeOptions();
-    const anyActive = elementFilters.size > 0 || typeFilters.size > 0 || setFilters.size > 0 || rarityFilters.size > 0 || keywordFilters.size > 0 || subtypeFilters.size > 0 || searchQuery.trim();
+    const anyActive = elementFilters.size > 0 || typeFilters.size > 0 || setFilters.size > 0 || rarityFilters.size > 0 || keywordFilters.size > 0 || subtypeFilters.size > 0 || umbrellaFilters.size > 0 || searchQuery.trim();
 
     return (
       <div
@@ -391,7 +422,7 @@ export default class DeckEditorCollection extends Component {
               type="button"
               className="text-[10px] shrink-0 cursor-pointer transition-all"
               style={{ color: ACCENT_GOLD }}
-              onClick={() => this.setState({ searchQuery: '', elementFilters: new Set(), typeFilters: new Set(), setFilters: new Set(), rarityFilters: new Set(), keywordFilters: new Set(), subtypeFilters: new Set(), visibleCount: 40 })}
+              onClick={() => this.setState({ searchQuery: '', elementFilters: new Set(), typeFilters: new Set(), setFilters: new Set(), rarityFilters: new Set(), keywordFilters: new Set(), subtypeFilters: new Set(), umbrellaFilters: new Set(), visibleCount: 40 })}
             >
               Clear
             </button>
@@ -479,6 +510,27 @@ export default class DeckEditorCollection extends Component {
               menuSearchPlaceholder="Search keywords…"
               noOptionsMessage="No keywords"
               menuPreferredWidth={260}
+              portalMenu
+              triggerHeight={26}
+            />
+          </div>
+
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
+
+          <div className="flex items-center gap-1">
+            <FilterLabel>Umbrella</FilterLabel>
+            <MultiSelect
+              ariaLabel="Umbrella filter"
+              className="w-[150px]"
+              options={Object.keys(UMBRELLAS).map((u) => ({ value: u, label: u }))}
+              value={Array.from(umbrellaFilters)}
+              onValueChange={(next) =>
+                this.setState({ umbrellaFilters: new Set(next), visibleCount: 40 })
+              }
+              placeholder="Any"
+              menuSearchPlaceholder="Search…"
+              noOptionsMessage="No umbrellas"
+              menuPreferredWidth={200}
               portalMenu
               triggerHeight={26}
             />
