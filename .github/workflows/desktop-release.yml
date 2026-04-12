@@ -65,7 +65,7 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           cat > "$HOME/.local/bin/tar" << 'WRAPPER'
           #!/bin/bash
-          case "$1" in -*c*) exec /usr/bin/tar -h "$@" ;; esac
+          case "$1" in -*c*) exec /usr/bin/tar -h --hard-dereference "$@" ;; esac
           exec /usr/bin/tar "$@"
           WRAPPER
           chmod +x "$HOME/.local/bin/tar"
