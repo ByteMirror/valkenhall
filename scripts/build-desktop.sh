@@ -48,7 +48,20 @@ WRAPPER
   export PATH="$TAR_WRAPPER_DIR:$PATH"
 }
 
+patch_wmclass() {
+  # Electrobun's libNativeWrapper{,_cef}.so hardcode "ElectrobunKitchenSink-dev"
+  # as the GTK WM_CLASS for every window. Linux taskbars match on WM_CLASS to
+  # find the .desktop entry (StartupWMClass=Valkenhall), so without this patch
+  # every Electrobun app shows up under a placeholder icon. See
+  # scripts/patch-electrobun-wmclass.js for details.
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+  bun "$SCRIPT_DIR/patch-electrobun-wmclass.js"
+}
+
 setup_tar_wrapper
+patch_wmclass
 
 cd "$PROJECT_ROOT"
 exec bunx electrobun build "$@"
