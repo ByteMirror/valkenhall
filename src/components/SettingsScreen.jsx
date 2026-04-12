@@ -18,9 +18,8 @@ const SECTIONS = [
   { key: 'display', label: 'Display', icon: '\u25A3' },
   { key: 'sound', label: 'Sound', icon: '\u266B' },
   { key: 'discord', label: 'Discord', icon: '\u{1F3AE}' },
-  { key: 'profile', label: 'Profile', icon: '\u2726' },
+  { key: 'account', label: 'Account', icon: '\u2726' },
   { key: 'updates', label: 'Updates', icon: '\u2B06' },
-  { key: 'danger', label: 'Account', icon: '\u26A0' },
 ];
 
 const TOGGLE_ON = { border: `1px solid ${GOLD} 0.4)`, background: `${GOLD} 0.12)`, color: '#d4a843' };
@@ -301,15 +300,16 @@ export default class SettingsScreen extends Component {
     );
   }
 
-  renderProfileSection() {
-    const { profile, onChangeAvatar } = this.props;
+  renderAccountSection() {
+    const { profile, onChangeAvatar, onLogout, onQuit } = this.props;
     if (!profile) return null;
     const { tutorialReplayNote } = this.state;
 
     return (
       <div>
+        {/* Profile info */}
         <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_LABEL}>Profile</div>
-        <div className="flex flex-col overflow-hidden" style={PANEL}>
+        <div className="flex flex-col overflow-hidden mb-5" style={PANEL}>
           <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
             <div>
               <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Username</div>
@@ -317,8 +317,14 @@ export default class SettingsScreen extends Component {
             </div>
             <span className="text-[10px]" style={{ color: `${GOLD} 0.25)` }}>Set at registration</span>
           </div>
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
+            <div>
+              <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Email</div>
+              <div className="text-xs" style={{ color: TEXT_MUTED }}>{profile.email || 'Not set'}</div>
+            </div>
+          </div>
           {onChangeAvatar ? (
-            <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
+            <div className="flex items-center justify-between px-4 py-3">
               <div>
                 <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Avatar</div>
                 <div className="text-xs" style={{ color: TEXT_MUTED }}>Change your profile picture</div>
@@ -333,8 +339,12 @@ export default class SettingsScreen extends Component {
               </button>
             </div>
           ) : null}
+        </div>
 
-          <div className="flex items-center justify-between px-4 py-3">
+        {/* Tutorials + actions */}
+        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={SECTION_LABEL}>Actions</div>
+        <div className="flex flex-col overflow-hidden mb-5" style={PANEL}>
+          <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
             <div>
               <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Reset tutorials</div>
               <div className="text-xs" style={{ color: TEXT_MUTED }}>
@@ -350,6 +360,20 @@ export default class SettingsScreen extends Component {
               Reset
             </button>
           </div>
+          {onLogout ? (
+            <div className="flex items-center justify-between px-4 py-3" style={ROW_BORDER}>
+              <div>
+                <div className="text-sm" style={{ color: TEXT_PRIMARY }}>Log Out</div>
+                <div className="text-xs" style={{ color: TEXT_MUTED }}>Sign out and switch to another account</div>
+              </div>
+              <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...BEVELED_BTN, borderRadius: '6px', color: TEXT_BODY }}
+                data-sound={UI.CANCEL}
+                onClick={() => { this.props.onBack(); onLogout(); }}
+              >
+                Log Out
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -443,49 +467,6 @@ export default class SettingsScreen extends Component {
     );
   }
 
-  renderDangerSection() {
-    const { onLogout, onQuit } = this.props;
-
-    return (
-      <div>
-        <div className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(180,60,60,0.55)', textShadow: '0 0 12px rgba(180,60,60,0.15)' }}>Account</div>
-        <div className="flex flex-col overflow-hidden" style={{ background: PANEL_BG, border: '1px solid rgba(180,60,60,0.15)', borderRadius: '8px' }}>
-          {onLogout ? (
-            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(180,60,60,0.08)' }}>
-              <div>
-                <div className="text-sm" style={{ color: TEXT_BODY }}>Log Out</div>
-                <div className="text-xs" style={{ color: TEXT_MUTED }}>Sign out and switch to another account</div>
-              </div>
-              <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...BEVELED_BTN, borderRadius: '6px' }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(166,160,155,0.55)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = BEVELED_BTN.borderColor; }}
-                data-sound={UI.CANCEL}
-                onClick={() => { this.props.onBack(); onLogout(); }}
-              >
-                Log Out
-              </button>
-            </div>
-          ) : null}
-          {onQuit ? (
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <div className="text-sm" style={{ color: '#c45050' }}>Quit Game</div>
-                <div className="text-xs" style={{ color: TEXT_MUTED }}>Close Valkenhall</div>
-              </div>
-              <button type="button" className="px-3 py-1 text-xs cursor-pointer transition-all" style={{ ...DANGER_BTN, borderRadius: '6px' }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.55)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(180,60,60,0.35)'; }}
-                data-sound={UI.CANCEL}
-                onClick={() => { this.props.onBack(); onQuit(); }}
-              >
-                Quit
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
 
   render() {
     const { onBack, profile } = this.props;
@@ -493,15 +474,14 @@ export default class SettingsScreen extends Component {
 
     // Filter sections based on available props
     const visibleSections = SECTIONS.filter((s) => {
-      if (s.key === 'profile' && !profile) return false;
-      if (s.key === 'danger' && !this.props.onLogout && !this.props.onQuit) return false;
+      if (s.key === 'account' && !profile) return false;
       return true;
     });
 
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: `url("/tex-noise-panel.webp"), rgba(0,0,0,0.85)`, backdropFilter: 'blur(4px)' }}>
         <div className="fixed inset-0 pointer-events-none" style={{ background: VIGNETTE }} />
-        <div className="relative w-full max-w-2xl mx-auto flex flex-col" style={{ ...DIALOG_STYLE, zoom: viewScale, maxHeight: `${80 / viewScale}vh`, background: `url("/tex-noise.webp"), url("/tex-stone.webp"), ${DIALOG_STYLE.background}` }}>
+        <div className="relative w-full max-w-2xl mx-auto flex flex-col" style={{ ...DIALOG_STYLE, zoom: viewScale, height: '520px', maxHeight: `${80 / viewScale}vh`, background: `url("/tex-noise.webp"), url("/tex-stone.webp"), ${DIALOG_STYLE.background}` }}>
           <FourCorners radius={12} />
 
           {/* Header */}
@@ -564,9 +544,8 @@ export default class SettingsScreen extends Component {
               {activeSection === 'display' ? this.renderDisplaySection() : null}
               {activeSection === 'sound' ? this.renderSoundSection() : null}
               {activeSection === 'discord' ? this.renderDiscordSection() : null}
-              {activeSection === 'profile' ? this.renderProfileSection() : null}
+              {activeSection === 'account' ? this.renderAccountSection() : null}
               {activeSection === 'updates' ? this.renderUpdatesSection() : null}
-              {activeSection === 'danger' ? this.renderDangerSection() : null}
             </div>
           </div>
         </div>

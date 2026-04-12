@@ -1090,15 +1090,16 @@ export default class Mailbox extends Component {
       <AnimatePresence>
         {!open ? null : (
       <>
-        <div className="fixed inset-0 z-[59]" onClick={onClose} />
+        <div className="fixed inset-0 z-[59]" onClick={onClose} data-screenshot-ignore="true" />
         <motion.div
           className="fixed flex flex-col z-[60]"
+          data-screenshot-ignore="true"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            top: 48,
+            top: 56,
             right: 16,
             width: 400,
             maxHeight: 'min(580px, calc(100vh - 80px))',

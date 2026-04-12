@@ -25,9 +25,10 @@ export const TIER_COLORS = {
 export const DIVISION_LABELS = { 4: 'IV', 3: 'III', 2: 'II', 1: 'I' };
 
 export function formatRank(tier, division) {
+  if (!tier) return 'Unranked';
   const label = TIER_LABELS[tier] || tier;
   // Grandmaster doesn't use divisions in the display — everyone above
   // apprentice I collapses to "Grandmaster" with only LP differentiating.
   if (tier === 'grandmaster') return label;
-  return `${label} ${DIVISION_LABELS[division] || division}`;
+  return `${label} ${DIVISION_LABELS[division] || ''}`.trim();
 }

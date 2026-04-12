@@ -18,8 +18,9 @@ export async function sendChatMessage(friendId, { body, type, cards, coins, meta
   });
 }
 
-export async function claimChatMessage(messageId) {
-  return api.post(`/chat/messages/${encodeURIComponent(messageId)}/claim`, {});
+export async function claimChatMessage(messageId, selectedIndices = null) {
+  const body = selectedIndices ? { selectedIndices } : {};
+  return api.post(`/chat/messages/${encodeURIComponent(messageId)}/claim`, body);
 }
 
 export async function markChatRead(friendId, lastReadMessageId) {

@@ -61,7 +61,11 @@ export function createTableScene(canvas, battlemapUrl, backgroundUrl) {
 
   const scene = new THREE.Scene();
 
-  const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+  // Near plane at 1.0 (not 0.1) — the camera never approaches surfaces
+  // closer than a few units, and the tighter near/far ratio gives 10x
+  // better depth buffer precision. Eliminates z-fighting flicker between
+  // card front/back faces and foil sheen overlays when zoomed out.
+  const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 1.0, 1000);
 
   // Orbit camera state
   let orbitTarget = new THREE.Vector3(0, 0, 0);

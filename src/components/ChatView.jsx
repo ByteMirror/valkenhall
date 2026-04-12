@@ -68,6 +68,7 @@ export default class ChatView extends Component {
       attachCoins: 0,
       hoveredCard: null,
       inspectedCard: null,
+      selectedCards: {}, // { messageId: Set<cardIndex> }
     };
     this.scrollRef = createRef();
     this.bottomRef = createRef();
@@ -230,16 +231,38 @@ export default class ChatView extends Component {
     }
   };
 
-  handleClaim = async (messageId) => {
+  handleClaim = async (messageId, selectedIndices = null) => {
     try {
-      await claimChatMessage(messageId);
+      await claimChatMessage(messageId, selectedIndices);
       this.setState((s) => ({
-        messages: s.messages.map((m) => (m.id === messageId ? { ...m, claimed: true } : m)),
+        messages: s.messages.map((m) => {
+          if (m.id !== messageId) return m;
+          if (!selectedIndices) return { ...m, claimed: true };
+          // Partial claim — remove selected cards from the message
+          const remaining = (m.attachedCards || []).filter((_, idx) => !selectedIndices.includes(idx));
+          return {
+            ...m,
+            attachedCards: remaining,
+            attachedCoins: 0, // coins always claimed
+            claimed: remaining.length === 0,
+          };
+        }),
       }));
       if (this.props.onProfileReload) this.props.onProfileReload();
     } catch (err) {
       console.error('[ChatView] Claim failed:', err);
     }
+  };
+
+  toggleCardSelection = (messageId, cardIndex) => {
+    this.setState((s) => {
+      const key = `${messageId}`;
+      const current = s.selectedCards?.[key] || new Set();
+      const next = new Set(current);
+      if (next.has(cardIndex)) next.delete(cardIndex);
+      else next.add(cardIndex);
+      return { selectedCards: { ...s.selectedCards, [key]: next } };
+    });
   };
 
   receiveMessage = (msg) => {
@@ -297,68 +320,101 @@ export default class ChatView extends Component {
             </div>
           )}
 
-          {hasCards && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {msg.attachedCards.map((card, i) => {
-                const imgUrl = resolveCardImage(card.cardId, sorceryCards);
-                const name = resolveCardName(card.cardId, sorceryCards);
-                return (
-                  <div
-                    key={`${card.cardId}-${i}`}
-                    className="relative rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-[1.03]"
-                    style={{
-                      width: 68,
-                      border: `1.5px solid ${GOLD} 0.2)`,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                      opacity: msg.claimed ? 0.4 : 1,
-                    }}
-                    title={`${name}${card.quantity > 1 ? ` x${card.quantity}` : ''}`}
-                    onMouseEnter={() => {
-                      const fullCard = sorceryCards?.find(c => c.unique_id === card.cardId);
-                      if (fullCard) this.setState({ hoveredCard: { card: fullCard, printing: fullCard.printings?.[0], rarity: fullCard.rarity } });
-                    }}
-                    onMouseLeave={() => this.setState({ hoveredCard: null })}
-                  >
-                    {imgUrl ? (
-                      <img src={imgUrl} alt={name} className="w-full aspect-[63/88] object-cover" draggable={false} />
-                    ) : (
-                      <div className="w-full aspect-[63/88] flex items-center justify-center text-[8px] text-center px-0.5" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
-                        {name}
+          {hasCards && (() => {
+            const selected = this.state.selectedCards?.[msg.id] || new Set();
+            const isCollected = msg.claimed;
+            return (
+              <>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {msg.attachedCards.map((card, i) => {
+                    const imgUrl = resolveCardImage(card.cardId, sorceryCards);
+                    const name = resolveCardName(card.cardId, sorceryCards);
+                    const isSelected = selected.has(i);
+                    return (
+                      <div
+                        key={`${card.cardId}-${i}`}
+                        className="relative rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-[1.03]"
+                        style={{
+                          width: 68,
+                          border: isSelected ? `2px solid ${ACCENT_GOLD}` : `1.5px solid ${isCollected ? 'rgba(255,255,255,0.06)' : `${GOLD} 0.2)`}`,
+                          boxShadow: isSelected ? `0 0 10px rgba(212,168,67,0.3)` : isCollected ? 'none' : '0 2px 8px rgba(0,0,0,0.3)',
+                          opacity: isCollected ? 0.35 : 1,
+                        }}
+                        title={`${name}${card.quantity > 1 ? ` x${card.quantity}` : ''}`}
+                        onClick={() => { if (canClaim) this.toggleCardSelection(msg.id, i); }}
+                        onMouseEnter={() => {
+                          const fullCard = sorceryCards?.find(c => c.unique_id === card.cardId);
+                          if (fullCard) this.setState({ hoveredCard: { card: fullCard, printing: fullCard.printings?.[0], rarity: fullCard.rarity } });
+                        }}
+                        onMouseLeave={() => this.setState({ hoveredCard: null })}
+                      >
+                        {imgUrl ? (
+                          <img src={imgUrl} alt={name} className="w-full aspect-[63/88] object-cover" draggable={false} />
+                        ) : (
+                          <div className="w-full aspect-[63/88] flex items-center justify-center text-[8px] text-center px-0.5" style={{ background: `${GOLD} 0.04)`, color: TEXT_MUTED }}>
+                            {name}
+                          </div>
+                        )}
+                        {card.quantity > 1 && (
+                          <div className="absolute top-0.5 right-0.5 text-[9px] font-bold px-1 rounded" style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_PRIMARY }}>
+                            x{card.quantity}
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
+                            <span style={{ color: ACCENT_GOLD, fontSize: 16 }}>&#x2714;</span>
+                          </div>
+                        )}
+                        {isCollected && (
+                          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                            <span style={{ color: TEXT_MUTED, fontSize: 14 }}>&#x2714;</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {card.quantity > 1 && (
-                      <div className="absolute top-0.5 right-0.5 text-[9px] font-bold px-1 rounded" style={{ background: 'rgba(0,0,0,0.75)', color: TEXT_PRIMARY }}>
-                        x{card.quantity}
-                      </div>
-                    )}
+                    );
+                  })}
+                </div>
+                {canClaim && selected.size > 0 && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-[10px] font-semibold rounded-lg cursor-pointer transition-all"
+                      style={{ ...GOLD_BTN, borderRadius: '6px' }}
+                      data-sound={UI.CONFIRM}
+                      onClick={() => this.handleClaim(msg.id, [...selected])}
+                    >
+                      Collect {selected.size === msg.attachedCards.length ? 'All' : `${selected.size} Card${selected.size > 1 ? 's' : ''}`}
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1.5 text-[10px] cursor-pointer rounded-lg"
+                      style={{ color: TEXT_MUTED }}
+                      onClick={() => this.setState((s) => ({ selectedCards: { ...s.selectedCards, [msg.id]: new Set() } }))}
+                    >
+                      Clear
+                    </button>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+                {canClaim && selected.size === 0 && (
+                  <div className="text-[9px] mt-1.5" style={{ color: TEXT_MUTED }}>
+                    Tap cards to select, then collect
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {hasCoins && (
             <div className="flex items-center gap-1 mt-1.5">
               <CoinIcon size={12} />
-              <span className="text-[11px] font-medium" style={{ color: COIN_COLOR, opacity: msg.claimed ? 0.4 : 1 }}>
-                {msg.attachedCoins}
+              <span className="text-[11px] font-medium" style={{ color: COIN_COLOR, opacity: msg.claimed ? 0.35 : 1 }}>
+                {msg.attachedCoins} {msg.claimed ? '(collected)' : ''}
               </span>
             </div>
           )}
 
-          {canClaim && (
-            <button
-              type="button"
-              className="mt-1.5 px-2.5 py-1 text-[10px] font-semibold rounded cursor-pointer transition-all"
-              style={{ ...GOLD_BTN, borderRadius: '4px' }}
-              data-sound={UI.CONFIRM}
-              onClick={() => this.handleClaim(msg.id)}
-            >
-              Collect
-            </button>
-          )}
           {hasAttachments && msg.claimed && (
-            <div className="text-[10px] mt-1 flex items-center gap-1" style={{ color: TEXT_MUTED }}>
+            <div className="text-[9px] mt-1.5 flex items-center gap-1" style={{ color: TEXT_MUTED }}>
               <span style={{ color: ACCENT_GOLD }}>&#x2714;</span> Collected
             </div>
           )}

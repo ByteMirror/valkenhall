@@ -78,17 +78,17 @@ const foilVertexShader = `
 const foilFragmentShader = `
   uniform float uTime;
   uniform float uIsRainbow;
+  uniform sampler2D uCardTex;
   varying vec2 vUv;
   varying vec3 vWorldPos;
 
   // Prismatic color stops matching the CSS foil gradient
   vec3 prismatic(float t) {
-    // #f80e35, #eedf10, #21e985, #0dbde9, #c929f1 repeating
-    vec3 c0 = vec3(0.973, 0.055, 0.208); // red-pink
-    vec3 c1 = vec3(0.933, 0.875, 0.063); // yellow
-    vec3 c2 = vec3(0.129, 0.914, 0.522); // green
-    vec3 c3 = vec3(0.051, 0.743, 0.914); // cyan
-    vec3 c4 = vec3(0.788, 0.161, 0.945); // purple
+    vec3 c0 = vec3(0.973, 0.055, 0.208);
+    vec3 c1 = vec3(0.933, 0.875, 0.063);
+    vec3 c2 = vec3(0.129, 0.914, 0.522);
+    vec3 c3 = vec3(0.051, 0.743, 0.914);
+    vec3 c4 = vec3(0.788, 0.161, 0.945);
     float f = fract(t) * 5.0;
     if (f < 1.0) return mix(c0, c1, f);
     if (f < 2.0) return mix(c1, c2, f - 1.0);
@@ -98,6 +98,13 @@ const foilFragmentShader = `
   }
 
   void main() {
+    // Use the card's own texture alpha to clip the foil sheen.
+    // The card image has rounded corners with transparent pixels,
+    // so sampling its alpha gives us pixel-perfect corner masking
+    // for free — no SDF math, no geometry shrink.
+    float cardAlpha = texture2D(uCardTex, vUv).a;
+    if (cardAlpha < 0.1) discard;
+
     // Diagonal stripe direction (~110deg like the CSS gradient)
     float stripe = vUv.x * 0.82 + vUv.y * 0.57;
 
@@ -115,7 +122,7 @@ const foilFragmentShader = `
     color = mix(color, vec3(1.0), shimmer * 0.15);
 
     // Opacity: visible enough to see the prismatic colors
-    float alpha = 0.22 * (0.7 + shimmer * 0.3);
+    float alpha = 0.22 * (0.7 + shimmer * 0.3) * cardAlpha;
     if (uIsRainbow > 0.5) {
       alpha *= 1.5;
       color = mix(color, color * 1.3, 0.2);
@@ -132,13 +139,14 @@ const foilFragmentShader = `
 let foilSheenTime = 0;
 const foilSheenMaterials = [];
 
-function createFoilSheenMaterial(isRainbow) {
+function createFoilSheenMaterial(isRainbow, cardTexture) {
   const mat = new THREE.ShaderMaterial({
     vertexShader: foilVertexShader,
     fragmentShader: foilFragmentShader,
     uniforms: {
       uTime: { value: 0 },
       uIsRainbow: { value: isRainbow ? 1.0 : 0.0 },
+      uCardTex: { value: cardTexture },
     },
     transparent: true,
     depthWrite: false,
@@ -162,22 +170,40 @@ export function createCardMesh(cardInstance) {
   const foiling = cardInstance.foiling || 'S';
   const isFoil = foiling === 'F' || foiling === 'R';
 
-  const edgeColor = isFoil
-    ? (foiling === 'R' ? 0x6644aa : 0x8b7520)
-    : CARD_EDGE_COLOR;
-  const edgeMat = new THREE.MeshStandardMaterial({ color: edgeColor });
+  // Hide the box edge strips entirely — they're sharp rectangles
+  // that betray the BoxGeometry even after the front/back faces
+  // are alpha-clipped to rounded corners. The card is thin enough
+  // (0.3 units) that invisible edges are not noticeable from the
+  // normal top-down view. The front and back faces carry the visual.
+  const edgeMat = new THREE.MeshStandardMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
 
   const imageUrl = resolveLocalImageUrl(cardInstance.imageUrl);
 
+  // alphaTest makes the GPU discard pixels where the texture alpha is
+  // below the threshold. This means the rounded-corner transparent
+  // pixels in the card art are truly invisible — no edge material
+  // bleeding through, and the shadow map follows the card shape
+  // instead of casting a rectangular shadow from the box geometry.
+  // polygonOffset biases the front face toward the camera in the
+  // depth buffer so it consistently wins against the back face and
+  // foil sheen at all zoom levels — prevents z-fighting flicker.
   const frontMat = new THREE.MeshStandardMaterial({
     map: loadTexture(imageUrl),
     transparent: true,
+    alphaTest: 0.5,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
   });
 
   // Tokens always use the spellbook back regardless of their type.
   const backTexture = getBackTexture(cardInstance.isToken ? false : cardInstance.isSite);
   const backMat = backTexture
-    ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true })
+    ? new THREE.MeshStandardMaterial({ map: backTexture, transparent: true, alphaTest: 0.5 })
     : new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
 
   // BoxGeometry material order: [+X, -X, +Y, -Y, +Z(front), -Z(back)]
@@ -200,7 +226,7 @@ export function createCardMesh(cardInstance) {
   }
 
   mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = false;
   // intentEuler is the "should look like this" orientation (lay-flat plus
   // any tap/flip state). Animations write to this, and physicsWorld's
   // syncMeshFromBody composes it with body.quaternion every frame so
@@ -212,10 +238,13 @@ export function createCardMesh(cardInstance) {
     intentEuler: new THREE.Euler(-Math.PI / 2, 0, baseZ, 'XYZ'),
   };
 
-  // Add holographic sheen overlay for foil cards
+  // Add holographic sheen overlay for foil cards. The sheen shader
+  // samples the card's own front texture alpha to clip to its rounded
+  // corners — no separate mask texture or geometry shrinking needed.
   if (isFoil) {
     const sheenGeo = new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
-    const sheenMat = createFoilSheenMaterial(foiling === 'R');
+    const cardTexture = loadTexture(imageUrl);
+    const sheenMat = createFoilSheenMaterial(foiling === 'R', cardTexture);
     const sheenPlane = new THREE.Mesh(sheenGeo, sheenMat);
     // Position slightly above the card face (+Z in local space before rotation)
     sheenPlane.position.set(0, 0, CARD_THICKNESS / 2 + 0.01);
@@ -265,7 +294,7 @@ export function createPileMesh(pile) {
   mesh.position.set(pile.x, thickness / 2, pile.z);
 
   mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = false;
   mesh.userData = { type: 'pile', pile };
 
   return mesh;
@@ -354,7 +383,7 @@ export function createTokenMesh(tokenInstance) {
 
   mesh.position.set(tokenInstance.x, TOKEN_REST_Y, tokenInstance.z);
   mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = false;
   mesh.userData = { type: 'token', tokenInstance };
 
   return mesh;
@@ -724,7 +753,7 @@ export function createHandBackMesh(isSite) {
   const mesh = new THREE.Mesh(geometry, materials);
 
   mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = false;
   mesh.userData = { type: 'opponentHand' };
 
   return mesh;
