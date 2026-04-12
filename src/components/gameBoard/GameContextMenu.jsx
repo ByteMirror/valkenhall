@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   POPOVER_STYLE, SECTION_HEADER_STYLE,
@@ -10,33 +10,18 @@ const menuCls = 'flex w-full items-center rounded-lg px-3 py-1.5 cursor-pointer 
 const menuHover = (e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; };
 const menuLeave = (e) => { e.currentTarget.style.background = 'transparent'; };
 
-// Measures the menu after mount and flips it upward/leftward if it
-// would overflow the viewport. Returns a ref to attach to the menu div
-// and an adjusted style object.
-function useAutoPosition(baseStyle, scale = 1) {
-  const ref = useRef(null);
-  const [adjusted, setAdjusted] = useState(baseStyle);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const style = { ...baseStyle };
-
-    // Flip upward if menu extends below viewport
-    if (rect.bottom > vh - 8) {
-      style.top = (baseStyle.top * scale - rect.height) / scale;
-    }
-    // Flip leftward if menu extends past right edge
-    if (rect.right > vw - 8) {
-      style.left = (baseStyle.left * scale - rect.width) / scale;
-    }
-    setAdjusted(style);
-  }, [baseStyle.left, baseStyle.top]);
-
-  return { ref, style: adjusted };
+// Decide flip direction based on click position in screen space, then
+// use CSS transform to anchor the menu. No measurement needed — avoids
+// the zoom-vs-getBoundingClientRect mismatch that made the old hook
+// flip incorrectly ~50% of the time.
+function getFlipTransform(clickX, clickY) {
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  const flipUp = clickY > vh * 0.55;
+  const flipLeft = clickX > vw * 0.7;
+  const ty = flipUp ? '-100%' : '0';
+  const tx = flipLeft ? '-100%' : '0';
+  return `translate(${tx}, ${ty})`;
 }
 
 function Divider() {
@@ -71,20 +56,18 @@ export default function GameContextMenu({ contextMenu, actions, viewScale = 1 })
   if (!contextMenu) return null;
 
   const scale = viewScale || 1;
-  const baseStyle = {
+  const menuStyle = {
     position: 'fixed',
     left: contextMenu.x / scale,
     top: contextMenu.y / scale,
     zIndex: 100,
     zoom: scale,
+    transform: getFlipTransform(contextMenu.x, contextMenu.y),
   };
-
-  const { ref, style: menuStyle } = useAutoPosition(baseStyle, scale);
 
   if (contextMenu.type === 'card') {
     return (
       <CardMenu
-        menuRef={ref}
         menuStyle={menuStyle}
         cardInstance={contextMenu.cardInstance}
         mesh={contextMenu.mesh}
@@ -96,16 +79,16 @@ export default function GameContextMenu({ contextMenu, actions, viewScale = 1 })
     );
   }
   if (contextMenu.type === 'pile') {
-    return <PileMenu menuRef={ref} menuStyle={menuStyle} pile={contextMenu.pile} actions={actions} />;
+    return <PileMenu menuStyle={menuStyle} pile={contextMenu.pile} actions={actions} />;
   }
   if (contextMenu.type === 'handcard') {
     return <HandCardMenu contextMenu={contextMenu} actions={actions} viewScale={viewScale} />;
   }
   if (contextMenu.type === 'token') {
-    return <TokenMenu menuRef={ref} menuStyle={menuStyle} tokenInstance={contextMenu.tokenInstance} actions={actions} />;
+    return <TokenMenu menuStyle={menuStyle} tokenInstance={contextMenu.tokenInstance} actions={actions} />;
   }
   if (contextMenu.type === 'dice') {
-    return <DiceMenu menuRef={ref} menuStyle={menuStyle} diceInstance={contextMenu.diceInstance} actions={actions} />;
+    return <DiceMenu menuStyle={menuStyle} diceInstance={contextMenu.diceInstance} actions={actions} />;
   }
   return null;
 }
@@ -183,7 +166,7 @@ function StatusFlyout({ cardInstance, actions, parentRef }) {
   );
 }
 
-function CardMenu({ menuRef, menuStyle, cardInstance, mesh, actions, selectionSize, groupId, selectionAlreadyGrouped }) {
+function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, groupId, selectionAlreadyGrouped }) {
   const [showStatuses, setShowStatuses] = useState(false);
   const statusTriggerRef = useRef(null);
   const activeCount = (cardInstance.statuses || []).length;
@@ -194,7 +177,7 @@ function CardMenu({ menuRef, menuStyle, cardInstance, mesh, actions, selectionSi
   const canUngroup = !!groupId;
 
   return (
-    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-visible p-1 text-sm">
+    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-visible p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
 
       <MenuButton onClick={() => actions.tapCard(cardInstance, mesh)}>
@@ -272,9 +255,9 @@ function CardMenu({ menuRef, menuStyle, cardInstance, mesh, actions, selectionSi
   );
 }
 
-function PileMenu({ menuRef, menuStyle, pile, actions }) {
+function PileMenu({ menuStyle, pile, actions }) {
   return (
-    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>
         {pile.name} ({pile.cards.length} cards)
       </div>
@@ -313,9 +296,9 @@ function HandCardMenu({ contextMenu, actions, viewScale = 1 }) {
   );
 }
 
-function TokenMenu({ menuRef, menuStyle, tokenInstance, actions }) {
+function TokenMenu({ menuStyle, tokenInstance, actions }) {
   return (
-    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>Token</div>
       <MenuButton color="#c45050" onClick={() => actions.deleteToken(tokenInstance)}>
         Delete
@@ -324,11 +307,11 @@ function TokenMenu({ menuRef, menuStyle, tokenInstance, actions }) {
   );
 }
 
-function DiceMenu({ menuRef, menuStyle, diceInstance, actions }) {
+function DiceMenu({ menuStyle, diceInstance, actions }) {
   const maxVal = DICE_CONFIGS[diceInstance.dieType]?.faces || 6;
 
   return (
-    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>
         {diceInstance.dieType.toUpperCase()} — showing {diceInstance.value}
       </div>
