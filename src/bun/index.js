@@ -9,11 +9,14 @@ import {
   registerUpdateApi,
 } from './runtime.js';
 import { initUpdater, getStatus, manualCheck, retryDownload, applyUpdate } from './updater.js';
+import { ensureLinuxDesktopEntry } from './linuxDesktopEntry.js';
 
 const DESKTOP_HOST = getDesktopHost();
 const DEFAULT_STATIC_PORT = Number(process.env.ELECTROBUN_STATIC_PORT || 0);
 
 registerUpdateApi({ getStatus, manualCheck, retryDownload, applyUpdate });
+
+ensureLinuxDesktopEntry();
 
 let rendererServer = null;
 if (!process.env.ELECTROBUN_RENDERER_URL) {
