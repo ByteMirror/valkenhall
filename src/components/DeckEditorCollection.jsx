@@ -73,6 +73,7 @@ export default class DeckEditorCollection extends Component {
       setFilters: new Set(),
       rarityFilters: new Set(),
       keywordFilters: new Set(),
+      subtypeFilters: new Set(),
       cardScope: (props.chosenCards?.length || 0) > 0 ? 'deck' : 'owned',
       hoveredCard: null,
       inspectedEntry: null,
@@ -208,9 +209,25 @@ export default class DeckEditorCollection extends Component {
     return { index, options };
   }
 
+  _getSubtypeOptions() {
+    const cards = this.props.sorceryCards || [];
+    if (this._subtypeCacheKey === cards) return this._subtypeOptions;
+    const all = new Set();
+    for (const card of cards) {
+      for (const trait of card.traits || []) {
+        if (trait) all.add(trait);
+      }
+    }
+    this._subtypeCacheKey = cards;
+    this._subtypeOptions = Array.from(all)
+      .map((s) => ({ value: s, label: s }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return this._subtypeOptions;
+  }
+
   getFilteredCards() {
     const { sorceryCards, ownedMap, chosenCards, collection } = this.props;
-    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, cardScope } = this.state;
+    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, subtypeFilters, cardScope } = this.state;
 
     let cards = sorceryCards || [];
 
@@ -261,6 +278,12 @@ export default class DeckEditorCollection extends Component {
         }
         return false;
       });
+    }
+
+    if (subtypeFilters.size > 0) {
+      cards = cards.filter((c) =>
+        (c.traits || []).some((t) => subtypeFilters.has(t)),
+      );
     }
 
     cards.sort((a, b) => {
@@ -327,9 +350,10 @@ export default class DeckEditorCollection extends Component {
   }
 
   renderFilterBar() {
-    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters } = this.state;
+    const { searchQuery, elementFilters, typeFilters, setFilters, rarityFilters, keywordFilters, subtypeFilters } = this.state;
     const { options: keywordOptions } = this._getKeywordIndex();
-    const anyActive = elementFilters.size > 0 || typeFilters.size > 0 || setFilters.size > 0 || rarityFilters.size > 0 || keywordFilters.size > 0 || searchQuery.trim();
+    const subtypeOptions = this._getSubtypeOptions();
+    const anyActive = elementFilters.size > 0 || typeFilters.size > 0 || setFilters.size > 0 || rarityFilters.size > 0 || keywordFilters.size > 0 || subtypeFilters.size > 0 || searchQuery.trim();
 
     return (
       <div
@@ -367,7 +391,7 @@ export default class DeckEditorCollection extends Component {
               type="button"
               className="text-[10px] shrink-0 cursor-pointer transition-all"
               style={{ color: ACCENT_GOLD }}
-              onClick={() => this.setState({ searchQuery: '', elementFilters: new Set(), typeFilters: new Set(), setFilters: new Set(), rarityFilters: new Set(), keywordFilters: new Set(), visibleCount: 40 })}
+              onClick={() => this.setState({ searchQuery: '', elementFilters: new Set(), typeFilters: new Set(), setFilters: new Set(), rarityFilters: new Set(), keywordFilters: new Set(), subtypeFilters: new Set(), visibleCount: 40 })}
             >
               Clear
             </button>
@@ -421,10 +445,31 @@ export default class DeckEditorCollection extends Component {
           <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
 
           <div className="flex items-center gap-1">
+            <FilterLabel>Subtype</FilterLabel>
+            <MultiSelect
+              ariaLabel="Subtype filter"
+              className="w-[150px]"
+              options={subtypeOptions}
+              value={Array.from(subtypeFilters)}
+              onValueChange={(next) =>
+                this.setState({ subtypeFilters: new Set(next), visibleCount: 40 })
+              }
+              placeholder="Any"
+              menuSearchPlaceholder="Search subtypes…"
+              noOptionsMessage="No subtypes"
+              menuPreferredWidth={220}
+              portalMenu
+              triggerHeight={26}
+            />
+          </div>
+
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
+
+          <div className="flex items-center gap-1">
             <FilterLabel>Keyword</FilterLabel>
             <MultiSelect
               ariaLabel="Keyword filter"
-              className="w-[160px]"
+              className="w-[150px]"
               options={keywordOptions}
               value={Array.from(keywordFilters)}
               onValueChange={(next) =>
