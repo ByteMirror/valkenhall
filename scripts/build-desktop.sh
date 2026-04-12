@@ -140,10 +140,8 @@ cd "$PROJECT_ROOT"
 # (e.g. previous version not available). The full build artifacts (dmg,
 # tar.zst, update.json) are still produced, so we tolerate the error and
 # verify the artifacts directory exists afterwards.
-set +e
-bunx electrobun build "$@"
-BUILD_EXIT=$?
-set -e
+BUILD_EXIT=0
+(bunx electrobun build "$@") || BUILD_EXIT=$?
 
 if [[ $BUILD_EXIT -ne 0 ]]; then
   echo "[build] electrobun build exited with $BUILD_EXIT, checking for artifacts..."
