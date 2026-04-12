@@ -429,7 +429,7 @@ export default class DeckEditorCollection extends Component {
           ) : null}
         </div>
 
-        {/* Row 2: Element + Type + Set + Rarity */}
+        {/* Row 2: All filters — chips + dropdowns */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-0.5">
             <FilterLabel>Element</FilterLabel>
@@ -471,10 +471,9 @@ export default class DeckEditorCollection extends Component {
               <button key={r} type="button" style={chipStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
             ))}
           </div>
-        </div>
 
-        {/* Row 3: Subtype + Keyword + Umbrella dropdowns */}
-        <div className="flex items-center gap-3">
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
+
           <div className="flex items-center gap-1">
             <FilterLabel>Subtype</FilterLabel>
             <MultiSelect
