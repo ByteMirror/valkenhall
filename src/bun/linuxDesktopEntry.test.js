@@ -11,10 +11,14 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import {
   ensureLinuxDesktopEntry,
   resolveBundleLayout,
   buildDesktopEntry,
+  renderUninstallScript,
+  buildUninstallDesktopEntry,
+  ensureUninstallScript,
 } from './linuxDesktopEntry.js';
 
 function makeBundleFixture(root, channel = 'stable') {
@@ -277,6 +281,184 @@ describe('resolveBundleLayout', () => {
 
   it('returns null for a non-bundle-shaped execPath', () => {
     expect(resolveBundleLayout({ execPath: '/usr/bin/bun' })).toBe(null);
+  });
+});
+
+describe('uninstall integration', () => {
+  it('writes an uninstall script to <channelDir>/uninstall.sh on first launch', () => {
+    const { launcherPath } = makeBundleFixture(scratch, 'stable');
+
+    ensureLinuxDesktopEntry({
+      platform: 'linux',
+      execPath: launcherPath,
+      env: { XDG_DATA_HOME: xdgDataHome },
+    });
+
+    const scriptPath = path.join(scratch, 'stable', 'uninstall.sh');
+    expect(existsSync(scriptPath)).toBe(true);
+    const mode = statSync(scriptPath).mode & 0o777;
+    expect(mode).toBe(0o755);
+    const contents = readFileSync(scriptPath, 'utf8');
+    expect(contents).toMatch(/^#!\/usr\/bin\/env bash/);
+    expect(contents).toContain('ID="dev.fabianurbanek.valkenhall"');
+    expect(contents).toContain('CHANNEL="stable"');
+  });
+
+  it('writes an uninstall .desktop entry pointing at the uninstall script', () => {
+    const { launcherPath } = makeBundleFixture(scratch, 'stable');
+
+    ensureLinuxDesktopEntry({
+      platform: 'linux',
+      execPath: launcherPath,
+      env: { XDG_DATA_HOME: xdgDataHome },
+    });
+
+    const scriptPath = path.join(scratch, 'stable', 'uninstall.sh');
+    const target = path.join(
+      xdgDataHome,
+      'applications',
+      'dev.fabianurbanek.valkenhall.stable.uninstall.desktop',
+    );
+    expect(existsSync(target)).toBe(true);
+    const contents = readFileSync(target, 'utf8');
+    expect(contents).toContain('Name=Uninstall Valkenhall\n');
+    expect(contents).toContain(`Exec=${scriptPath}`);
+    expect(contents).toContain(`TryExec=${scriptPath}`);
+    expect(contents).toContain('Terminal=true');
+    expect(contents).toContain('Categories=System;');
+  });
+
+  it('uses a channel-suffixed uninstall display name for non-stable channels', () => {
+    const { launcherPath } = makeBundleFixture(scratch, 'canary');
+
+    ensureLinuxDesktopEntry({
+      platform: 'linux',
+      execPath: launcherPath,
+      env: { XDG_DATA_HOME: xdgDataHome },
+    });
+
+    const target = path.join(
+      xdgDataHome,
+      'applications',
+      'dev.fabianurbanek.valkenhall.canary.uninstall.desktop',
+    );
+    const contents = readFileSync(target, 'utf8');
+    expect(contents).toContain('Name=Uninstall Valkenhall (canary)');
+  });
+
+  it('is idempotent: second call does not rewrite the uninstall script or entry', () => {
+    const { launcherPath } = makeBundleFixture(scratch, 'stable');
+    const args = {
+      platform: 'linux',
+      execPath: launcherPath,
+      env: { XDG_DATA_HOME: xdgDataHome },
+    };
+
+    ensureLinuxDesktopEntry(args);
+
+    const scriptPath = path.join(scratch, 'stable', 'uninstall.sh');
+    const entryPath = path.join(
+      xdgDataHome,
+      'applications',
+      'dev.fabianurbanek.valkenhall.stable.uninstall.desktop',
+    );
+    const scriptMtime = statSync(scriptPath).mtimeMs;
+    const entryMtime = statSync(entryPath).mtimeMs;
+
+    const end = Date.now() + 20;
+    while (Date.now() < end) { /* spin */ }
+
+    ensureLinuxDesktopEntry(args);
+    expect(statSync(scriptPath).mtimeMs).toBe(scriptMtime);
+    expect(statSync(entryPath).mtimeMs).toBe(entryMtime);
+  });
+
+  it('rewrites the uninstall entry when the script path drifts', () => {
+    const { launcherPath } = makeBundleFixture(scratch, 'stable');
+    const entryPath = path.join(
+      xdgDataHome,
+      'applications',
+      'dev.fabianurbanek.valkenhall.stable.uninstall.desktop',
+    );
+    mkdirSync(path.dirname(entryPath), { recursive: true });
+    writeFileSync(
+      entryPath,
+      '[Desktop Entry]\nType=Application\nName=Uninstall Valkenhall\nExec=/old/path/uninstall.sh\n',
+    );
+
+    ensureLinuxDesktopEntry({
+      platform: 'linux',
+      execPath: launcherPath,
+      env: { XDG_DATA_HOME: xdgDataHome },
+    });
+
+    const contents = readFileSync(entryPath, 'utf8');
+    expect(contents).toContain(
+      `Exec=${path.join(scratch, 'stable', 'uninstall.sh')}`,
+    );
+    expect(contents).not.toContain('/old/path/uninstall.sh');
+  });
+});
+
+describe('renderUninstallScript', () => {
+  it('substitutes ID and channel placeholders', () => {
+    const script = renderUninstallScript('canary');
+    expect(script).toContain('ID="dev.fabianurbanek.valkenhall"');
+    expect(script).toContain('CHANNEL="canary"');
+    expect(script).not.toContain('__ID__');
+    expect(script).not.toContain('__CHANNEL__');
+  });
+
+  it('produces bash that passes a syntax check', () => {
+    // bash -n parses without executing — catches template bugs that
+    // make the script unusable before any user can run it.
+    const scriptPath = path.join(scratch, 'check-uninstall.sh');
+    writeFileSync(scriptPath, renderUninstallScript('stable'));
+    const result = spawnSync('bash', ['-n', scriptPath], { encoding: 'utf8' });
+    if (result.status !== 0) {
+      throw new Error(`bash -n failed: ${result.stderr}`);
+    }
+    expect(result.status).toBe(0);
+  });
+});
+
+describe('buildUninstallDesktopEntry', () => {
+  it('marks the entry as Terminal=true and Categories=System;', () => {
+    const body = buildUninstallDesktopEntry({
+      iconPath: '/x/app/Resources/appIcon.png',
+      channel: 'stable',
+      scriptPath: '/x/stable/uninstall.sh',
+    });
+    expect(body).toContain('Terminal=true');
+    expect(body).toContain('Categories=System;');
+    expect(body).toContain('Exec=/x/stable/uninstall.sh');
+  });
+});
+
+describe('ensureUninstallScript', () => {
+  it('is idempotent when contents match', () => {
+    const channelDir = path.join(scratch, 'stable');
+    const first = ensureUninstallScript(channelDir, 'stable');
+    const mtime1 = statSync(first).mtimeMs;
+    const end = Date.now() + 20;
+    while (Date.now() < end) { /* spin */ }
+    const second = ensureUninstallScript(channelDir, 'stable');
+    expect(second).toBe(first);
+    expect(statSync(first).mtimeMs).toBe(mtime1);
+  });
+
+  it('rewrites when channel changes', () => {
+    const channelDir = path.join(scratch, 'stable');
+    ensureUninstallScript(channelDir, 'stable');
+    const firstContents = readFileSync(path.join(channelDir, 'uninstall.sh'), 'utf8');
+    // Re-render with a different channel — should overwrite.
+    writeFileSync(
+      path.join(channelDir, 'uninstall.sh'),
+      firstContents.replace('CHANNEL="stable"', 'CHANNEL="canary"'),
+    );
+    ensureUninstallScript(channelDir, 'stable');
+    const restored = readFileSync(path.join(channelDir, 'uninstall.sh'), 'utf8');
+    expect(restored).toContain('CHANNEL="stable"');
   });
 });
 
