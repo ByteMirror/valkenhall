@@ -115,38 +115,31 @@ export const INPUT_STYLE = {
 };
 
 /* ── Tab styling helpers ───────────────────────────────── */
-// Tabs sit inside a TabBar container that provides the shared
-// background. Active tabs get a raised, lit appearance; inactive
-// tabs are flat and recede into the bar.
+// shadcn-inspired pill tabs inside a rounded container. Use the
+// Tabs/TabsList/TabsTrigger components from ui/tabs.jsx for new code.
+// These constants exist for components that still render tabs inline.
 export const TAB_ACTIVE = {
   color: TEXT_PRIMARY,
-  background: `${GOLD} 0.1)`,
-  borderBottom: `2px solid ${ACCENT_GOLD}`,
-  borderTop: 'none',
-  borderLeft: 'none',
-  borderRight: 'none',
-  borderRadius: '0',
+  background: `${GOLD} 0.15)`,
+  border: 'none',
+  borderRadius: '6px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)',
   textShadow: '0 1px 2px rgba(0,0,0,0.5)',
 };
 
 export const TAB_INACTIVE = {
   color: TEXT_MUTED,
   background: 'transparent',
-  borderBottom: '2px solid transparent',
-  borderTop: 'none',
-  borderLeft: 'none',
-  borderRight: 'none',
-  borderRadius: '0',
+  border: 'none',
+  borderRadius: '6px',
 };
 
-// Shared background for a row of tabs. Wrap tab buttons in a
-// <div style={TAB_BAR_STYLE}> (or use the TabBar component)
-// so the group reads as a unified control, distinct from buttons.
+// Rounded container that wraps a row of tab buttons.
 export const TAB_BAR_STYLE = {
-  background: 'rgba(0, 0, 0, 0.25)',
-  borderBottom: `1px solid ${GOLD} 0.1)`,
-  borderRadius: '0',
-  padding: '0 4px',
+  background: 'rgba(0, 0, 0, 0.35)',
+  border: `1px solid ${GOLD} 0.12)`,
+  borderRadius: '8px',
+  padding: '2px',
 };
 
 /* ── Divider gradient ──────────────────────────────────── */
