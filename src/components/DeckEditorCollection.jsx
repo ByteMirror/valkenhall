@@ -10,7 +10,7 @@ import { extractKeywordAbilities } from '../utils/game/sorceryKeywords';
 import { MultiSelect } from './ui/multi-select';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, INPUT_STYLE, ACCENT_GOLD,
-  TAB_ACTIVE, TAB_INACTIVE,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
 } from '../lib/medievalTheme';
 
 function SorceryElementIcon({ element, className = 'size-3.5' }) {
@@ -337,7 +337,7 @@ export default class DeckEditorCollection extends Component {
             style={{ ...INPUT_STYLE, width: 160 }}
           />
 
-          <div className="flex items-center gap-0.5" style={{ borderRight: `1px solid ${GOLD} 0.12)`, paddingRight: 8 }}>
+          <div className="flex items-center" style={{ ...TAB_BAR_STYLE, borderRight: `1px solid ${GOLD} 0.12)`, paddingRight: 8 }}>
             <button type="button" style={toggleStyle(elementFilters.size === 0)} onClick={() => this.clearFilter('elementFilters')}>All</button>
             {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
               <button key={el} type="button" className="flex items-center gap-1" style={toggleStyle(elementFilters.has(el))} onClick={() => this.toggleFilter('elementFilters', el)}>
@@ -347,14 +347,14 @@ export default class DeckEditorCollection extends Component {
             ))}
           </div>
 
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center" style={TAB_BAR_STYLE}>
             <button type="button" style={toggleStyle(typeFilters.size === 0)} onClick={() => this.clearFilter('typeFilters')}>All</button>
             {['Avatar', 'Minion', 'Magic', 'Aura', 'Artifact', 'Site'].map((t) => (
               <button key={t} type="button" style={toggleStyle(typeFilters.has(t))} onClick={() => this.toggleFilter('typeFilters', t)}>{t}</button>
             ))}
           </div>
 
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="ml-auto flex items-center" style={TAB_BAR_STYLE}>
             {[
               { id: 'deck', label: 'In Deck' },
               { id: 'owned', label: 'Owned' },
@@ -367,7 +367,7 @@ export default class DeckEditorCollection extends Component {
 
         {/* Row 2: Set + Rarity */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center" style={TAB_BAR_STYLE}>
             <span className="text-[9px] mr-0.5 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Set</span>
             <button type="button" style={toggleStyle(setFilters.size === 0)} onClick={() => this.clearFilter('setFilters')}>All</button>
             {['gothic', 'arthurian', 'beta'].map((s) => (
@@ -375,7 +375,7 @@ export default class DeckEditorCollection extends Component {
             ))}
           </div>
 
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center" style={TAB_BAR_STYLE}>
             <span className="text-[9px] mr-0.5 uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Rarity</span>
             <button type="button" style={toggleStyle(rarityFilters.size === 0)} onClick={() => this.clearFilter('rarityFilters')}>All</button>
             {['Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (

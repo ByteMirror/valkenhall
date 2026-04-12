@@ -5,7 +5,7 @@ import { DRAFT_VISIBILITY, DRAFT_ENTRY_COST } from '../utils/arena/draftApi';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, COIN_COLOR,
   DIALOG_STYLE, BEVELED_BTN, GOLD_BTN, INPUT_STYLE,
-  TAB_ACTIVE, TAB_INACTIVE,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
   FourCorners, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -185,7 +185,7 @@ export default class CreateDraftModal extends Component {
             <label className="text-[10px] font-semibold uppercase tracking-widest block mb-1.5" style={{ color: `${GOLD} 0.55)` }}>
               Pod Size
             </label>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center" style={TAB_BAR_STYLE}>
               {[2, 4, 6, 8].map((n) => (
                 <button
                   key={n}

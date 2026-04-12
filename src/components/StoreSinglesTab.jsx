@@ -9,7 +9,7 @@ import { buildOwnedMap } from '../utils/arena/collectionUtils';
 import { playUI, UI } from '../utils/arena/uiSounds';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
-  PANEL_BG, BEVELED_BTN, INPUT_STYLE, TAB_ACTIVE, TAB_INACTIVE,
+  PANEL_BG, BEVELED_BTN, INPUT_STYLE, TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
   FourCorners, SECTION_HEADER_STYLE,
 } from '../lib/medievalTheme';
 import VikingOrnament from './VikingOrnament';
@@ -271,7 +271,7 @@ export default class StoreSinglesTab extends Component {
               style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
             />
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center" style={TAB_BAR_STYLE}>
               {['all', 'Ordinary', 'Exceptional', 'Elite', 'Unique'].map((r) => (
                 <button
                   key={r}
@@ -288,7 +288,7 @@ export default class StoreSinglesTab extends Component {
               ))}
             </div>
 
-            <div className="flex items-center gap-1" style={{ borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
+            <div className="flex items-center" style={{ ...TAB_BAR_STYLE, borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
               {['price', 'rarity', 'name'].map((key) => (
                 <button
                   key={key}

@@ -25,7 +25,7 @@ import {
 import {
   BG_ATMOSPHERE, VIGNETTE, GOLD, GOLD_TEXT, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   PANEL_BG, PANEL_BORDER, BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
-  TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR, ACCENT_GOLD,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE, COIN_COLOR, ACCENT_GOLD,
   DIALOG_STYLE, FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -483,7 +483,7 @@ export default class AuctionHouse extends Component {
               style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
             />
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center" style={TAB_BAR_STYLE}>
               {['price', 'date', 'rarity'].map((key) => (
                 <button
                   key={key}
@@ -497,7 +497,7 @@ export default class AuctionHouse extends Component {
               ))}
             </div>
 
-            <div className="flex items-center gap-1" style={{ borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
+            <div className="flex items-center" style={{ ...TAB_BAR_STYLE, borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
               {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
                 <button
                   key={el}
@@ -843,7 +843,7 @@ export default class AuctionHouse extends Component {
               style={{ ...INPUT_STYLE, borderRadius: '6px', color: TEXT_PRIMARY }}
             />
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center" style={TAB_BAR_STYLE}>
               {['rarity', 'name'].map((key) => (
                 <button
                   key={key}
@@ -857,7 +857,7 @@ export default class AuctionHouse extends Component {
               ))}
             </div>
 
-            <div className="flex items-center gap-1" style={{ borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
+            <div className="flex items-center" style={{ ...TAB_BAR_STYLE, borderLeft: `1px solid ${GOLD} 0.1)`, paddingLeft: 8 }}>
               {['Water', 'Earth', 'Fire', 'Air'].map((el) => (
                 <button
                   key={el}
@@ -1193,7 +1193,7 @@ export default class AuctionHouse extends Component {
           <div className="text-sm font-bold arena-heading" style={{ color: TEXT_PRIMARY, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
             Auction House
           </div>
-          <div className="flex items-center gap-2 ml-4">
+          <div className="flex items-center ml-4" style={TAB_BAR_STYLE}>
             {[
               { key: 'browse', label: 'Browse' },
               { key: 'sell', label: 'Sell & My Listings' },

@@ -2,7 +2,7 @@ import { Component } from 'preact';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG,
   BEVELED_BTN, INPUT_STYLE, FourCorners,
-  TAB_ACTIVE, TAB_INACTIVE,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../../lib/medievalTheme';
 import DeckCardTile from '../DeckCardTile';
@@ -211,8 +211,8 @@ export default class PileSearchDialog extends Component {
               filtering by type/element adds no value. */}
           {!isTokenPile && (
           <div
-            className="flex items-center gap-1 px-4 py-2"
-            style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}
+            className="flex items-center px-4 py-2"
+            style={{ ...TAB_BAR_STYLE, borderBottom: `1px solid ${GOLD} 0.08)` }}
           >
             {isAtlas ? (
               <>

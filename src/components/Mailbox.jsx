@@ -16,7 +16,7 @@ import { CoinIcon } from './ui/icons';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   PANEL_BG, DIALOG_STYLE, GOLD_BTN, BEVELED_BTN, DANGER_BTN, INPUT_STYLE,
-  TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE, COIN_COLOR,
   FourCorners, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -414,7 +414,7 @@ export default class Mailbox extends Component {
   renderTabBar() {
     const { tab } = this.state;
     return (
-      <div className="shrink-0 flex" style={{ borderTop: `1px solid ${GOLD} 0.12)`, background: SOLID_BASE }}>
+      <div className="shrink-0 flex" style={{ ...TAB_BAR_STYLE, borderTop: `1px solid ${GOLD} 0.12)`, background: SOLID_BASE }}>
         {TAB_KEYS.map(t => {
           const active = tab === t.key;
           return (

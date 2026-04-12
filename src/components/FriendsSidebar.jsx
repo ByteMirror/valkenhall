@@ -10,7 +10,7 @@ import VikingOrnament from './VikingOrnament';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, PANEL_BG, ACCENT_GOLD,
   GOLD_BTN, DANGER_BTN, BEVELED_BTN, INPUT_STYLE,
-  TAB_ACTIVE, TAB_INACTIVE, COIN_COLOR,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE, COIN_COLOR,
   FourCorners, OrnamentalDivider, SECTION_HEADER_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -182,8 +182,8 @@ export default class FriendsSidebar extends Component {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
               </button>
             </div>
-            {/* Tab bar — medieval beveled tabs with stone texture */}
-            <div className="flex gap-1.5">
+            {/* Tab bar */}
+            <div className="flex" style={TAB_BAR_STYLE}>
               <button
                 type="button"
                 className="flex-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-all cursor-pointer"

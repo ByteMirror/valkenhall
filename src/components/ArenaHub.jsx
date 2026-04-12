@@ -11,7 +11,7 @@ import {
   BEVELED_BTN, CONTENT_BG_DEFAULT, CONTENT_BG_HOVER, CONTENT_BG_ACTIVE,
   BTN_BORDER, BTN_BORDER_HOVER, BTN_CORNER, BTN_CORNER_HOVER,
   DIALOG_STYLE, DIALOG_BORDER, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
-  adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners, TAB_ACTIVE, TAB_INACTIVE,
+  adjustAlpha, CornerPlating, MenuButton, OrnamentalDivider, FourCorners, TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 import AmbientParticles from './AmbientParticles';
@@ -579,7 +579,7 @@ export default class ArenaHub extends Component {
                   <div className="px-5 pt-5 pb-3 shrink-0">
                     <span className="arena-heading text-sm font-semibold uppercase tracking-widest" style={{ color: `${GOLD} 0.55)`, textShadow: '0 0 12px rgba(180,140,60,0.15)' }}>Leaderboard</span>
                     {/* Search + Tier filter — single row */}
-                    <div className="flex items-center gap-1.5 mt-3">
+                    <div className="flex items-center mt-3" style={TAB_BAR_STYLE}>
                       <input
                         type="text"
                         value={leaderboardSearch}

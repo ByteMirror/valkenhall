@@ -6,7 +6,7 @@ import { UI } from '../utils/arena/uiSounds';
 import {
   BG_ATMOSPHERE, VIGNETTE, GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   DIALOG_STYLE, PANEL_BG, PANEL_BORDER, BEVELED_BTN, GOLD_BTN, DANGER_BTN,
-  INPUT_STYLE, TAB_ACTIVE, TAB_INACTIVE, FourCorners, OrnamentalDivider,
+  INPUT_STYLE, TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE, FourCorners, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
 
@@ -104,7 +104,7 @@ export default class SessionLobby extends Component {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 px-6 py-3" style={{ borderBottom: `1px solid ${GOLD} 0.08)` }}>
+          <div className="flex px-6 py-3" style={{ ...TAB_BAR_STYLE, borderBottom: `1px solid ${GOLD} 0.08)` }}>
             {tabs.map((t) => (
               <button
                 key={t.id}

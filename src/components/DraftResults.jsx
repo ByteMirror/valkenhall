@@ -7,7 +7,7 @@ import DeckCardTile from './DeckCardTile';
 import PackOpeningFX from './PackOpeningFX';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
-  PANEL_STYLE, BEVELED_BTN, GOLD_BTN, TAB_ACTIVE, TAB_INACTIVE,
+  PANEL_STYLE, BEVELED_BTN, GOLD_BTN, TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
   FourCorners, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -128,7 +128,7 @@ export default class DraftResults extends Component {
             <OrnamentalDivider className="mb-4" />
 
             {/* Tabs */}
-            <div className="flex gap-1 mb-4">
+            <div className="flex mb-4" style={TAB_BAR_STYLE}>
               {[
                 { key: 'standings', label: 'Standings' },
                 { key: 'cards', label: 'Drafted Cards' },

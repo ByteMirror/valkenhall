@@ -13,7 +13,7 @@ import DraftLobby from './DraftLobby';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD, COIN_COLOR,
   VIGNETTE, BEVELED_BTN, GOLD_BTN, DANGER_BTN,
-  PANEL_STYLE, TAB_ACTIVE, TAB_INACTIVE,
+  PANEL_STYLE, TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE,
   CornerPlating,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -225,7 +225,7 @@ export default class DraftBrowser extends Component {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-4">
+          <div className="flex mb-4" style={TAB_BAR_STYLE}>
             {TABS.map((t) => (
               <button
                 key={t.key}

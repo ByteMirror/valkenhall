@@ -13,7 +13,7 @@ import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED, ACCENT_GOLD,
   BG_ATMOSPHERE, VIGNETTE, PANEL_STYLE,
   BEVELED_BTN, GOLD_BTN, DANGER_BTN, INPUT_STYLE,
-  TAB_ACTIVE, TAB_INACTIVE, DIALOG_STYLE,
+  TAB_ACTIVE, TAB_INACTIVE, TAB_BAR_STYLE, DIALOG_STYLE,
   FourCorners, OrnamentalDivider,
   getViewportScale, onViewportScaleChange,
 } from '../lib/medievalTheme';
@@ -328,7 +328,7 @@ export default class GuildPanel extends Component {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-3">
+          <div className="flex mb-3" style={TAB_BAR_STYLE}>
             {[
               { key: 'chat', label: 'Chat' },
               { key: 'members', label: `Members (${guild.members?.length || 0})` },

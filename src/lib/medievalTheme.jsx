@@ -115,20 +115,38 @@ export const INPUT_STYLE = {
 };
 
 /* ── Tab styling helpers ───────────────────────────────── */
+// Tabs sit inside a TabBar container that provides the shared
+// background. Active tabs get a raised, lit appearance; inactive
+// tabs are flat and recede into the bar.
 export const TAB_ACTIVE = {
   color: TEXT_PRIMARY,
-  background: `${STONE_TEX}, ${CHISEL_TEX}, ${SCRATCHES_TEX}, ${NOISE_SVG}, ${GOLD} 0.12)`,
-  border: `1px solid ${GOLD} 0.3)`,
-  borderRadius: '4px',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.1)',
+  background: `${GOLD} 0.1)`,
+  borderBottom: `2px solid ${ACCENT_GOLD}`,
+  borderTop: 'none',
+  borderLeft: 'none',
+  borderRight: 'none',
+  borderRadius: '0',
   textShadow: '0 1px 2px rgba(0,0,0,0.5)',
 };
 
 export const TAB_INACTIVE = {
   color: TEXT_MUTED,
-  background: `${STONE_TEX}, ${NOISE_SVG}, transparent`,
-  border: '1px solid rgba(166,160,155,0.1)',
-  borderRadius: '4px',
+  background: 'transparent',
+  borderBottom: '2px solid transparent',
+  borderTop: 'none',
+  borderLeft: 'none',
+  borderRight: 'none',
+  borderRadius: '0',
+};
+
+// Shared background for a row of tabs. Wrap tab buttons in a
+// <div style={TAB_BAR_STYLE}> (or use the TabBar component)
+// so the group reads as a unified control, distinct from buttons.
+export const TAB_BAR_STYLE = {
+  background: 'rgba(0, 0, 0, 0.25)',
+  borderBottom: `1px solid ${GOLD} 0.1)`,
+  borderRadius: '0',
+  padding: '0 4px',
 };
 
 /* ── Divider gradient ──────────────────────────────────── */
