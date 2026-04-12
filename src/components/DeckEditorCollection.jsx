@@ -429,8 +429,8 @@ export default class DeckEditorCollection extends Component {
           ) : null}
         </div>
 
-        {/* Row 2: Element + Type */}
-        <div className="flex items-center gap-3">
+        {/* Row 2: Element + Type + Set + Rarity */}
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-0.5">
             <FilterLabel>Element</FilterLabel>
             <button type="button" style={chipStyle(elementFilters.size === 0)} onClick={() => this.clearFilter('elementFilters')}>All</button>
@@ -451,10 +451,9 @@ export default class DeckEditorCollection extends Component {
               <button key={t} type="button" style={chipStyle(typeFilters.has(t))} onClick={() => this.toggleFilter('typeFilters', t)}>{t}</button>
             ))}
           </div>
-        </div>
 
-        {/* Row 3: Set + Rarity + Keywords */}
-        <div className="flex items-center gap-3">
+          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
+
           <div className="flex items-center gap-0.5">
             <FilterLabel>Set</FilterLabel>
             <button type="button" style={chipStyle(setFilters.size === 0)} onClick={() => this.clearFilter('setFilters')}>All</button>
@@ -472,9 +471,10 @@ export default class DeckEditorCollection extends Component {
               <button key={r} type="button" style={chipStyle(rarityFilters.has(r))} onClick={() => this.toggleFilter('rarityFilters', r)}>{r}</button>
             ))}
           </div>
+        </div>
 
-          <div className="w-px h-4 shrink-0" style={{ background: `${GOLD} 0.12)` }} />
-
+        {/* Row 3: Subtype + Keyword + Umbrella dropdowns */}
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             <FilterLabel>Subtype</FilterLabel>
             <MultiSelect
