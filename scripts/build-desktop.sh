@@ -136,6 +136,18 @@ setup_tar_wrapper
 patch_wmclass
 
 cd "$PROJECT_ROOT"
-bunx electrobun build "$@"
+# Electrobun build may exit non-zero when delta patch generation fails
+# (e.g. previous version not available). The full build artifacts (dmg,
+# tar.zst, update.json) are still produced, so we tolerate the error and
+# verify the artifacts directory exists afterwards.
+bunx electrobun build "$@" || {
+  echo "[build] electrobun build exited with $?, checking for artifacts..."
+  if [[ -d "$PROJECT_ROOT/artifacts" ]] && ls "$PROJECT_ROOT/artifacts"/* >/dev/null 2>&1; then
+    echo "[build] artifacts found — continuing despite non-zero exit"
+  else
+    echo "[build] no artifacts found — build truly failed"
+    exit 1
+  fi
+}
 
 repackage_linux_installer
