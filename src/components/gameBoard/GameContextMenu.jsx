@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   GOLD, TEXT_PRIMARY, TEXT_BODY, TEXT_MUTED,
   POPOVER_STYLE, SECTION_HEADER_STYLE,
@@ -9,6 +9,35 @@ import { STATUS_EFFECTS } from '../../utils/game/cardMesh';
 const menuCls = 'flex w-full items-center rounded-lg px-3 py-1.5 cursor-pointer transition-colors';
 const menuHover = (e) => { e.currentTarget.style.background = `${GOLD} 0.08)`; };
 const menuLeave = (e) => { e.currentTarget.style.background = 'transparent'; };
+
+// Measures the menu after mount and flips it upward/leftward if it
+// would overflow the viewport. Returns a ref to attach to the menu div
+// and an adjusted style object.
+function useAutoPosition(baseStyle, scale = 1) {
+  const ref = useRef(null);
+  const [adjusted, setAdjusted] = useState(baseStyle);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const style = { ...baseStyle };
+
+    // Flip upward if menu extends below viewport
+    if (rect.bottom > vh - 8) {
+      style.top = (baseStyle.top * scale - rect.height) / scale;
+    }
+    // Flip leftward if menu extends past right edge
+    if (rect.right > vw - 8) {
+      style.left = (baseStyle.left * scale - rect.width) / scale;
+    }
+    setAdjusted(style);
+  }, [baseStyle.left, baseStyle.top]);
+
+  return { ref, style: adjusted };
+}
 
 function Divider() {
   return <div className="mx-2 my-1 h-px" style={{ background: `${GOLD} 0.1)` }} />;
@@ -41,14 +70,8 @@ function MenuButton({ onClick, color = TEXT_BODY, children }) {
 export default function GameContextMenu({ contextMenu, actions, viewScale = 1 }) {
   if (!contextMenu) return null;
 
-  // The menu applies `zoom: viewScale` to scale its contents with the
-  // rest of the UI. CSS `zoom` on a position:fixed element ALSO scales
-  // its `left`/`top` values from the containing block origin — so if we
-  // want the zoomed menu to end up at the actual cursor position, we
-  // have to pre-divide the click coordinates by the scale. Without
-  // this the menu drifts by a factor of `viewScale` at viewScale != 1.
   const scale = viewScale || 1;
-  const menuStyle = {
+  const baseStyle = {
     position: 'fixed',
     left: contextMenu.x / scale,
     top: contextMenu.y / scale,
@@ -56,9 +79,12 @@ export default function GameContextMenu({ contextMenu, actions, viewScale = 1 })
     zoom: scale,
   };
 
+  const { ref, style: menuStyle } = useAutoPosition(baseStyle, scale);
+
   if (contextMenu.type === 'card') {
     return (
       <CardMenu
+        menuRef={ref}
         menuStyle={menuStyle}
         cardInstance={contextMenu.cardInstance}
         mesh={contextMenu.mesh}
@@ -70,16 +96,16 @@ export default function GameContextMenu({ contextMenu, actions, viewScale = 1 })
     );
   }
   if (contextMenu.type === 'pile') {
-    return <PileMenu menuStyle={menuStyle} pile={contextMenu.pile} actions={actions} />;
+    return <PileMenu menuRef={ref} menuStyle={menuStyle} pile={contextMenu.pile} actions={actions} />;
   }
   if (contextMenu.type === 'handcard') {
     return <HandCardMenu contextMenu={contextMenu} actions={actions} viewScale={viewScale} />;
   }
   if (contextMenu.type === 'token') {
-    return <TokenMenu menuStyle={menuStyle} tokenInstance={contextMenu.tokenInstance} actions={actions} />;
+    return <TokenMenu menuRef={ref} menuStyle={menuStyle} tokenInstance={contextMenu.tokenInstance} actions={actions} />;
   }
   if (contextMenu.type === 'dice') {
-    return <DiceMenu menuStyle={menuStyle} diceInstance={contextMenu.diceInstance} actions={actions} />;
+    return <DiceMenu menuRef={ref} menuStyle={menuStyle} diceInstance={contextMenu.diceInstance} actions={actions} />;
   }
   return null;
 }
@@ -157,23 +183,18 @@ function StatusFlyout({ cardInstance, actions, parentRef }) {
   );
 }
 
-function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, groupId, selectionAlreadyGrouped }) {
+function CardMenu({ menuRef, menuStyle, cardInstance, mesh, actions, selectionSize, groupId, selectionAlreadyGrouped }) {
   const [showStatuses, setShowStatuses] = useState(false);
   const statusTriggerRef = useRef(null);
   const activeCount = (cardInstance.statuses || []).length;
 
-  // Group selected — shown when the user has a marquee selection that
-  // ISN'T already a single cohesive group. The `selectionAlreadyGrouped`
-  // flag is computed upstream in GameBoard.handleContextMenu: it's
-  // true when every selected card shares the same non-empty groupId.
-  // When the selection is already grouped, only Ungroup is useful.
   const canGroup = !selectionAlreadyGrouped && (
     selectionSize >= 2 || (selectionSize >= 1 && !groupId)
   );
   const canUngroup = !!groupId;
 
   return (
-    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-visible p-1 text-sm">
+    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-visible p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold truncate" style={{ color: TEXT_PRIMARY }}>{cardInstance.name}</div>
 
       <MenuButton onClick={() => actions.tapCard(cardInstance, mesh)}>
@@ -251,9 +272,9 @@ function CardMenu({ menuStyle, cardInstance, mesh, actions, selectionSize, group
   );
 }
 
-function PileMenu({ menuStyle, pile, actions }) {
+function PileMenu({ menuRef, menuStyle, pile, actions }) {
   return (
-    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>
         {pile.name} ({pile.cards.length} cards)
       </div>
@@ -292,9 +313,9 @@ function HandCardMenu({ contextMenu, actions, viewScale = 1 }) {
   );
 }
 
-function TokenMenu({ menuStyle, tokenInstance, actions }) {
+function TokenMenu({ menuRef, menuStyle, tokenInstance, actions }) {
   return (
-    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>Token</div>
       <MenuButton color="#c45050" onClick={() => actions.deleteToken(tokenInstance)}>
         Delete
@@ -303,11 +324,11 @@ function TokenMenu({ menuStyle, tokenInstance, actions }) {
   );
 }
 
-function DiceMenu({ menuStyle, diceInstance, actions }) {
+function DiceMenu({ menuRef, menuStyle, diceInstance, actions }) {
   const maxVal = DICE_CONFIGS[diceInstance.dieType]?.faces || 6;
 
   return (
-    <div style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
+    <div ref={menuRef} style={{ ...menuStyle, ...POPOVER_STYLE }} className="min-w-48 overflow-hidden p-1 text-sm">
       <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: TEXT_PRIMARY }}>
         {diceInstance.dieType.toUpperCase()} — showing {diceInstance.value}
       </div>
